@@ -1,0 +1,61 @@
+---
+title: "Casos de uso — SISTEMA completo (los 2 actores y el cruce)"
+---
+%% Vista de conjunto: los 2 actores sobre el mismo sistema. Se incluye para
+%% poder mostrar en una sola pagina "quien hace que" sin abrir 2 archivos.
+%% Los detalles estan en uc-cliente.mmd (RF-C*) y uc-servidor.mmd (RF-S*).
+%% El actor que NO esta es un third: no hay registro por red ni por UI.
+usecaseDiagram
+    actor U as Usuario académico
+    actor A as Administrador
+
+    rectangle "Mensajería académica — cliente/servidor TCP" {
+        usecase (AUT) Autenticarse con código y contraseña
+        usecase (DIR) Ver quién está conectado
+        usecase (ENV) Enviar texto, imagen o archivo
+        usecase (RESP) Responder un mensaje concreto
+        usecase (HIST) Consultar el historial local
+        usecase (IMG) Ver y descargar imágenes
+        usecase (LEER) Marcar mensajes como leídos
+        usecase (SALIR) Cerrar la sesión propia
+        usecase (DIF) Difundir a toda la comunidad
+        usecase (CERRAR) Cerrar las conexiones de un usuario
+        usecase (INF) Consultar los 4 informes
+        usecase (POOL) Supervisar el pool de trabajadores
+    }
+
+    U -- AUT
+    U -- DIR
+    U -- ENV
+    U -- RESP
+    U -- HIST
+    U -- IMG
+    U -- LEER
+    U -- SALIR
+
+    A -- DIF
+    A -- CERRAR
+    A -- INF
+    A -- POOL
+
+    %% El cruce que importa: los informes del servidor se alimentan
+    %% de lo que hacen los usuarios.
+    AUT ..> INF : "accesos y sesiones vivas"
+    ENV ..> INF : "mensajes enviados con detalle"
+    LEER ..> INF : "auditoria de lectura"
+    SALIR ..> INF : "evento de cierre"
+    ENV ..> DIR : "el destino debe estar en el directorio"
+
+    note "Ver NOTA 1 al pie" as N1
+        NO tiene: registrarse,
+        dar de alta usuarios,
+        ver la base de datos,
+        entrar a la consola.
+    end note
+
+    note "Ver NOTA 2 al pie" as N2
+        NO tiene: enviar mensajes
+        individuales desde la
+        consola como usuario.
+        Difunde a todos o nada.
+    end note

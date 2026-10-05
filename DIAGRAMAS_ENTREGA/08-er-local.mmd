@@ -1,0 +1,51 @@
+---
+title: "Modelo relacional local — 3 tablas sin claves foráneas"
+---
+erDiagram
+    CACHE_USUARIOS {
+        Texto codigo PK
+        Texto nombres
+        Texto apellidos
+        Texto programa
+        Entero conectado
+        Texto fecha_registro
+        Texto actualizado
+    }
+    HISTORIAL_LOCAL {
+        Texto id_mensaje PK
+        Texto origen
+        Texto destino
+        Texto tipo
+        Texto contenido
+        Texto hash_sha256
+        Entero num_caracteres
+        Entero num_palabras
+        Texto nombre_archivo
+        Texto archivo_id
+        Texto ruta_archivo
+        Entero tamano_archivo
+        Texto fecha_envio
+        Entero enviado
+        Entero descargado
+        Texto estado
+    }
+    PENDIENTES_ENVIO {
+        Texto id PK
+        Texto tipo
+        Texto origen
+        Texto destino
+        Texto contenido
+        Texto nombre_archivo
+        Binario payload
+        Texto fecha_creado
+        Entero intentos
+        Texto ultimo_error
+    }
+
+    CACHE_USUARIOS ||--o{ HISTORIAL_LOCAL : "origen/destino (logica)"
+    CACHE_USUARIOS ||--o{ PENDIENTES_ENVIO : "origen/destino (logica)"
+
+    %% Sin FOREIGN KEY en el DDL: origen/destino guardan el codigo
+    %% como TEXT. Indices: (origen, destino, fecha_envio) en historial
+    %% y (destino, fecha_creado) en pendientes. Esquema identico en
+    %% dto (canonico), cliente .NET y cliente Python.

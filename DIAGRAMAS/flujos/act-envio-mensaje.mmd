@@ -1,0 +1,72 @@
+---
+title: "Actividad — envío de mensaje (texto, imagen o ambos) y acuses"
+---
+%% Lo que NO existia como decision. DIAGRAMAS_ENTREGA/03-flujo-mensaje.mmd
+%% es un diagrama de SECUENCIA; aqui esta el arbol de decision completo,
+%% incluido el camino sin red y la semantica de los acuses.
+%% Correspondencia: TextoCommand/ImagenCommand/ArchivoCommand, EncolarCaso,
+%% HistorialLocal.java, comandos/, estados PENDIENTE..ERROR.
+flowchart TD
+    U([Usuario escribe]) --> DEST{Hay destinatario<br/>seleccionado?}
+
+    DEST -->|no| E1[Error: "elige un destinatario"]
+    E1 --> FIN([No se envia])
+    DEST -->|si| CONT{Codigo quien escribe<br/>coincide con la sesion?}
+
+    CONT -->|no| E2[Error: "el remitente debe ser<br/>tu codigo logueado"]
+    E2 --> FIN
+
+    CONT -->|si| TEXTO{Tiene texto?}
+    TEXTO -->|vacio| E3[Error: "el contenido no puede<br/>estar vacio"]
+    E3 --> FIN
+
+    TEXTO -->|no| IMG{Tiene adjunto?}
+    TEXTO -->|si| ADJ{El adjunto supera<br/>50 MB?}
+
+    ADJ -->|si| E4[Avisar y NO habilitar Enviar]
+    E4 --> FIN
+
+    ADJ -->|no| IMG
+    IMG -->|no| FIN
+
+    IMG -->|si y hay texto| DOS[Enviar como 2 mensajes<br/>consecutivos al mismo destino:<br/>1 texto + 1 imagen]
+    IMG -->|si y no hay texto| UNO[Enviar SOLO el adjunto]
+
+    DOS --> Q
+    UNO --> Q
+
+    Q[Guardar en el historial local<br/>estado PENDIENTE] --> RED{Hay red?}
+    RED -->|si| ENV[Enviar trama]
+
+    ENV --> ACK{ACK en 15 s?}
+    ACK -->|si| E1b[estado ENVIADO]
+    E1b --> DEL{Gestor de entregas}
+    DEL -->|destinatario conectado| D1[estado ENTREGADO<br/>+ "el servidor lo tiene"]
+    D1 --> LEE[Remitente recibe MENSAJE_LEIDO<br/>estado LEIDO]
+    LEE --> FIN2([Fin])
+
+    ACK -->|no| ERR[estado ERROR<br/>"No se pudo enviar"]
+    ERR --> RE[Permitir reintentar]
+
+    RED -->|no| COLA[Guardar en pendientes_envio<br/>con el payload completo]
+    COLA --> INFO[EstadoSinRed:<br/>"Sin red: guardado para<br/>reintentar"]
+    INFO --> ESPERA[Esperar reconexion]
+    ESPERA --> COLA
+
+    RECON{Se restablecio la<br/>conexion?} --> ESPERA
+    RECON -->|si| REENV[Reenviar desde pendientes<br/>en orden de creacion]
+    REENV --> DEDUP[Claves de contrato:<br/>nombreArchivo, tamanoArchivo,<br/>indiceParte, contenidoImagen,<br/>hashSha256, archivoId]
+    DEDUP --> ENV
+
+    %% ---- la rama que casi siempre se olvida ----
+    LEE --> NOACUSE[Regla dura:<br/>el cliente NO reemite un<br/>segundo acuse al recibir<br/>MENSAJE_LEIDO o MENSAJE_ENTREGADO]
+    NOACUSE --> FIN2
+
+    note1[Al hacer doble clic en cualquier mensaje,<br/>la respuesta viaja como TEXTO ORDINARIO con el prefijo:<br/>Respuesta a Nombre CODIGO: "..."<br/>No hay vinculo estructurado ni cambio de protocolo.]
+    DOS -.-> note1
+
+    note2[La respuesta a una imagen cita el nombre del archivo,<br/>no la imagen.]
+    DOS -.-> note2
+
+    note3[Transicion de estados (es la misma en los 3 clientes,<br/>y esta escrita como un CASE SQL duplicado 3 veces:<br/>ver VIS-02 en PLAN_PATRONES_UI.md)]
+    E1b -.-> note3

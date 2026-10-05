@@ -1,0 +1,217 @@
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from qfluentwidgets import LineEdit, PasswordLineEdit, PrimaryPushButton
+
+from ui.tema import (
+    MODO_OSCURO,
+    MODOS,
+    estilo_cabecera,
+    estilo_tarjeta,
+    normalizar,
+    tokens,
+)
+
+
+class LoginWindow(QWidget):
+    login_succeeded = Signal(str)
+
+    def __init__(self, fachada, aviso=""):
+        super().__init__()
+        self.fachada = fachada
+        self.modo = self._leer_modo()
+        self.setWindowTitle("Mensajería Académica | Iniciar sesión")
+        self.setMinimumSize(440, 560)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        self.card = QWidget()
+        layout = QVBoxLayout(self.card)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(10)
+
+        header = QWidget()
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(16, 14, 16, 14)
+        self.eyebrow = QLabel("UNIVERSIDAD")
+        self.title = QLabel("Mensajería Académica")
+        self.subtitle = QLabel("Iniciar sesión")
+        self.subtitle.setWordWrap(True)
+        header_layout.addWidget(self.eyebrow)
+        header_layout.addWidget(self.title)
+        header_layout.addWidget(self.subtitle)
+        layout.addWidget(header)
+        self._header = header
+
+        self.lbl_codigo = QLabel("Código universitario")
+        layout.addWidget(self.lbl_codigo)
+        self.entry_codigo = LineEdit()
+        self.entry_codigo.setPlaceholderText("A001234567")
+        self.entry_codigo.setClearButtonEnabled(True)
+        layout.addWidget(self.entry_codigo)
+
+        self.lbl_password = QLabel("Contraseña")
+        layout.addWidget(self.lbl_password)
+        self.entry_password = PasswordLineEdit()
+        self.entry_password.setPlaceholderText("••••••••••")
+        self.entry_password.returnPressed.connect(self.login)
+        layout.addWidget(self.entry_password)
+
+        fila_server = QHBoxLayout()
+        fila_server.setSpacing(10)
+        host_box = QVBoxLayout()
+        self.lbl_host = QLabel("Servidor")
+        host_box.addWidget(self.lbl_host)
+        self.entry_host = LineEdit()
+        config = getattr(fachada, "config", None)
+        host_inicial = "localhost"
+        puerto_inicial = 5000
+        try:
+            if config is not None:
+                host_inicial = config.get("host", host_inicial)
+                puerto_inicial = int(config.get("puerto", puerto_inicial))
+        except (TypeError, ValueError):
+            pass
+        self.entry_host.setText(str(host_inicial))
+        self.entry_host.setClearButtonEnabled(False)
+        self.entry_host.setEnabled(False)
+        host_box.addWidget(self.entry_host)
+        puerto_box = QVBoxLayout()
+        self.lbl_puerto = QLabel("Puerto")
+        puerto_box.addWidget(self.lbl_puerto)
+        # Puerto solo lectura sin botones (igual que Java/.NET).
+        self.entry_puerto = LineEdit()
+        self.entry_puerto.setText(str(puerto_inicial))
+        self.entry_puerto.setClearButtonEnabled(False)
+        self.entry_puerto.setEnabled(False)
+        puerto_box.addWidget(self.entry_puerto)
+        fila_server.addLayout(host_box, 2)
+        fila_server.addLayout(puerto_box, 1)
+        layout.addLayout(fila_server)
+
+        fila_tema = QHBoxLayout()
+        fila_tema.setSpacing(10)
+        self.lbl_tema = QLabel("Tema")
+        self.combo_tema = QComboBox()
+        self.combo_tema.addItems(["Oscuro", "Claro"])
+        self.combo_tema.setCurrentIndex(0 if self.modo == MODO_OSCURO else 1)
+        self.combo_tema.currentIndexChanged.connect(self._cambiar_tema)
+        fila_tema.addWidget(self.lbl_tema)
+        fila_tema.addWidget(self.combo_tema, 1)
+        layout.addLayout(fila_tema)
+
+        self.btn_login = PrimaryPushButton("Iniciar sesión →")
+        self.btn_login.setMinimumHeight(40)
+        self.btn_login.setMinimumWidth(220)
+        self.btn_login.clicked.connect(self.login)
+        layout.addWidget(self.btn_login, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet(
+            "color: #B91C1C; background: #FDECEA; border: 1px solid #F1A9A5;"
+            " border-radius: 8px; padding: 8px;"
+        )
+        self.lbl_error.setWordWrap(True)
+        self.lbl_error.setVisible(False)
+        layout.addWidget(self.lbl_error)
+
+        self.lbl_aviso = QLabel("")
+        self.lbl_aviso.setStyleSheet(
+            "color: #B45309; background: #FFFBEB; border: 1px solid #F2CE84;"
+            " border-radius: 8px; padding: 8px;"
+        )
+        self.lbl_aviso.setWordWrap(True)
+        self.lbl_aviso.setVisible(bool(aviso))
+        if aviso:
+            self.lbl_aviso.setText(f"⏳ {aviso}")
+        layout.addWidget(self.lbl_aviso)
+
+        root.addWidget(self.card)
+        self.aplicar_tema(self.modo)
+        self.entry_codigo.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.entry_codigo.textChanged.connect(self._actualizar_boton)
+        self.entry_password.textChanged.connect(self._actualizar_boton)
+        self._actualizar_boton()
+
+    def _leer_modo(self):
+        try:
+            config = getattr(self.fachada, "config", None)
+            if config is not None:
+                return normalizar(config.get("tema", MODO_OSCURO))
+        except Exception:
+            pass
+        return MODO_OSCURO
+
+    def _guardar_modo(self):
+        try:
+            config = getattr(self.fachada, "config", None)
+            if config is not None and hasattr(config, "set"):
+                config.set("tema", self.modo)
+                if hasattr(config, "save"):
+                    config.save()
+        except Exception:
+            pass
+
+    def _cambiar_tema(self, indice):
+        self.modo = MODOS[indice] if 0 <= indice < len(MODOS) else MODO_OSCURO
+        self.aplicar_tema(self.modo)
+        self._guardar_modo()
+
+    def aplicar_tema(self, modo):
+        self.modo = normalizar(modo)
+        t = tokens(self.modo)
+        self.setStyleSheet(f"background: {t['ventana']};")
+        self.card.setStyleSheet(estilo_tarjeta(t))
+        self._header.setStyleSheet(estilo_cabecera(t))
+        header_txt = (
+            "background: transparent; border: none;"
+        )
+        self.eyebrow.setStyleSheet(
+            f"color: #9FB6D8; font-size: 11px; font-weight: 700; {header_txt}")
+        self.title.setStyleSheet(
+            f"font-size: 20px; font-weight: 700; color: white; {header_txt}")
+        self.subtitle.setStyleSheet(
+            f"color: #C9D6E8; font-size: 12px; {header_txt}")
+        etiqueta = (
+            f"color: {t['texto']}; background: transparent; border: none;"
+        )
+        for lbl in (self.lbl_codigo, self.lbl_password, self.lbl_host,
+                    self.lbl_puerto, self.lbl_tema):
+            lbl.setStyleSheet(etiqueta)
+        self.combo_tema.setCurrentIndex(0 if self.modo == MODO_OSCURO else 1)
+
+    def _actualizar_boton(self):
+        self.btn_login.setEnabled(bool(self.entry_codigo.text().strip()
+                                        and self.entry_password.text()))
+
+    def mostrar_aviso(self, texto):
+        self.lbl_aviso.setText(f"⏳ {texto}")
+        self.lbl_aviso.setVisible(True)
+
+    def login(self):
+        codigo = self.entry_codigo.text().strip()
+        contrasena = self.entry_password.text()
+        if not codigo or not contrasena:
+            self.lbl_error.setText("✖ Ingresa el código y la contraseña.")
+            self.lbl_error.setVisible(True)
+            return
+
+        self.btn_login.setEnabled(False)
+        self.btn_login.setText("Conectando…")
+        self.lbl_error.setVisible(False)
+        try:
+            # Servidor/puerto solo visibles: vienen de client.properties
+            # y no se modifican desde el login.
+            respuesta = self.fachada.login(codigo, contrasena)
+            if respuesta.get("exito"):
+                self.login_succeeded.emit(codigo)
+            else:
+                self.lbl_error.setText("✖ Usuario no registrado o datos incorrectos.")
+                self.lbl_error.setVisible(True)
+        except Exception as error:
+            self.lbl_error.setText(
+                f"✖ No se pudo conectar ({type(error).__name__}): {error}")
+            self.lbl_error.setVisible(True)
+        finally:
+            self.btn_login.setEnabled(True)
+            self.btn_login.setText("Iniciar sesión →")
+            self._actualizar_boton()

@@ -1,0 +1,77 @@
+---
+title: "int-protocolo-comunicacion — el puerto de transporte (depende solo de dto)"
+---
+classDiagram
+    direction TB
+
+    class InterfazProtocoloComunicacion {
+        <<interface · puerto>>
+        +iniciar() void
+        +detener() void
+        +estaActivo() boolean
+        +puerto() int
+        +estadoPool() EstadoPool
+        +enviar(IdSesion, Mensaje) void «throws Exception»
+        +autenticar(IdSesion, String) IdSesion
+        +cerrarSesion(IdSesion, String) void
+        +registrarReceptor(ReceptorDeTramas) void
+    }
+
+    class ReceptorDeTramas {
+        <<interface · callbacks>>
+        +alConectar(IdSesion) void
+        +alRecibir(IdSesion, Mensaje) void
+        +alDesconectar(IdSesion, String) void
+        +alRechazoPorSaturacion(String, int) void «default, cuerpo vacío»
+    }
+
+    class ProveedorProtocoloComunicacion {
+        <<interface · SPI>>
+        +crear(ConfigRed) InterfazProtocoloComunicacion
+    }
+
+    class ConfigRed {
+        <<record>>
+        +int puerto
+        +int poolCore
+        +int poolMax
+        +int poolQueue
+        +int timeoutSegundos
+        +int poolEsperaSegundos
+        +int tramasPorSegundo
+        +boolean tlsHabilitado
+        +int tlsPuerto
+        +String tlsAlmacen
+        +String tlsClave
+    }
+
+    class IdSesion {
+        <<record · dto>>
+        +String id
+        +String codigo
+        +String direccionIp
+    }
+
+    class EstadoPool {
+        <<record · dto>>
+        +int ocupados
+        +int disponibles
+        +int total
+    }
+
+    class Mensaje {
+        <<record · dto>>
+        +TipoMensaje tipo
+        +String contenido
+    }
+
+    ProveedorProtocoloComunicacion ..> InterfazProtocoloComunicacion : «produce»
+    ProveedorProtocoloComunicacion ..> ConfigRed : «config de entrada»
+    InterfazProtocoloComunicacion ..> ReceptorDeTramas : «registra»
+    InterfazProtocoloComunicacion ..> IdSesion
+    InterfazProtocoloComunicacion ..> EstadoPool
+    InterfazProtocoloComunicacion ..> Mensaje
+    ReceptorDeTramas ..> IdSesion
+    ReceptorDeTramas ..> Mensaje
+
+    note for InterfazProtocoloComunicacion "Es el puerto: no sabe de TCP, TLS ni hilos.\nSu implementación (comp-protocolo-comunicacion) sí lo sabe.\nÚnico módulo del alcance que depende de codec."

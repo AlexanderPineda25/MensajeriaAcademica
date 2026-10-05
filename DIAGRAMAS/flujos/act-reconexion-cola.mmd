@@ -1,0 +1,64 @@
+---
+title: "Actividad — reconexión y reintento de la cola local sin duplicar"
+---
+%% Lo que NO existia. Solo habia una rama de texto suelta en el diagrama de
+%% secuencia de ENTREGA: "guarda en pendientes / reintenta solo cada 30 s".
+%% Este es el arbol de decision completo de los dos caminos distintos que
+%% existen: la COLA LOCAL y los ACUSES PENDIENTES. Confundirlos es el error
+%% tipico al implementarlo.
+%% Correspondencia: ConexionCliente/ConexionRed/conexion_red (bucle de lectura),
+%% FachadaCliente (bucle de flush), HistorialLocal / historial_local / HistorialLocal.cs.
+flowchart TD
+    U([Cliente loses la conexion]) --> NOTIF[Evento de desconexion]
+
+    NOTIF --> ESTADO[EstadoConexion = SinRed<br/>banner visible]
+    ESTADO --> PERSIST[El historial local<br/>sigue intacto y legible]
+
+    PERSIST --> QUE{Que hay pendiente?}
+
+    %% ---------- camino 1: cola de envios ----------
+    QUE -->|envios sin confirmar| COLA[Leer pendientes_envio<br/>en orden de fecha_creado]
+
+    COLA --> INTENTOS{intentos < limite?}
+    INTENTOS -->|no| DESCARTAR[Marcar el registro como fallido<br/>y avisar al usuario]
+    INTENTOS -->|si| REINTENTAR[Reenviar el envio]
+
+    REINTENTAR --> ESP
+
+    %% ---------- camino 2: acuses ----------
+    QUE -->|solo acuses| ACUSE[Reenviar MENSAJE_LEIDO /<br/>MENSAJE_ENTREGADO pendientes]
+
+    %% ---------- red de vuelta ----------
+    COLA --> ESP[Esperar reconexion<br/>o pulsar Reintentar]
+    ACUSE --> ESP
+    DESCARTAR --> ESP
+
+    ESP --> INT{Hay conexion?}
+    INT -->|no| ESP
+    INT -->|si| REABRIR[Reabrir socket + TLS si aplica]
+
+    REABRIR --> AUT{Autentica?}
+    AUT -->|no| E1[Login fallido: volver al login.<br/>La cola NO se descarta.]
+    AUT -->|si| RECON[Mensaje RECONECTADO al servidor]
+
+    RECON --> DEDUP{Como se evita<br/>el duplicado?}
+
+    DEDUP -->|por contenido| K1[En el envio de archivo:<br/>nombreArchivo, tamanoArchivo,<br/>indiceParte, contenidoImagen,<br/>hashSha256, archivoId]
+    DEDUP -->|por clave natural| K2[En el historial:<br/>id_mensaje es la clave primaria;<br/>el upsert no duplica la fila]
+    DEDUP -->|por contador| K3[En los acuses:<br/>se guarda la marca;<br/>solo se reenvia si no estaba]
+
+    K1 --> ACK{ACK?}
+    K2 --> ACK
+    K3 --> FIN2([Confirmado: el estado<br/>avanza a ENVIADO o ENTREGADO])
+
+    ACK -->|si| OKBorrar[Borrar el registro de la cola]
+    ACK -->|no| COLA
+
+    note1[Regla dura, verificada en los 3 clientes:<br/>al recibir MENSAJE_LEIDO o MENSAJE_ENTREGADO<br/>el cliente NO emite un SEGUNDO acuse.<br/>Sin esta regla, dos clientes que se ven<br/>mutuamente se realimentan sin parar.]
+
+    note2[Los acuses pendientes se conservan y reintentan<br/>tras recuperar la conexion, SIN realimentar<br/>otros acuses (RF-C20).]
+
+    note3[Cadencia: hay 2 relojes distintos y no deben fusionarse.<br/>- flush de acuses cada 30 s (solo si hay algo)<br/>- reconexion por evento, no por sondeo]
+
+    ESCR[Nota: en Java el banner se detecta por sondeo<br/>cada 30 s porque alDesconexion esta vacio.<br/>PAT-03 lo resuelve en los 3.]
+    ESTADO -.-> ESCR

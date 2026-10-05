@@ -1,0 +1,48 @@
+---
+title: "Fachada, núcleo y vistas — qué hace cada uno (sin atributos)"
+---
+classDiagram
+    direction TB
+
+    class FachadaDeServicios {
+        +delega en casos (1 por operación)
+        +difundirAdministrativo(...)
+        +informe* (4) + detalle
+    }
+    class InicioServidor {
+        +monta con Fabrica
+        +siembra desde CSV
+    }
+    class VistaConsola {
+        +prompt servidor> + comandos 0-11
+        +tabla ASCII
+    }
+    class VistaEscritorio {
+        +8 pestañas
+        +maestro-detalle
+    }
+
+    class Mensajes {
+        +procesarTexto/Imagen/Archivo
+        +async sobre poolFiltros
+    }
+    class LogDeEventos {
+        +registrar / consultar
+    }
+    class ConexionesClientes {
+        +registrar / remover
+        +sesionesDe / codigosConectados
+    }
+    class AlmacenarInformacion {
+        +persistencia + uploads/
+    }
+
+    InicioServidor --> VistaConsola : lanza
+    InicioServidor --> VistaEscritorio : lanza
+    VistaConsola --> FachadaDeServicios : solo usa
+    VistaEscritorio --> FachadaDeServicios : solo usa
+    FachadaDeServicios --> Mensajes
+    FachadaDeServicios --> LogDeEventos
+    FachadaDeServicios --> ConexionesClientes
+    Mensajes --> AlmacenarInformacion
+    LogDeEventos --> AlmacenarInformacion

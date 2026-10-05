@@ -1,0 +1,76 @@
+---
+title: "Actividad — inicio de sesión (cliente y servidor)"
+---
+%% Lo que NO existia: solo habia un diagrama de SECUENCIA del login
+%% (DIAGRAMAS_ENTREGA/02-flujo-login.mmd). Esta es la vista de decision:
+%% donde esta cada validacion, incluido el camino de error de TLS.
+%% Correspondencia: AutenticarCaso.java, LoginCommand.java, UsuarioListado,
+%% tls.py validar_tls, LogoutCommand.java.
+flowchart TD
+    IN([Usuario abre la app]) --> CFG[Leer client.properties:<br/>host, puerto, tls.*]
+    CFG --> TLS{TLS habilitado?}
+
+    TLS -->|si| VALTLS[Validar configuracion TLS<br/>fail-fast]
+    VALTLS -->|almacen ausente| E1[Error: no se encuentra el<br/>keystore en la ruta esperada]
+    VALTLS -->|CAMBIAR o vacio| E2[Error: la clave no es de la<br/>operacion, se cambia]
+    VALTLS -->|colision de puertos| E3[Error: tls.puerto == puerto]
+    VALTLS -->|ok| CON
+
+    TLS -->|no| CON[Abrir socket TCP<br/>timeout 15 s]
+
+    E1 --> HALT([Volver al login con el mensaje])
+    E2 --> HALT
+    E3 --> HALT
+
+    CON -->|error de red| ER[Mostrar: "No se pudo conectar<br/>(motivo real)"]
+    ER --> HALT
+    CON -->|ok| SES[Conexion abierta<br/>IdSesion ANONIMA]
+
+    SES --> ENVIO[Enviar trama LOGIN<br/>codigo + contrasena]
+    ENVIO --> ESP{Respuesta en 15 s?}
+
+    ESP -->|timeout| ET[Error: "sin respuesta del servidor"]
+    ET --> HALT
+
+    ESP -->|respuesta| VAL{Resultado}
+
+    VAL -->|error: no registrado o datos incorrectos| EB[Burbuja roja exacta:<br/>"Usuario no registrado o<br/>datos incorrectos."]
+    EB --> REIN[No abrir el chat.<br/>Desconectar limpio.]
+    REIN --> HALT
+
+    VAL -->|exito| EST[EstadoConexion = Conectado<br/>IdSesion autenticada con el codigo]
+
+    EST --> AUD[Servidor: registrar LOGIN<br/>incrementa accesos del informe<br/>y NO incrementa presencia]
+    AUD --> DIR[Cargar directorio y presencia]
+    DIR --> CHAT[Abrir la ventana de chat]
+
+    %% ---- el camino que casi no se documenta ----
+    CHAT --> SESION{Estado de la sesion}
+
+    SESION -->|voluntario: Salir| LO[Enviar LOGOUT]
+    SESION -->|Salir en todos| LK[Enviar KICK]
+    SESION -->|servidor decide| SV{ Motivo }
+
+    LO --> CL1[Servidor cierra SOLO esta sesion]
+    LK --> CL2[Servidor cierra las OTRAS sesiones]
+    CL1 --> OFF
+    CL2 --> OFF
+
+    SV -->|10 min sin tramas| SV1[Servidor notifica CLOSE_NOTICE<br/>con el motivo y lo loguea]
+    SV -->|KICK del administrador| SV2[Cierre remoto]
+    SV -->|logout del mismo usuario<br/>en otra sesion| SV3[Cierre remoto]
+
+    SV1 --> AV[Cliente muestra el aviso<br/>y vuelve al login]
+    SV2 --> AV
+    SV3 --> AV
+    CL1 --> OFF
+    CL2 --> OFF
+
+    OFF{Conserva el historial<br/>y la cola local?} -->|si| AV
+    OFF -->|reconexion| DIR
+
+    note1[Nota de fidelidad:<br/>LOGIN incrementa ACCESOS.<br/>Las acciones de chat no.<br/>Presencia = sesion viva:<br/>se apaga al cerrar la ultima.]
+    AUD -.-> note1
+
+    note2[Distinguir:<br/>un LOGIN cuenta 1 acceso.<br/>"Salir en todos" cierra<br/>las otras sesiones del mismo<br/>codigo, no todas las cuentas.]
+    LK -.-> note2

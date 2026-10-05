@@ -1,0 +1,61 @@
+---
+title: "Paquete persistencia — JPA, entidades y repositorios"
+---
+classDiagram
+    direction TB
+
+    class JpaPersistenciaAdapter {
+        +implementa PersistenciaPort
+    }
+    class UsuarioRepository {
+        <<repository>>
+    }
+    class MensajeRepository {
+        <<repository>>
+    }
+    class ArchivoRepository {
+        <<repository>>
+    }
+    class ConfiguracionLimitesRepository {
+        <<repository>>
+    }
+
+    class Usuario {
+        <<entity>>
+        +Long id
+        +String codigo
+        +String nombres + apellidos
+    }
+    class Mensaje {
+        <<entity>>
+        +Long id
+        +Usuario remitente/destinatario
+        +TipoContenido tipo
+        +Archivo archivo
+    }
+    class Archivo {
+        <<entity>>
+        +Long id + nombre + ruta
+        +Usuario propietario
+    }
+    class RegistroAccion {
+        <<entity>>
+        +Long id + TipoAccion tipo
+        +Usuario usuario + descripcion
+    }
+    class ConfiguracionLimites {
+        <<entity>>
+        +Long id + limites + activa
+    }
+
+    JpaPersistenciaAdapter --> UsuarioRepository
+    JpaPersistenciaAdapter --> MensajeRepository
+    JpaPersistenciaAdapter --> ArchivoRepository
+    JpaPersistenciaAdapter --> ConfiguracionLimitesRepository
+    UsuarioRepository --> Usuario
+    MensajeRepository --> Mensaje
+    ArchivoRepository --> Archivo
+    Mensaje --> Usuario : remitente
+    Mensaje --> Archivo : adjunto
+    Archivo --> Usuario : propietario
+    RegistroAccion --> Usuario : usuario

@@ -1,0 +1,52 @@
+---
+title: "Modelo relacional LOCAL (SQLite) — 3 tablas, sin claves foráneas"
+---
+erDiagram
+    CACHE_USUARIOS {
+        TEXT codigo PK "clave natural; TEXT no INTEGER"
+        TEXT nombres "NOT NULL"
+        TEXT apellidos "NOT NULL"
+        TEXT programa "nullable"
+        INTEGER conectado "0 por defecto"
+        TEXT fecha_registro "nullable"
+        TEXT actualizado "NOT NULL"
+    }
+
+    HISTORIAL_LOCAL {
+        TEXT id_mensaje PK
+        TEXT origen "NOT NULL, ver nota"
+        TEXT destino "NOT NULL, ver nota"
+        TEXT tipo "NOT NULL"
+        TEXT contenido "nullable"
+        TEXT hash_sha256 "nullable"
+        INTEGER num_caracteres "nullable"
+        INTEGER num_palabras "nullable"
+        TEXT nombre_archivo "nullable"
+        TEXT archivo_id "nullable, ver nota"
+        TEXT ruta_archivo "nullable"
+        INTEGER tamano_archivo "nullable"
+        TEXT fecha_envio "NOT NULL"
+        INTEGER enviado "0 por defecto"
+        INTEGER descargado "0 por defecto"
+        TEXT estado "'ENVIADO' por defecto"
+    }
+
+    PENDIENTES_ENVIO {
+        TEXT id PK
+        TEXT tipo "NOT NULL"
+        TEXT origen "NOT NULL, ver nota"
+        TEXT destino "NOT NULL, ver nota"
+        TEXT contenido "nullable"
+        TEXT nombre_archivo "nullable"
+        BLOB payload "nullable, archivo fragmentado"
+        TEXT fecha_creado "NOT NULL"
+        INTEGER intentos "0 por defecto"
+        TEXT ultimo_error "nullable"
+    }
+
+    CACHE_USUARIOS ||--o{ HISTORIAL_LOCAL : "origen / destino (logica)"
+    CACHE_USUARIOS ||--o{ PENDIENTES_ENVIO : "origen / destino (logica)"
+
+    %% Índices definidos en el DDL (no se pueden representar en erDiagram):
+    %%   idx_hist_conv      ON historial_local (origen, destino, fecha_envio)
+    %%   idx_pend_destino   ON pendientes_envio (destino, fecha_creado)

@@ -1,0 +1,71 @@
+---
+title: "Secuencia — Pipes & Filters: el paso por las 3 tuberías"
+---
+%% Lo que NO existia: el diagrama de como viaja un texto y una imagen por su
+%% cadena de filtros. clases-utilerias.mmd muestra las 10 clases pero no el
+%% recorrido.
+%% Correspondencia: TuberiaFactory.java, Tuberia.java, Filtro.java,
+%% FiltroVisualBase.java, Imagenes.java.
+sequenceDiagram
+    autonumber
+    participant F as FachadaDeServicios
+    participant TF as TuberiaFactory
+    participant T as Tuberia
+    participant CT as ContextoTuberia
+    participant F1 as Filtro 1
+    participant FN as Filtro N
+    participant POOL as pool de filtros
+
+    F ->> TF: texto() / imagen() / archivo()
+    Note over TF: Devuelve la cadena YA CONSTRUIDA<br/>(registro estatico, sin estado).
+
+    F ->> POOL: ejecutar(tuberia, ctx) en poolFiltros
+
+    %% ---------- TEXTO ----------
+    rect rgb(24, 37, 51)
+    Note over F,FN: Tuberia de TEXTO (orden exigido)
+    POOL ->> T: ejecutar(ctx)
+    T ->> F1: Sha256Filtro.aplicar(ctx)
+    F1 ->> F1: hash SHA-256 del contenido
+    F1 ->> CT: ctx.hash = ...
+    T ->> F1: ContarCaracteresFiltro.aplicar(ctx)
+    F1 ->> CT: ctx.caracteres = ...
+    T ->> FN: ContarPalabrasFiltro.aplicar(ctx)
+    FN ->> CT: ctx.palabras = ...
+    CT -->> T: evento por etapa (Consumer<EventoEtapa>)
+    T -->> F: ResultadoFiltro
+    end
+
+    %% ---------- IMAGEN ----------
+    rect rgb(123, 97, 184)
+    Note over F,FN: Tuberia de IMAGEN (SECUENCIAL, RF-S17)<br/>Cada filtro genera una NUEVA imagen y se guarda.
+    POOL ->> T: ejecutar(ctx)
+    T ->> F1: Sha256ImagenFiltro
+    F1 ->> CT: hash
+    T ->> F1: EscalaGrisesFiltro
+    F1 ->> F1: nueva imagen
+    T ->> FN: SepiaFiltro -> GiroFiltro -> BrilloFiltro -> ReduccionFiltro
+    Note right of FN: 4 transformaciones mas,<br/>todas sobre FiltroVisualBase sellada
+    FN ->> CT: rutas de las 5 derivadas
+    T -->> F: original + 5 derivadas
+    end
+
+    %% ---------- ARCHIVO ----------
+    rect rgb(94, 177, 255)
+    Note over F,FN: Tuberia de ARCHIVO generico
+    POOL ->> T: ejecutar(ctx)
+    T ->> FN: Sha256ArchivoFiltro
+    FN ->> CT: hash
+    T -->> F: ResultadoFiltro
+    end
+
+    F ->> F: guardar en uploads/<nombre [codigo]>/<hash>/
+
+    note over T,CT
+        Cada filtro es Strategy sin estado:
+        se prueba aislado y es sustituible (LSP).
+        El evento por etapa alimenta la consola
+        sin sacar el pipeline de su hilo.
+        Etapa_FILTRADO queda FUERA del ACK a proposito
+        (medicion de PERF-02: no hizo falta incluirlo).
+    end note

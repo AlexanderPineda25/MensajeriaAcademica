@@ -1,0 +1,260 @@
+---
+title: "Clases — cliente Python (PySide6) — no existia"
+---
+%% Lo que NO existia: no habia classDiagram del cliente Python. Solo
+%% aparecia como una caja de 5 nodos en DIAGRAMAS_FINALES/clases/04.
+%% Este es el mas acoplado de los 3: la ventana reaches DENTRO de la fachada
+%% con getattr y se la parchea con setattr, y el historial NO tiene interfaz
+%% (a diferencia de Java y .NET). Todo eso esta anotado abajo.
+%% Correspondencia: client-python/*.py
+classDiagram
+    direction TB
+
+    %% ---------- composicion ----------
+    class main {
+        +iniciar()$
+    }
+    class ui.tema {
+        <<tokens>>
+        +TOKENS$
+        +leer_modo(fachada)$
+        +guardar_modo(fachada, modo)$
+        +aplicar_tema(widget, modo)$
+    }
+
+    %% ---------- presentacion ----------
+    class LoginWindow {
+        +Signal login_succeeded$
+        -fachada
+        -campo_codigo
+        -campo_contrasena
+        -combo_tema
+        -login()
+        -_cambiar_tema()
+        +mostrar_aviso()$
+    }
+    class ChatWindow {
+        -fachada
+        -_UiEvents _eventos
+        -_TaskPool _pool$
+        -QTimer _timer_presencia$
+        -_generacion$
+        -_tareas_imagen$
+        -_construir_ui()
+        -_procesar_tarea(kind, res, err)$
+        -_pintar_historial()
+        -_agregar_fila(m)$
+        -_al_seleccionar_usuario(item)$
+        -_solicitar_historial()
+        -_cargar_anteriores()
+        -_filtrar_usuarios(texto)$
+        -enviar()
+        -_adjuntar()
+        -_responder(m)$
+        -_cargar_imagenes_visibles()
+        -_reintentar_imagen(m)$
+        -_descargar(m)$
+        -_procesar_desconexion()$
+        -_leer_modo()$
+        -_guardar_modo()$
+        -closeEvent(e)$
+    }
+    class _UiEvents {
+        <<QObject>>
+        +Signal message$
+        +Signal closure$
+        +Signal presence$
+        +Signal disconnected$
+        +Signal task$
+    }
+    class _Task {
+        <<QRunnable>>
+        +run()$
+    }
+    class _MessageRow {
+        -sender
+        -cuerpo
+        -imagen
+        -estado$
+        -_tema(modo)$
+        -_abrir_grande()$
+        +actualizar_estado(estado)$
+    }
+
+    %% ---------- fachada ----------
+    class FachadaCliente {
+        -IHistorialLocal historial$
+        -ConexionRed conexion$
+        -Autenticacion auth$
+        -Database db$
+        -Config config$
+        -on_mensaje_recibido$
+        -on_cierre_ui$
+        -on_presencia_ui$
+        -on_desconexion_ui$
+        +login(codigo, clave)$
+        +desconectar()
+        +enviar_texto(dest, texto)$
+        +enviar_imagen(dest, ruta)$
+        +enviar_archivo(dest, ruta)$
+        +difundir(texto)$
+        +sincronizar_directorio()$
+        +conversacion(otro, pag)$
+        +traer_historial(otro, pag)$
+        +obtener_imagen(id)$
+        +descargar_imagen(id)$
+        +marcar_descargado(id)$
+        +contar_no_leidos_por_contacto(otro)$
+        +pendientes()$
+        +expulsar_otras_sesiones()$
+        -_guardar_propio()$
+        -_handle_unsolicited_message(m)$
+    }
+
+    %% ---------- componentes ----------
+    class ConexionRed {
+        -socket _sock$
+        -SSLContext _ssl$
+        -threading.Thread _hilo$
+        -on_mensaje_recibido$
+        -on_cierre$
+        +conectar(host, puerto)$
+        +enviar(m)$
+        +enviar_async(m)$
+        +recibir()$
+        -_recibir_loop()$
+    }
+    class Autenticacion {
+        +validar(codigo, clave)$
+    }
+    class HistorialLocal {
+        <<SIN INTERFAZ>>
+        -Database _db$
+        +guardar_mensaje(m)$
+        +conversacion(yo, otro, pag)$
+        +contar(yo, otro)$
+        +marcar_leidos(otro)$
+        +pendientes()$
+    }
+    class CacheUsuarios {
+        -Database _db$
+        +listar()$
+        +upsert(u)$
+    }
+    class Database {
+        -sqlite3.Connection _cn$
+        +DbPath$
+        -para_cuenta(cta)$
+        -_asegurar_columnas()$
+    }
+    class Config {
+        +host$
+        +puerto$
+        +tema$
+        +tls_habilitado$
+        -save()$
+    }
+    class transversal.protocolo {
+        <<modulo>>
+        +TramaCodec$
+    }
+    class transversal.tls {
+        <<modulo>>
+        +crear_contexto()$
+        +validar_tls()$
+    }
+
+    %% ---------- relaciones ----------
+    main --> FachadaCliente
+    main --> LoginWindow
+    main --> ChatWindow
+    main --> ui.tema
+
+    ChatWindow o-- _MessageRow : una fila por mensaje
+    ChatWindow --> _UiEvents : signals
+    ChatWindow --> _Task
+    LoginWindow --> ui.tema
+
+    ChatWindow ..> FachadaCliente : ATTRAPADO con getattr
+    ChatWindow ..> FachadaCliente : PARCHEADO con setattr
+
+    FachadaCliente --> ConexionRed
+    FachadaCliente --> Autenticacion
+    FachadaCliente --> HistorialLocal
+    FachadaCliente --> CacheUsuarios
+    FachadaCliente --> Database
+    FachadaCliente --> Config
+
+    ConexionRed --> transversal.protocolo
+    ConexionRed --> transversal.tls
+    HistorialLocal --> Database
+    CacheUsuarios --> Database
+
+    class ui.registro_window {
+        <<MODULO MUERTO>>
+    }
+
+    note for ChatWindow
+        1322 lineas: el mas grande de los 3.
+        _procesar_tarea es un if/elif de
+        100 lineas por 8 tipos de tarea:
+        es un PRESENTER sin tipar.
+        Arreglo previsto: PAT-VM (MVVM).
+    end note
+
+    note for FachadaCliente
+        Sin constructor: main.py la crea
+        sin argumentos y los 6 colaboradores
+        se cablean con defaults "or".
+        Ademas el GRAFO CAMBIA DE FORMA en
+        runtime: para_cuenta() reasigna db
+        e historial al hacer login.
+        Arreglo: PAT-01.
+    end note
+
+    note for HistorialLocal
+        SIN INTERFAZ: a diferencia de Java
+        (InterfazHistorialLocal) y .NET
+        (IHistorialLocal). La ventana la
+        salta y accede a fachada.historial
+        con getattr para contar no leidos.
+        Arreglo: PAT-04.
+    end note
+
+    note "ChatWindow._procesar_tarea" as N1
+        Punto unico donde se despacha
+        todo resultado asincrono: 8 tipos
+        de tarea. Mezcla presentacion y
+        logica de negocio.
+    end note
+
+    note for transversal.tls
+        UNICO cliente que valida TLS
+        fail-fast (validar_tls). Java no
+        valida en ningun sitio y .NET
+        sustituye el puerto en silencio.
+        Arreglo: PAT-05 / SEG-01.
+    end note
+
+    note for Database
+        Upsert con ON CONFLICT, que es
+        dialecto SQLite. La forma portable
+        (DELETE + INSERT) ya esta documentada
+        en HistorialLocal.java:17 y no se
+        usa aqui. Arreglo: PAT-04.
+    end note
+
+    note for ui.registro_window
+        Stub de 3 lineas: __all__ = [].
+        El registro por red se elimino en
+        Fase 10.2 (RF-S27). Solo lo
+        referencia el test que comprueba
+        que no existe. Arreglo: MUERT-18.
+    end note
+
+    note for LoginWindow
+        mostrar_aviso() no lo llama nadie.
+        Y login() corre en el hilo de la
+        GUI: bloquea hasta 15 s.
+        Arreglo: MUERT-17 / UIX-00e.
+    end note

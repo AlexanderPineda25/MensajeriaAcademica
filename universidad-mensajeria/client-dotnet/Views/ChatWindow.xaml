@@ -1,0 +1,159 @@
+<Window x:Class="Mensajeria.Views.ChatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Mensajería Académica | Chat" Height="760" Width="1120"
+        MinHeight="600" MinWidth="880" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource WindowBgBrush}">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300" MinWidth="250" MaxWidth="360"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1,1,0,1">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="16,16,16,12">
+                    <TextBlock Text="Mensajería" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}"/>
+                    <TextBlock x:Name="txtSesion" Foreground="{DynamicResource MutedBrush}" Margin="0,3,0,12"/>
+                    <ui:TextBox x:Name="txtBuscar" PlaceholderText="Buscar nombre o código"
+                                TextChanged="TxtBuscar_TextChanged" Margin="0,0,0,8"/>
+                    <ComboBox x:Name="cmbFiltro" Margin="0,0,0,8" SelectionChanged="CmbFiltro_SelectionChanged">
+                        <ComboBoxItem Content="Todos" IsSelected="True"/>
+                        <ComboBoxItem Content="Conectados"/>
+                    </ComboBox>
+                    <DockPanel>
+                        <TextBlock Text="Contactos" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" VerticalAlignment="Center"/>
+                        <ui:Button DockPanel.Dock="Right" Content="Actualizar" Click="BtnActualizar_Click"/>
+                    </DockPanel>
+                </StackPanel>
+                <Border x:Name="bannerOffline" Background="#FFFBEB" BorderBrush="#F2CE84" BorderThickness="1"
+                        CornerRadius="8" Padding="9" Margin="8,0,8,8" Visibility="Collapsed">
+                    <TextBlock Text="⛔ Sin conexión — mensajes en cola local, se reintentan solos"
+                               Foreground="#B45309" FontWeight="SemiBold" FontSize="11" TextWrapping="Wrap"/>
+                </Border>
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,10">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <ui:Button Content="Salir" Click="BtnSalir_Click" Margin="0,0,6,0"/>
+                        <ui:Button Content="Salir en todos" Click="BtnSalirTodos_Click"/>
+                    </StackPanel>
+                    <ComboBox x:Name="cmbTema" SelectionChanged="CmbTema_SelectionChanged">
+                        <ComboBoxItem Content="Oscuro"/>
+                        <ComboBoxItem Content="Claro"/>
+                    </ComboBox>
+                </StackPanel>
+                <ListView x:Name="lstUsuarios" Margin="8,0,8,10" BorderThickness="0" Background="{DynamicResource CardBrush}"
+                          SelectionChanged="LstUsuarios_SelectionChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="4,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Grid.Column="0" Width="7" Height="7" VerticalAlignment="Center"
+                                         Fill="{Binding ColorPresencia}"/>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Text="{Binding Etiqueta}" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Presencia}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </DockPanel>
+        </Border>
+        <DockPanel Grid.Column="1" Margin="0,0,0,0" Background="{DynamicResource ChatBgBrush}">
+            <Border DockPanel.Dock="Top" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1,1,1,0" Padding="18,12">
+                <DockPanel>
+                    <StackPanel>
+                        <TextBlock x:Name="txtTitulo" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource LabelBrush}" Text="Selecciona una conversación"/>
+                        <TextBlock x:Name="txtEstado" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:Button x:Name="btnAnteriores" Content="↑ Cargar mensajes anteriores"
+                                   Click="BtnAnteriores_Click" Visibility="Collapsed"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <StackPanel DockPanel.Dock="Bottom" Background="{DynamicResource CardBrush}" Margin="0"
+                        AllowDrop="True" Drop="ZonaEnvio_Drop" DragOver="ZonaEnvio_DragOver">
+                <Border x:Name="bordeRespuesta" Visibility="Collapsed" Background="{DynamicResource CitaBgBrush}"
+                        BorderBrush="{DynamicResource CitaBorderBrush}" BorderThickness="3,1,1,1" CornerRadius="6"
+                        Margin="16,10,16,0" Padding="8,4">
+                    <DockPanel LastChildFill="True">
+                        <Button x:Name="btnQuitarRespuesta" Content="✕" DockPanel.Dock="Right"
+                                Click="BtnQuitarRespuesta_Click" Padding="6,1" Margin="8,0,0,0"
+                                VerticalAlignment="Center"/>
+                        <TextBlock x:Name="txtRespuesta" Foreground="{DynamicResource CitaTextBrush}"
+                                   TextTrimming="CharacterEllipsis" TextWrapping="Wrap"
+                                   VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+                <TextBlock x:Name="txtImagenAdjunta" Foreground="{DynamicResource LabelBrush}" Margin="16,8,16,0" Text=""/>
+                <StackPanel x:Name="panelArchivo" Orientation="Horizontal" Margin="16,6,16,0" Visibility="Collapsed">
+                    <TextBlock x:Name="txtArchivoAdjunto" Foreground="{DynamicResource LabelBrush}" VerticalAlignment="Center" Text=""/>
+                    <ui:Button x:Name="btnQuitarArchivo" Content="Quitar" Click="BtnQuitarArchivo_Click"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+                <StackPanel x:Name="panelPreview" Orientation="Horizontal" Margin="16,6,16,0" Visibility="Collapsed">
+                    <Border BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" Padding="4">
+                        <Image x:Name="imgPreview" MaxHeight="90" MaxWidth="140" Stretch="Uniform"/>
+                    </Border>
+                    <ui:Button x:Name="btnQuitarImagen" Content="Quitar" Click="BtnQuitarImagen_Click"
+                               VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+                <Grid Margin="14,10,14,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ui:Button x:Name="btnAdjuntar" Grid.Column="0" Content="＋" Click="BtnAdjuntar_Click" Margin="0,0,8,0" MinWidth="44" ToolTipService.ToolTip="Adjuntar archivo (Todos *.*)"/>
+                    <ui:TextBox x:Name="txtMensaje" Grid.Column="1" MinHeight="42" TextWrapping="Wrap"
+                                TextChanged="TxtMensaje_TextChanged" KeyDown="TxtMensaje_KeyDown"
+                                PlaceholderText="Escribe un mensaje (Enter para enviar)" Margin="0,0,8,0"/>
+                    <ui:Button x:Name="btnEnviar" Grid.Column="2" Content="Enviar" Appearance="Primary" Click="BtnEnviar_Click" MinWidth="82"/>
+                </Grid>
+            </StackPanel>
+            <ListBox x:Name="lstMensajes" Background="{DynamicResource ChatBgBrush}" BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                     AllowDrop="True" Drop="ZonaEnvio_Drop" DragOver="ZonaEnvio_DragOver"
+                     MouseDoubleClick="LstMensajes_DoubleClick"
+                     ToolTipService.ToolTip="Doble-click en un mensaje para responder · Arrastra aquí imágenes o archivos para adjuntar">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Background="{Binding Fondo}" BorderBrush="{DynamicResource BubbleBorderBrush}" BorderThickness="1" Padding="12" Margin="6,5" MaxWidth="720" HorizontalAlignment="{Binding Alineacion}">
+                            <StackPanel>
+                                <DockPanel LastChildFill="False">
+                                    <TextBlock Text="{Binding Encabezado}" FontWeight="SemiBold" Foreground="{DynamicResource RemitenteBrush}"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Estado}" Foreground="{Binding ColorEstado}" FontSize="11" Margin="16,0,0,0"/>
+                                </DockPanel>
+                                <TextBlock Text="{Binding Contenido}" TextWrapping="Wrap" Margin="0,7,0,0" Foreground="{Binding ColorContenido}"
+                                           Visibility="{Binding MostrarTexto}"/>
+                                <Image Source="{Binding Imagen}" MaxHeight="260" MaxWidth="420" Stretch="Uniform"
+                                       HorizontalAlignment="Left" Margin="0,8,0,0" Cursor="Hand"
+                                       ToolTipService.ToolTip="Click para ampliar · doble-click para responder"
+                                       Visibility="{Binding MostrarImagen}" Loaded="MessageImage_Loaded"
+                                       PreviewMouseLeftButtonUp="MessageImage_Click"/>
+                                <TextBlock Text="{Binding EstadoImagen}" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,4,0,0"
+                                           Visibility="{Binding MostrarImagen}"/>
+                                <Button Content="Reintentar imagen" HorizontalAlignment="Left" Margin="0,3,0,0"
+                                         Visibility="{Binding MostrarReintento}" Click="BtnReintentarImagen_Click"/>
+                                <Button Content="⬇ Descargar" HorizontalAlignment="Left" Margin="0,3,0,0"
+                                         Visibility="{Binding MostrarDescarga}" Click="BtnDescargarArchivo_Click"/>
+                                <DockPanel LastChildFill="False" Margin="0,8,0,0">
+                                    <TextBlock Text="{Binding Fecha}" Foreground="{DynamicResource FechaBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <Button Content="Responder" DockPanel.Dock="Right" Margin="8,0,0,0"
+                                         Padding="4,1" Click="BtnResponder_Click"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Grid>
+</Window>

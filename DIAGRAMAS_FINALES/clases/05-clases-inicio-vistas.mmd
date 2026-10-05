@@ -1,0 +1,44 @@
+---
+title: "Paquetes inicio + vistas — arranque y UI del servidor"
+---
+classDiagram
+    direction TB
+
+    class InicioServidor {
+        +run(...)
+        +monta con Fabrica
+        +siembra desde CSV
+    }
+    class Fabrica {
+        +montar(...) SistemaMontado$
+        +Parametros + SistemaMontado
+    }
+    class RutasProyecto {
+        +resolver(...) Path$
+    }
+    class SemillaUsuarios {
+        +leer(...) List~UsuarioDTO~$
+    }
+
+    class VistaConsola {
+        +ejecutar()
+        +procesar(comando)
+        +estado / conectados / informe
+        +cerrar / difundir
+    }
+    class TablaAscii {
+        +convertir(informe) String$
+    }
+    class VistaEscritorio {
+        +lanzar(fachada)$
+        +start(...) + refrescar()
+        +actualizarInforme()
+        +DetalleMensaje
+    }
+
+    InicioServidor --> Fabrica : usa
+    Fabrica --> RutasProyecto
+    Fabrica --> SemillaUsuarios
+    InicioServidor --> VistaConsola : lanza
+    InicioServidor --> VistaEscritorio : lanza
+    VistaConsola --> TablaAscii : pinta informes

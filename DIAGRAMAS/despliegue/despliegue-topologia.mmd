@@ -1,0 +1,66 @@
+---
+title: "Despliegue — 4 procesos en LAN, qué alcanza a qué"
+---
+%% Lo que NO existia: ningun diagrama de despliegue. Los puertos aparecian
+%% como dato suelto (ConfigRed.puerto, RedProperties) y la topologia
+%% "un proceso por PC" solo estaba en DESPLIEGUE.md como texto.
+%% Origen: DESPLIEGUE.md, .env.prod.example, docker-compose.prod.yml,
+%% Dockerfile, application.properties, client.properties (3 copias).
+flowchart LR
+    subgraph PC1["PC 1 — SERVIDOR (unicamente)"]
+        direction TB
+        SV["servidor.jar<br/>Java 21 + Spring Boot<br/>:5000 TCP (plano)<br/>:5001 TLS"]
+        JC["Consola JLine<br/>--app.consola"]
+        JX["Vista escritorio JavaFX<br/>--app.escritorio"]
+        VOL[("uploads/<nombre hash>/<br/>logs/")]
+        SV --- JC
+        SV --- JX
+        SV --- VOL
+    end
+
+    subgraph DBA["Base de datos (puede estar en otra maquina)"]
+        MY[("MySQL 8 o PostgreSQL 16<br/>u Oracle 23<br/>3306 / 5432 / 1521")]
+    end
+
+    subgraph PC2["PC 2 — cliente JavaFX"]
+        CJ["Cliente JavaFX 25<br/>H2 por cuenta"]
+    end
+
+    subgraph PC3["PC 3 — cliente PySide6"]
+        CP["Cliente Python<br/>SQLite por cuenta"]
+    end
+
+    subgraph PC4["PC 4 — cliente WPF"]
+        CN["Cliente WPF .NET 8<br/>SQLite por cuenta"]
+    end
+
+    %% ---- lo que SI cruza la red ----
+    CJ -->|"TCP 5000<br/>trama 4B + JSON"| SV
+    CP -->|"TCP 5000<br/>trama 4B + JSON"| SV
+    CN -->|"TCP 5000<br/>trama 4B + JSON"| SV
+
+    %% ---- lo que NO cruza, y es el error clasico ----
+    CJ -.->|"PROHIBIDO:<br/>el cliente no toca<br/>la base del servidor"| MY
+    CP -.->|"PROHIBIDO"| MY
+    CN -.->|"PROHIBIDO"| MY
+
+    %% ---- unico hacia la base ----
+    SV -->|"unica conexion<br/>configurable"| MY
+
+    %% ---- persistencia local ----
+    LJ[("historial_local<br/>cache_usuarios<br/>pendientes_envio")]
+    CJ --- LJ
+    CP --- LJ
+    CN --- LJ
+
+    note1["localhost NO sirve como direccion de servidor<br/>en un cliente que esta en otro PC.<br/>Verificar antes: Test-NetConnection IP -Port 5000"]
+    CJ -.-> note1
+
+    note2["El servidor puede correr 100% headless:<br/>--app.consola=false --app.escritorio=false<br/>En produccion corre en Docker: Dockerfile<br/>expone 5000 y 5001, con HEALTHCHECK por /dev/tcp"]
+    SV -.-> note2
+
+    note3["El cliente NUNCA se conecta a la base.<br/>Su H2/SQLite es por cuenta y se aisla:<br/>dos cuentas distintas no comparten filas<br/>cuya orientacion sea relativa al usuario."]
+    LJ -.-> note3
+
+    note4["Todos los clientes pueden ser de los 3 toolkit a la vez:<br/>el contrato es TCP + JSON, no Java (RNF-04).<br/>Por eso los 3 se pueden instalar en paralelo<br/>en la matriz de 6 direcciones."]
+    CN -.-> note4

@@ -1,0 +1,28 @@
+---
+title: "Arquitectura del sistema — flujo general"
+---
+flowchart LR
+
+    subgraph CLI["Clientes"]
+        J["Java\nJavaFX + H2"]
+        N[".NET\nWPF"]
+        P["Python\nPySide6"]
+    end
+
+    subgraph SRV["Servidor"]
+        TCP["Transporte TCP\nTramaCodec (Gson)"]
+        DSP["Despachador\n1 Command por tipo"]
+        FAC["Fachada\n(delega en casos)"]
+        COMP["Usuarios · Servicios\nColas · Filtros\nMensajes · LogEventos"]
+        PER["Persistencia\n(AlmacenarInformacion)"]
+        BD[("MySQL / Oracle\nPostgres")]
+    end
+
+    J --> TCP
+    N --> TCP
+    P --> TCP
+    TCP --> DSP
+    DSP --> FAC
+    FAC --> COMP
+    COMP --> PER
+    PER --> BD

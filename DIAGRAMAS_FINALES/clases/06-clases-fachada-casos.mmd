@@ -1,0 +1,68 @@
+---
+title: "Paquete fachadadeservicios — Fachada + 1 caso por operación"
+---
+classDiagram
+    direction TB
+
+    class FachadaDeServicios {
+        +iniciarServidor / detenerServidor
+        +difundirAdministrativo(...)
+        +informe* (4) + detalle
+        +delega en casos
+    }
+    class Casos {
+        <<record>>
+        +12 casos, 1 por operación
+    }
+
+    class AutenticarCaso {
+        +autenticar(...)
+    }
+    class CerrarCaso {
+        +cerrar(...)
+    }
+    class ExpulsarCaso {
+        +expulsarOtrasSesiones(...)
+    }
+    class CerrarAdminCaso {
+        +cerrar(objetivo, motivo)
+    }
+    class EncolarCaso {
+        +texto / imagen / archivo
+        +difundir(...)
+    }
+    class FragmentoArchivoCaso {
+        +iniciar / parte / finalizar
+    }
+    class HistorialCaso {
+        +historial(...)
+    }
+    class DescargaCaso {
+        +descargar(...)
+    }
+    class ListarCaso {
+        +listarConectados / listarUsuarios
+    }
+    class ResponderCaso {
+        +responder / exito / fallo
+    }
+    class ArchivoVistaCaso {
+        +metadatos / bytes
+    }
+    class FechasUsuariosCaso {
+        +porCodigo()
+    }
+
+    FachadaDeServicios *-- Casos
+    Casos o-- AutenticarCaso
+    Casos o-- CerrarCaso
+    Casos o-- ExpulsarCaso
+    Casos o-- CerrarAdminCaso
+    Casos o-- EncolarCaso
+    Casos o-- FragmentoArchivoCaso
+    Casos o-- HistorialCaso
+    Casos o-- DescargaCaso
+    Casos o-- ListarCaso
+    Casos o-- ResponderCaso
+    Casos o-- ArchivoVistaCaso
+    Casos o-- FechasUsuariosCaso

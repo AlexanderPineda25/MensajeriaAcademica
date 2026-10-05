@@ -1,0 +1,55 @@
+---
+title: "comp-protocolo-clienteservidor — los 15 Command y la salida que cada uno necesita"
+---
+flowchart TB
+
+    subgraph AUT["<b>SalidaAutenticacion</b> — autenticar · cerrar · expulsarOtrasSesiones"]
+        direction LR
+        LOGIN["<b>LoginCommand</b><br/>tipo() = LOGIN"]
+        CIERRE["<b>CierreCommand</b><br/>tipo() = KICK"]
+        LOGOUT["<b>LogoutCommand</b><br/>tipo() = LOGOUT<br/><i>⚠ recibe respuestas,<br/>no lo guarda</i>"]
+    end
+
+    subgraph CONS["<b>SalidaConsultas</b> — listarConectados · listarUsuarios"]
+        direction LR
+        LISTAR["<b>ListarCommand</b><br/>tipo() = LISTAR_CONECTADOS<br/><i>⚠ recibe respuestas,<br/>no lo guarda</i>"]
+        LISTARU["<b>ListarUsuariosCommand</b><br/>tipo() = LISTAR_USUARIOS<br/><i>⚠ recibe respuestas,<br/>no lo guarda</i>"]
+    end
+
+    subgraph MESS["<b>SalidaMensajeria</b> — recibirTexto · iniciarArchivo · historial · descargar · notificarLectura (default vacío)"]
+        direction LR
+        TEXTO["<b>TextoCommand</b><br/>tipo() = MENSAJE_TEXTO"]
+        IMAGEN["<b>ImagenCommand</b><br/>tipo() = MENSAJE_IMAGEN"]
+        ARCHIVO["<b>ArchivoCommand</b><br/>tipo() = MENSAJE_ARCHIVO"]
+        BROAD["<b>BroadcastCommand</b><br/>tipo() = BROADCAST"]
+        HIST["<b>HistorialCommand</b><br/>tipo() = HISTORIAL_REQ"]
+        DESC["<b>DescargaCommand</b><br/>tipo() = DESCARGAR_ARCHIVO"]
+        LEIDO["<b>LeidoCommand</b><br/>tipo() = MENSAJE_LEIDO"]
+        INICIO["<b>ArchivoInicioCommand</b><br/>tipo() = ARCHIVO_INICIO"]
+        PARTE["<b>ArchivoParteCommand</b><br/>tipo() = ARCHIVO_PARTE"]
+        FIN["<b>ArchivoFinCommand</b><br/>tipo() = ARCHIVO_FIN"]
+    end
+
+    CH["<b>CommandHandler</b> — implementado por los 15 Command<br/>+handle(Mensaje, IdSesion) void<br/>+tipo() String<br/><br/><i>tipo() es la clave del mapa String → handler<br/>que construye Despachador(List~CommandHandler~)</i>"]
+
+    SR["<b>SalidaRespuestas</b> — responder · error<br/><br/><i>Los 15 Command la reciben y la usan, salvo los tres<br/>marcados ⚠. Es la única salida transversal:<br/>el comando no distingue «responder bien» de<br/>«reportar error» por firma, sino por momento.</i>"]
+
+    FRAG["<b>Protocolo de fragmentación</b><br/>ARCHIVO_INICIO → N × ARCHIVO_PARTE → ARCHIVO_FIN.<br/>Un archivo grande nunca viaja entero en una trama.<br/>La transferencia se identifica por archivoId + indiceParte."]
+
+    CH -.->|"implementa"| AUT
+    CH -.->|"implementa"| CONS
+    CH -.->|"implementa"| MESS
+
+    INICIO -.-> FRAG
+    PARTE -.-> FRAG
+    FIN -.-> FRAG
+
+    classDef handler fill:#e8eaf6,stroke:#3949ab,stroke-width:2px,color:#1a237e
+    classDef cmd fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px,color:#1b5e20
+    classDef nota fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef transversal fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
+
+    class CH handler
+    class SR transversal
+    class FRAG nota
+    class LOGIN,LOGOUT,CIERRE,LISTAR,LISTARU,TEXTO,IMAGEN,ARCHIVO,INICIO,PARTE,FIN,BROAD,HIST,DESC,LEIDO cmd

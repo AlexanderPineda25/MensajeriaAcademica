@@ -1,0 +1,293 @@
+---
+title: "client-app — implementaciones de los puertos, fachada y presentación JavaFX"
+---
+classDiagram
+    direction TB
+
+    class FachadaCliente {
+        <<final · NO implementa ninguna interfaz>>
+        +static final String DESTINO_BROADCAST = "*"
+        +static final long INTERVALO_FLUSH_SEGUNDOS = 30
+        -InterfazConexionRed red
+        -InterfazAutenticacion autenticacion
+        -InterfazHistorialLocal historial
+        -InterfazCacheUsuarios cache
+        -List~Consumer~Mensaje~~ suscriptores
+        -ExecutorService fondo
+        -volatile ScheduledExecutorService flush
+        +FachadaCliente(InterfazConexionRed, InterfazAutenticacion, InterfazHistorialLocal, InterfazCacheUsuarios)
+        +fondo() Executor
+        +cerrar() void
+        +iniciarFlushPendientes(long) void
+        +detenerFlushPendientes() void
+        +suscribir(Consumer~Mensaje~) void
+        +desuscribir(Consumer~Mensaje~) void
+        +suscriptores() int
+        +conectar() void
+        +desconectar() void
+        +cerrarSesionRemota() void
+        +conectado() boolean
+        +login(String, String) boolean
+        +logout() void
+        +codigoActual() String
+        +listarConectados() List~String~
+        +directorioLocal() List~UsuarioLocal~
+        +sincronizarDirectorio() List~UsuarioLocal~
+        +enviarTexto(String destinatario, String contenido) boolean
+        +enviarImagen(String, byte[], String, String) boolean
+        +enviarArchivo(String, byte[], String, String) boolean
+        +difundir(String contenido) void
+        +recientes() List~RecienteChat~
+        +refrescarPresencia() List~String~
+        +blobMensaje(String idMensaje) Optional~String~
+        +marcarLeidos(String otro) void
+        +marcarLeidosFondo(String otro) void
+        +expulsarOtrasSesiones() void
+        +sesionesInfo() int
+        +conversacion(String otro, int limite, int offset) List~MensajeLocal~
+        +contarConversacion(String otro) int
+        +traerHistorial(String otro, int pagina) PaginaRemota
+        +descargarImagen(String idMensaje) byte[]
+        +descargarArchivo(String archivoId) Mensaje
+        +pendientes() List~PendienteEnvio~
+        +reintentarPendientes() int
+    }
+
+    class ReceptorInterno {
+        <<inner class no estática>>
+        +alRecibir(Mensaje) void
+        +alCierre(Mensaje) void
+        +alError(String) void
+        +alDesconexion() void
+    }
+
+    class PaginaRemota {
+        <<record anidado>>
+        +int recibidos
+        +int pagina
+        +int totalPaginas
+    }
+
+    class Autenticacion {
+        <<final>>
+        -InterfazConexionRed red
+        -volatile String codigoActual
+        +Autenticacion(InterfazConexionRed)
+        +login(String, String) boolean
+        +logout() void
+        +olvidarSesion() void
+        +codigoActual() String
+        +sesionAbierta() boolean
+    }
+
+    class ConexionCliente {
+        <<final>>
+        -static final int TIMEOUT_RESPUESTA_SEG = 15
+        -String host
+        -int puerto
+        -boolean tlsHabilitado
+        -int tlsPuerto
+        -String tlsConfianza
+        -ConcurrentHashMap~String,CompletableFuture~ pendientes
+        -volatile Socket socket
+        -volatile ReceptorMensajes receptor
+        -volatile Thread lector
+        +ConexionCliente(String host, int puerto)
+        +ConexionCliente(String, int, boolean, int, String)
+        +conectar() void «synchronized»
+        +desconectar() void «synchronized»
+        +conectado() boolean
+        +suscribir(ReceptorMensajes) void
+        +login(String, String) Mensaje
+        +enviarTexto(String, String, String) Mensaje
+        +enviarImagen(String, String, String, String, String) Mensaje
+        +enviarArchivo(String, String, String, String, String) Mensaje
+        +difundir(String, String) Mensaje
+        +listarConectados() Mensaje
+        +expulsar(String) Mensaje
+        +solicitarHistorial(String, String, int) Mensaje
+        +descargarArchivo(String) Mensaje
+        +enviarLectura(String, String, String) Mensaje
+        +listarUsuarios() Mensaje
+        +logout() void
+        +pedir(Mensaje) Mensaje «package-private»
+        -bucleLectura() void
+        -encaminar(Mensaje) void
+    }
+
+    class HistorialLocal {
+        <<final>>
+        -LocalStore store
+        -static final String INSERTAR_MENSAJE
+        -static final String LISTAR_RECIENTES
+        -static final String LISTAR_PENDIENTES
+        +HistorialLocal(LocalStore)
+        +guardar(MensajeLocal) void
+        +pagina(String, String, int, int) List~MensajeLocal~
+        +contar(String, String) int
+        +recientes(String yo) List~RecienteChat~
+        +pendientes() List~PendienteEnvio~
+        +registrarPendiente(PendienteEnvio) void
+        +incrementarIntento(String, String) void
+        +eliminarPendiente(String) void
+    }
+
+    class CacheUsuarios {
+        <<final>>
+        -LocalStore store
+        -static final String INSERTAR_USUARIO
+        -static final String MARCAR_CONECTADO
+        +CacheUsuarios(LocalStore)
+        +guardar(UsuarioLocal) void
+        +reemplazarDirectorio(List~UsuarioLocal~) void
+        +listar() List~UsuarioLocal~
+        +porCodigo(String) Optional~UsuarioLocal~
+        +marcarConectados(List~String~) void
+    }
+
+    class LocalStore {
+        <<final · H2 JDBC>>
+        -ClienteConfig config
+        -String urlActual
+        -boolean esquemaLegadoListo
+        -JdbcConnectionPool pool
+        +LocalStore(ClienteConfig)
+        +inicializar() int
+        +prepararCuenta(String codigo) void «synchronized»
+        +abrir() Connection «synchronized»
+        +cerrar() void «synchronized»
+        -importarHistorialLegado(String) void
+    }
+
+    class ClienteConfig {
+        <<record>>
+        +String host
+        +int puerto
+        +String dbUrl
+        +String dbUser
+        +String dbPass
+        +String idioma
+        +boolean tlsHabilitado
+        +int tlsPuerto
+        +String tlsConfianza
+        +cargar() ClienteConfig$
+        +desde(Properties) ClienteConfig$
+        +dbUrlParaCuenta(String codigo) String
+    }
+
+    class ClienteMain {
+        <<final · DI manual>>
+        -ClienteMain() «privado»
+        +main(String[]) void$
+    }
+
+    class ClienteApp {
+        <<final · extends Application>>
+        -static FachadaCliente fachada
+        -static Stage escenario
+        -static volatile String avisoPendiente
+        +iniciar(FachadaCliente) void$
+        +fachada() FachadaCliente$
+        +start(Stage) void
+        +stop() void
+        +mostrarLogin() void$
+        +avisarProximoLogin(String) void$
+        +mostrarChat() void$
+        +consumirAviso() String «package-private»
+    }
+
+    class LoginController {
+        <<final · @FXML>>
+        -TextField campoCodigo
+        -PasswordField campoContrasena
+        -TextField campoHost
+        -TextField campoPuerto
+        -CheckBox checkRecordar
+        -Button botonEntrar
+        -Label etiquetaError
+        -Label etiquetaAviso
+    }
+
+    class ChatController {
+        <<final · @FXML>>
+        -static final int LIMITE_PAGINA = 50
+        -static final int RESPALDO_SEGUNDOS = 30
+        -FachadaCliente fachada
+        -ListView~RecienteChat~ listaUsuarios
+        -ListView~MensajeLocal~ listaMensajes
+        -TextArea campoEntrada
+        -ComboBox~String~ comboFiltro
+        -TextField campoBuscar
+        -ImageView vistaPrevia
+        -Button botonEnviar
+        -Label bannerOffline
+        +detener() void
+        +puedeEnviar(String, boolean, boolean, boolean) boolean$
+        +nombreVisible(String) String
+        +esAcuse(TipoMensaje) boolean$
+    }
+
+    class MensajeCell {
+        <<final · extends ListCell~MensajeLocal~>>
+        -static final Map~String,Image~ MINIATURAS
+        +precalentar(String idMensaje, String base64) void$
+        +updateItem(MensajeLocal, boolean) void
+        +tickDe(EstadoMensaje) String «package-private»
+    }
+
+    class UsuarioCell {
+        <<final · extends ListCell~RecienteChat~>>
+        +UsuarioCell(Function~String,String~)
+        +updateItem(RecienteChat, boolean) void
+    }
+
+    class InterfazConexionRed {
+        <<interface>>
+    }
+    class InterfazAutenticacion {
+        <<interface>>
+    }
+    class InterfazHistorialLocal {
+        <<interface>>
+    }
+    class InterfazCacheUsuarios {
+        <<interface>>
+    }
+    class ReceptorMensajes {
+        <<interface>>
+    }
+
+    InterfazConexionRed <|.. ConexionCliente
+    InterfazAutenticacion <|.. Autenticacion
+    InterfazHistorialLocal <|.. HistorialLocal
+    InterfazCacheUsuarios <|.. CacheUsuarios
+
+    FachadaCliente --> InterfazConexionRed
+    FachadaCliente --> InterfazAutenticacion
+    FachadaCliente --> InterfazHistorialLocal
+    FachadaCliente --> InterfazCacheUsuarios
+    FachadaCliente *-- ReceptorInterno : «inner, suscribe al red»
+    FachadaCliente *-- PaginaRemota : «record anidado»
+    ReceptorInterno ..> ReceptorMensajes : «implements»
+
+    Autenticacion --> InterfazConexionRed
+    HistorialLocal --> LocalStore
+    CacheUsuarios --> LocalStore
+    LocalStore --> ClienteConfig
+    ConexionCliente ..> ClienteConfig : «no, recibe host/puerto»
+    ClienteMain ..> FachadaCliente : «new FachadaCliente(...)»
+    ClienteMain ..> ClienteApp : «Application.launch»
+    ClienteMain ..> ConexionCliente : «new»
+    ClienteMain ..> Autenticacion : «new»
+    ClienteMain ..> HistorialLocal : «new»
+    ClienteMain ..> CacheUsuarios : «new»
+    ClienteMain ..> LocalStore : «new»
+    ClienteApp --> FachadaCliente : «estado estático»
+    ClienteApp ..> LoginController : «FXMLLoader»
+    ClienteApp ..> ChatController : «FXMLLoader»
+    ChatController --> FachadaCliente
+    ChatController ..> MensajeCell
+    ChatController ..> UsuarioCell
+
+    note for FachadaCliente "Es el punto de encuentro: NO implementa ninguna\ninterfaz, recibe las 4 por constructor. Sus 39 métodos\npúblicos son la API que consume la presentación.\nUsa CopyOnWriteArrayList para los suscriptores y un\nScheduledExecutorService para reintentar la cola local."
+    note for ClienteMain "No hay Spring en el cliente: la inyección es\nmanual. ClienteMain construye el grafo completo y lo\npasa a ClienteApp.iniciar(fachada). ClienteApp lo guarda\nen un campo estático."

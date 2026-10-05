@@ -1,0 +1,105 @@
+---
+title: "Casos de uso — CLIENTE (actor Usuario académico)"
+---
+%% Diagrama de casos de uso del cliente. Los 3 clientes (JavaFX, PySide6, WPF)
+%% implementan el MISMO conjunto de capacidades sobre el mismo contrato TCP:
+%% es lo que sostiene la matriz de 6 direcciones de GUIA_ACEPTACION.md.
+%% Origen de los casos: REQUERIMIENTOS.md 4.1/4.2/4.3 (RF-C01..RF-C22).
+%% Correspondencia con implementacion: FachadaCliente.java / facade_cliente.py /
+%% FachadaCliente.cs + los 15 comandos del servidor.
+usecaseDiagram
+    actor U as Usuario académico
+    actor S as Servidor
+
+    rectangle "Cliente de escritorio" {
+        usecase (UC-01) Autenticarse con código y contraseña
+        usecase (UC-02) Ver quién está conectado
+        usecase (UC-03) Enviar texto a un usuario
+        usecase (UC-04) Enviar solo imagen
+        usecase (UC-05) Enviar texto e imagen juntos
+        usecase (UC-06) Enviar archivo genérico
+        usecase (UC-07) Responder a un mensaje concreto
+        usecase (UC-08) Consultar el historial local
+        usecase (UC-09) Cargar mensajes anteriores
+        usecase (UC-10) Ver imagen ampliada
+        usecase (UC-11) Descargar imagen con filtro
+        usecase (UC-12) Adjuntar imagen con vista previa
+        usecase (UC-13) Marcar mensajes como leídos
+        usecase (UC-14) Cerrar la sesión propia
+        usecase (UC-15) Cerrar las demás sesiones propias
+        usecase (UC-16) Cambiar entre tema oscuro y claro
+    }
+
+    rectangle "Almacenamiento local (H2 / SQLite)" {
+        usecase (UC-17) Guardar mensaje recibido
+        usecase (UC-18) Guardar mensaje enviado
+        usecase (UC-19) Encolar envío sin red
+        usecase (UC-20) Reintentar cola al reconectar
+        usecase (UC-21) Aislar datos por cuenta
+    }
+
+    %% ---- Autenticacion ----
+    U -- UC-01
+    S -- UC-01 : valida contra archivo plano
+
+    %% ---- Directorio y presencia ----
+    U -- UC-02
+    UC-02 ..> UC-17 : cachea el directorio
+
+    %% ---- Envio ----
+    U -- UC-03
+    U -- UC-04
+    U -- UC-05
+    U -- UC-06
+    UC-05 ..> UC-03 : "se envia como 2 mensajes consecutivos"
+    UC-05 ..> UC-04 : "se envia como 2 mensajes consecutivos"
+
+    UC-03 ..> UC-18 : guarda antes de enviar
+    UC-04 ..> UC-18
+    UC-06 ..> UC-18
+
+    %% ---- Adjunto y vista previa ----
+    U -- UC-12
+    UC-12 ..> UC-03 : habilita Enviar
+    UC-12 ..> UC-04
+
+    %% ---- Respuesta ----
+    U -- UC-07
+    UC-07 ..> UC-03 : "prefijo de texto, sin cambiar el protocolo"
+
+    %% ---- Historial ----
+    U -- UC-08
+    U -- UC-09
+    UC-08 ..> UC-09 : la paginacion usa la misma fuente
+
+    %% ---- Imagen ----
+    U -- UC-10
+    U -- UC-11
+    UC-11 ..> UC-10 : previsualiza antes de descargar
+
+    %% ---- Acuses ----
+    U -- UC-13
+    S -- UC-13 : "notifica MENSAJE_LEIDO / ENTREGADO"
+
+    %% ---- Sesion ----
+    U -- UC-14
+    U -- UC-15
+    S -- UC-14 : "puede cerrar la sesion por inactividad (10 min)"
+
+    %% ---- Presentacion ----
+    U -- UC-16
+
+    %% ---- Red ----
+    UC-19 ..> UC-03 : sin red no se pierde el envio
+    UC-19 ..> UC-04
+    UC-19 ..> UC-06
+    UC-20 ..> UC-03 : reintenta sin duplicar
+    UC-21 ..> UC-18 : "cada cuenta ve solo lo suyo"
+
+    note "Ver NOTA 1 al pie" as N1
+        No existe UC de registro.
+        El alta es solo en el archivo
+        plano del servidor (RF-S03/RF-C06).
+        Un REGISTRO por red se rechaza
+        con ERROR (RF-S27).
+    end note

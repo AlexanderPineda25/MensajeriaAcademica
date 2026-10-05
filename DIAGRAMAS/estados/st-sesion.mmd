@@ -1,0 +1,52 @@
+---
+title: "Estados — ciclo de vida de una SESIÓN (servidor + cliente)"
+---
+%% Lo que NO existia: las pistas del ciclo estaban esparcidas en 6 ficheros
+%% (IdSesion anonima/autenticada, SesionTcp.cerrar, alDesconectar, cerrar,
+%% expulsarOtrasSesiones, pool saturacion). Esta es la maquina de estados
+%% que las reune.
+%% Correspondencia: IdSesion.java, SesionTcp.java, ProtocoloComunicacion.java,
+%% ConexionesClientes.java, FachadaDeServicios.java, AuthCerrarCaso.
+stateDiagram-v2
+    direction TB
+
+    [*] --> ANONIMA : "el servidor acepta<br/>el socket y entrega un<br/>trabajador del pool"
+
+    ANONIMA --> AUTENTICADA : "LOGIN correcto<br/>guarda codigo + programa"
+    ANONIMA --> CERRADA : "timeout de 15 s<br/>o LOGIN incorrecto"
+
+    AUTENTICADA --> AUTENTICADA : "cualquier trama:<br/>texto, lista, presencia,<br/>senal de vida (reinicia el reloj)"
+    AUTENTICADA --> INACTIVA : "10 min sin tramas<br/>(configurable)"
+    AUTENTICADA --> CERRADA : "LOGOUT propio,<br/>salir, o cierre de la app"
+
+    INACTIVA --> CERRADA : "el servidor notifica<br/>CLOSE_NOTICE con el motivo"
+    INACTIVA --> AUTENTICADA : "llego una trama<br/>en la ventana de gracia"
+
+    AUTENTICADA --> RECHAZADA : "saturacion del pool<br/>(RF-S46)"
+    ANONIMA --> RECHAZADA : "saturacion del pool"
+
+    RECHAZADA --> [*] : "el pool se queda<br/>sin digestible"
+    CERRADA --> [*] : "el trabajador vuelve<br/>al pool con su estado reiniciado"
+
+    note right of INACTIVA
+        El aviso al cliente es OBLIGATORIO
+        (RF-S30): el usuario debe saber
+        por que lo expulsaron.
+    end note
+
+    note left of CERRADA
+        Distincion que se confunde:
+        - LOGOUT cierra SOLO esta sesion
+        - KICK cierra las OTRAS sesiones
+          del mismo codigo
+        - cerrar todas = cerrar las otras
+        Presencia se apaga SOLO al
+        cerrar la ultima sesion viva.
+    end note
+
+    note left of RECHAZADA
+        Rechazar por saturacion es
+        distinto de inactividad:
+        aqui el usuario NUNCA llega
+        a autenticarse.
+    end note

@@ -1,0 +1,61 @@
+---
+title: "Componentes del servidor — según ComponentesServidor.png"
+---
+flowchart LR
+
+    subgraph VISTAS["Vistas + arranque"]
+        direction TB
+        INI["InicioServidor"]
+        VC["Vista Consola"]
+        VE["Vista Escritorio"]
+        INI --> VC
+        INI --> VE
+    end
+
+    subgraph SRV["Servidor"]
+        direction TB
+        FAC["FachadaDeServicios"]
+        I1["«component»<br/>InterfazProtocoloComunicacion"]
+        C1["«component»<br/>ProtocoloComunicacion"]
+        I2["«component»<br/>InterfazClienteServidor"]
+        C2["«component»<br/>ProtocoloClienteServidor"]
+        I3["«component»<br/>InterfazServiciosDisponibles"]
+        C3["«component»<br/>Servicios"]
+        I4["«component»<br/>InterfazUsuariosDisponibles"]
+        C4["«component»<br/>Usuarios"]
+        I5["«component»<br/>InterfazGestorMensajes"]
+        C5["«component»<br/>GestorColasDeMensajes"]
+        MEN["Mensajes"]
+        LOG["LogDeEventos"]
+        CON["ConexionesClientes"]
+        ALM["AlmacenarInformación"]
+    end
+
+    subgraph PER["Persistencia"]
+        direction TB
+        P["Persistencia"]
+        BD[("Base de datos")]
+    end
+
+    subgraph BASE["Base"]
+        DTO["DTO-Records"]
+        UTI["UtileríasVarias"]
+        FC["Fachada (cliente)"]
+    end
+
+    VC <--> FAC
+    VE <--> FAC
+
+    FAC --> I1 & I2 & I3 & I4 & I5
+    FAC --> MEN & LOG & CON
+
+    I1 -.->|"implementa"| C1
+    I2 -.->|"implementa"| C2
+    I3 -.->|"implementa"| C3
+    I4 -.->|"implementa"| C4
+    I5 -.->|"implementa"| C5
+
+    MEN --> ALM
+    LOG --> ALM
+    ALM --> P
+    P --> BD

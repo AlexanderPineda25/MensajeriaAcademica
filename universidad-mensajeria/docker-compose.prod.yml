@@ -1,0 +1,59 @@
+# Produccion (DIST-01): override sobre docker-compose.yml.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod up -d mysql servidor
+# Requiere .env.prod junto a este archivo (ver .env.prod.example; .env.prod NO se versiona).
+# Diferencias vs desarrollo:
+#   - MySQL SIN puertos publicados (solo red interna del compose).
+#   - Credenciales y secretos por entorno (nada en claro en el repo).
+#   - MENSAJERIA_PROD=true: el servidor no arranca con defectos de ejemplo (SEG-03).
+#   - Mapeo 5001 comentado: descomentar solo con red.tls.habilitado=true + keystore en ./config.
+services:
+  mysql:
+    # Nombres propios: el compose base fija container_name (colisionaria
+    # con el stack de desarrollo aunque este detenido).
+    container_name: mensajeria_mysql_prod
+    # !reset vacia la lista de puertos publicados del compose base (Compose v2):
+    # en produccion MySQL solo existe en la red interna del compose.
+    ports: !reset []
+    environment:
+      MYSQL_DATABASE: mensajeria_db
+      MYSQL_ROOT_PASSWORD: ${DB_MYSQL_PASS:?Fije DB_MYSQL_PASS en .env.prod}
+      TZ: America/Bogota
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_MYSQL_PASS:?Fije DB_MYSQL_PASS en .env.prod}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  servidor:
+    container_name: mensajeria_servidor_prod
+    ports:
+      - "5000:5000"
+      # - "5001:5001"  # solo con TLS habilitado (RED_TLS_CLAVE + keystore en ./config)
+    environment:
+      MENSAJERIA_PROD: "true"
+      DB_MYSQL_PASS: ${DB_MYSQL_PASS:?Fije DB_MYSQL_PASS en .env.prod}
+      RED_TLS_CLAVE: ${RED_TLS_CLAVE:-CAMBIAR}
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      # Opcional: configuracion externa y keystore (solo lectura):
+      # - ./config:/app/config:ro
+    command:
+      - --db.active=mysql
+      - --db.mysql.url=jdbc:mysql://mysql:3306/mensajeria_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Bogota
+      - --db.mysql.user=root
+      - --red.puerto=5000
+
+# Volumenes con nombre explicito y propio: los del compose base se llaman
+# <proyecto>_mysqldata y los comparten DEV y PROD. MySQL solo aplica
+# MYSQL_ROOT_PASSWORD en el primer arranque del volumen, asi que un volumen
+# ya inicializado con la clave de desarrollo deja al servidor de produccion
+# en bucle de reinicio con "Access denied for user 'root'@...".
+# Con nombres separados, produccion arranca limpio y ambos stacks conviven.
+volumes:
+  mysqldata:
+    name: mensajeria-prod-mysqldata
+  uploads_data:
+    name: mensajeria-prod-uploads
+  logs_data:
+    name: mensajeria-prod-logs

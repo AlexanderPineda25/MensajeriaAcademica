@@ -1,0 +1,60 @@
+---
+title: "Estados — transferencia de ARCHIVO (cliente y servidor)"
+---
+%% Lo que NO existia: solo una nota en comandos-servidor.mmd con la cadena
+%% de tramas. El riesgo real es que un ARCHIVO_FIN perdido deje un archivo
+%% a medias y esto no lo documentaba nadie.
+%% Correspondencia: FragmentoArchivoCaso.java, ArchivoInicioCommand,
+%% ArchivoParteCommand, ArchivoFinCommand, tabla archivos.
+stateDiagram-v2
+    direction LR
+
+    [*] --> LOCALIZADO : "el usuario adjunta<br/>un archivo legible"
+
+    LOCALIZADO --> FRAGMENTADO : "se divide en partes<br/>de 1 MiB con indiceParte"
+
+    FRAGMENTADO --> ENVIANDO : "hay red:<br/>se manda ARCHIVO_INICIO"
+    FRAGMENTADO --> EN_COLA : "no hay red:<br/>queda en pendientes_envio"
+
+    EN_COLA --> ENVIANDO : "se restablecio la conexion"
+    EN_COLA --> FALLIDO : "supera el limite de reintentos"
+
+    ENVIANDO --> PARCIAL : "servidor:<br/>abre uploads/nombre hash/"
+
+    PARCIAL --> PARCIAL : "cada ARCHIVO_PARTE<br/>escribe en su offset"
+    PARCIAL --> ERROR_PARTE : "una parte no se<br/>puede escribir"
+
+    ERROR_PARTE --> ENVIANDO : "reintentar esa parte"
+    ERROR_PARTE --> FALLIDO : "abortar la transferencia"
+
+    PARCIAL --> ENSAMBLADO : "ARCHIVO_FIN:<br/>compara bytes escritos<br/>vs tamano declarado"
+
+    ENSAMBLADO --> PERSISTIDO : "coinciden:<br/>se inserta la fila en archivos"
+    ENSAMBLADO --> DESCARTADO : "no coinciden:<br/>borra el parcial, audita"
+
+    PERSISTIDO --> ENTREGADO : "el receptor lo ve en<br/>su historial"
+    ENTREGADO --> DESCARGADO : "el receptor lo descarga"
+
+    DESCARGADO --> [*]
+    DESCARTADO --> [*]
+    FALLIDO --> [*]
+
+    note right of ENSAMBLADO
+        El archivo NO existe en la base
+        de datos hasta que los bytes
+        declarados y los bytes escritos
+        coinciden. Por eso un FIN
+        perdido no deja un archivo
+        "medio" registrado.
+    end note
+
+    note left of DESCARTADO
+        Caso ya resuelto y documentado:
+        N copias del mismo archivo desde
+        el mismo remitente comparten hash
+        y ruta final. Varias tareas de
+        poolFiltros hacian Files.move
+        sobre el MISMO archivo y en
+        Windows se perdian. Corregido con
+        candado POR RUTA.
+    end note

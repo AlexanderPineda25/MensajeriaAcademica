@@ -1,0 +1,12 @@
+---
+title: "Flujo de difusión administrativa"
+---
+flowchart TB
+    A["Admin escribe mensaje\nen consola o escritorio"]
+    B["Fachada: encola 1 BROADCAST"]
+    C["Abanico por usuario\nen pool de entrega acotado"]
+    D["Por usuario: pipeline +\nentrega a sus sesiones"]
+    E["Progreso visible\nN/total + fallos"]
+    F["Resumen final en log\ny en la vista"]
+
+    A --> B --> C --> D --> E --> F

@@ -1,0 +1,123 @@
+---
+title: "Modelo relacional SERVIDOR (lógico) — 7 tablas, idéntico en MySQL, Oracle y Postgres"
+---
+erDiagram
+    USUARIOS {
+        BIGINT id PK "AUTO_INCREMENT / IDENTITY"
+        VARCHAR codigo UK "VARCHAR(20), clave natural"
+        VARCHAR nombres "NOT NULL"
+        VARCHAR apellidos "NOT NULL"
+        VARCHAR password_hash "VARCHAR(120)"
+        VARCHAR programa_academico "NOT NULL"
+        VARCHAR estado "'PENDIENTE' por defecto"
+        BOOLEAN conectado "FALSE por defecto"
+        DATETIME fecha_ultima_conexion "nullable"
+        DATETIME fecha_registro "CURRENT_TIMESTAMP"
+        BOOLEAN activo "TRUE por defecto"
+    }
+
+    USUARIOS_REMITENTE {
+        BIGINT id PK "alias de USUARIOS"
+    }
+    USUARIOS_DESTINATARIO {
+        BIGINT id PK "alias de USUARIOS"
+    }
+
+    SESIONES_ACTIVAS {
+        BIGINT id PK
+        BIGINT usuario_id FK "CASCADE"
+        VARCHAR token UK "VARCHAR(255)"
+        VARCHAR ip "VARCHAR(45), IPv6"
+        DATETIME inicio "CURRENT_TIMESTAMP"
+        DATETIME ultima_actividad "nullable"
+        BOOLEAN activa "TRUE por defecto"
+        VARCHAR aplicacion "nullable"
+        VARCHAR version_app "nullable"
+    }
+
+    CONEXIONES {
+        BIGINT id PK
+        BIGINT usuario_id FK "CASCADE"
+        VARCHAR direccion_ip "VARCHAR(45)"
+        DATETIME hora_conexion "CURRENT_TIMESTAMP"
+        DATETIME hora_desconexion "nullable"
+        INT mensajes_sesion "0 por defecto"
+        BOOLEAN activa "TRUE por defecto"
+        VARCHAR sistema_operativo "nullable"
+        VARCHAR dispositivo "nullable"
+        BIGINT sesion_id FK "SET NULL"
+    }
+
+    ARCHIVOS {
+        BIGINT id PK
+        VARCHAR nombre "VARCHAR(255)"
+        VARCHAR ruta UK "VARCHAR(767), UNIQUE"
+        BIGINT tamano "0 por defecto"
+        VARCHAR tipo "VARCHAR(30)"
+        VARCHAR mime "VARCHAR(255), nullable"
+        CHAR hash_sha256 "CHAR(64), NOT NULL"
+        BIGINT propietario_id FK "CASCADE"
+        DATETIME fecha_subida "CURRENT_TIMESTAMP"
+    }
+
+    MENSAJES {
+        BIGINT id PK
+        BIGINT remitente_id FK "CASCADE"
+        BIGINT destinatario_id FK "CASCADE"
+        VARCHAR tipo "VARCHAR(20)"
+        TEXT contenido "nullable"
+        CHAR hash_sha256 "nullable"
+        INT num_caracteres "nullable"
+        INT num_palabras "nullable"
+        TEXT etapas_filtrado "nullable, pipeline"
+        DATETIME fecha_envio "CURRENT_TIMESTAMP"
+        VARCHAR ip_remitente "VARCHAR(45), nullable"
+        VARCHAR ip_destinatario "VARCHAR(45), nullable"
+        BIGINT archivo_id FK "SET NULL, nullable"
+    }
+
+    REGISTRO_ACCIONES {
+        BIGINT id PK
+        VARCHAR tipo "VARCHAR(30)"
+        BIGINT usuario_id FK "SET NULL, nullable"
+        TEXT descripcion "NOT NULL"
+        DATETIME fecha "CURRENT_TIMESTAMP"
+        VARCHAR ip "VARCHAR(45), nullable"
+        TEXT detalles "nullable"
+    }
+
+    CONFIGURACION_LIMITES {
+        BIGINT id PK
+        INT max_conexiones_usuario "3"
+        INT max_conexiones_totales "100"
+        INT max_archivos_usuario "100"
+        BIGINT max_tamano_archivo "52428800 tras V2"
+        INT max_archivos_dia "20"
+        BOOLEAN activa UK "singleton de config"
+        DATETIME fecha_actualizacion "CURRENT_TIMESTAMP"
+    }
+
+    USUARIOS ||--o{ SESIONES_ACTIVAS : "token de sesion"
+    USUARIOS ||--o{ CONEXIONES : "se conecta"
+    USUARIOS ||--o{ ARCHIVOS : "propietario"
+    USUARIOS_REMITENTE ||--o{ MENSAJES : "remite"
+    USUARIOS_DESTINATARIO ||--o{ MENSAJES : "recibe"
+    USUARIOS ||--o{ REGISTRO_ACCIONES : "audita"
+    ARCHIVOS ||--o{ MENSAJES : "adjunto"
+    SESIONES_ACTIVAS ||--o{ CONEXIONES : "origen de sesion"
+
+    %% Índices (DIFIEREN por motor: la lista completa es MySQL/Postgres;
+    %% Oracle NO crea idx_sesion_activa, idx_conexion_activa,
+    %% idx_archivo_propietario, idx_mensaje_dest ni idx_accion_tipo):
+    %%   idx_usuario_estado     ON usuarios (estado)
+    %%   idx_usuario_conectado  ON usuarios (conectado)
+    %%   idx_sesion_usuario     ON sesiones_activas (usuario_id)
+    %%   idx_sesion_activa      ON sesiones_activas (activa) [no Oracle]
+    %%   idx_conexion_usuario   ON conexiones (usuario_id)
+    %%   idx_conexion_activa    ON conexiones (activa) [no Oracle]
+    %%   idx_archivo_propietario ON archivos (propietario_id) [no Oracle]
+    %%   idx_archivo_hash       ON archivos (hash_sha256)
+    %%   idx_mensaje_conv       ON mensajes (remitente_id, destinatario_id, fecha_envio)
+    %%   idx_mensaje_dest       ON mensajes (destinatario_id) [no Oracle]
+    %%   idx_accion_tipo        ON registro_acciones (tipo) [no Oracle]
+    %%   idx_accion_fecha       ON registro_acciones (fecha)

@@ -1,0 +1,53 @@
+---
+title: "Paquetes del núcleo — mensajes, eventos, conexiones y almacén"
+---
+classDiagram
+    direction TB
+
+    class InterfazMensajes {
+        <<interface>>
+        +procesarTexto / Imagen / Archivo
+    }
+    class Mensajes {
+        +async sobre poolFiltros
+        +pipeline por tipo
+    }
+
+    class InterfazLogDeEventos {
+        <<interface>>
+        +registrar / consultar
+    }
+    class LogDeEventos {
+        +auditoría + suscriptores
+    }
+
+    class InterfazConexionesClientes {
+        <<interface>>
+        +registrar / remover
+        +sesionesDe / codigosConectados
+    }
+    class ConexionesClientes {
+        +mapa vivo en memoria
+    }
+
+    class InterfazAlmacenarInformacion {
+        <<interface>>
+        +guardarOriginal* + promocionar
+        +buscarArchivoPorId
+        +fechasUsuarios / registrarAccion
+    }
+    class AlmacenarInformacion {
+        +persistencia + uploads/
+    }
+    class PersistenciaPort {
+        <<interface>>
+        +puerto de persistencia
+    }
+
+    InterfazMensajes <|.. Mensajes
+    InterfazLogDeEventos <|.. LogDeEventos
+    InterfazConexionesClientes <|.. ConexionesClientes
+    InterfazAlmacenarInformacion <|.. AlmacenarInformacion
+    AlmacenarInformacion --> PersistenciaPort
+    Mensajes --> InterfazAlmacenarInformacion
+    LogDeEventos --> InterfazAlmacenarInformacion

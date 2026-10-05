@@ -1,0 +1,60 @@
+---
+title: "Secuencia — Observer: eventos del servidor hacia las vistas"
+---
+%% Lo que NO existia: el patron Observer es el mecanismo del refresco
+%% automatico (RF-S39/RF-S42) y solo estaba documentado en prosa dentro de
+%% los diagramas de clases.
+%% Correspondencia: ReceptorDeTramas.java, ConsumidorDeMensajes.java,
+%% FachadaDeServicios.suscribirEventos, VistaConsola, VistaEscritorio.
+sequenceDiagram
+    autonumber
+    participant CLI as Cliente remoto
+    participant PR as ProtocoloComunicacion
+    participant F as FachadaDeServicios
+    participant LG as LogDeEventos
+    participant COL as GestorColasDeMensajes
+    participant CON as ConexionesClientes
+    participant V1 as VistaConsola (JLine)
+    participant V2 as VistaEscritorio (JavaFX)
+
+    Note over F,V1: Las vistas se suscriben al arrancar y NUNCA se desuscriben.<br/>El nucleo no depende de las vistas: PD-06.
+
+    F ->> V1: suscribirEventos(consumidor)
+    F ->> V2: suscribirEventos(consumidor)
+
+    rect rgb(14, 22, 33)
+    Note over CLI,V2: Evento: un mensaje llega de un cliente
+    CLI ->> PR: trama MENSAJE_TEXTO
+    PR ->> F: alRecibir(mensaje, sesion)
+    F ->> F: persistir + auditar
+    F ->> CON: marcar presencia
+    F ->> COL: encolar para entrega
+    COL ->> F: consumir(mensaje)
+    F ->> PR: enviar a cada sesion destino
+    F ->> LG: registrar(TipoAccion, codigo, detalle)
+    F -->> V1: evento (string JSON)
+    F -->> V2: evento (string JSON)
+    end
+
+    rect rgb(14, 22, 33)
+    Note over CLI,V2: Evento: se cae una conexion
+    CLI --x PR: socket cerrado
+    PR ->> F: alDesconectar(sesion)
+    F ->> CON: cerrar sesion
+    F -->> V1: "sesion cerrada"
+    F -->> V2: "presencia actualizada"
+    end
+
+    rect rgb(14, 22, 33)
+    Note over V1,V2: La VISTA decide como pintar
+    V1 ->> V1: imprimir evento en vivo (RF-S41)
+    V2 ->> V2: Platform.runLater -> refrescar
+    end
+
+    Note over V1,V2: Las listas e informes ya abiertos se redibujan al cambiar<br/>los datos o al intervalo configurado (RF-S41, RNF-12).<br/>Un evento frecuente se agrupa: no se imprime uno por trama.
+
+    note over F,V2
+        Regla de fidelidad (verificada en codigo):
+        las dos vistas habla SOLO con Fachada.
+        No se hablan entre si.
+    end note

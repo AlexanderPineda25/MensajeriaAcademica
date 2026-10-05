@@ -1,0 +1,87 @@
+---
+title: "Arquitectura del servidor — puertos y adaptadores, con el acoplamiento por SPI"
+---
+flowchart TB
+
+    DTO["<b>dto — contrato compartido por los 3 lenguajes</b><br/>Mensaje · TipoMensaje · IdSesion · EstadoPool<br/>UsuarioDTO · InformeDTO · 23 tipos, cero dependencias"]
+
+    UTIL["<b>utilerias — hoja</b><br/>Tuberia · Filtro · FiltroVisualBase (sealed) · Imagenes<br/>11 filtros concretos"]
+
+    subgraph PUERTOS["<b>Puertos · int-* — no conocen ninguna tecnología</b>"]
+        direction LR
+        P1["<b>int-protocolo-comunicacion</b><br/>InterfazProtocoloComunicacion<br/>ReceptorDeTramas"]
+        P2["<b>int-cliente-servidor</b><br/>InterfazClienteServidor<br/>SalidaClienteServidor"]
+        P3["<b>int-servicios-disponibles</b><br/>InterfazServiciosDisponibles"]
+        P4["<b>int-usuarios-disponibles</b><br/>InterfazUsuariosDisponibles"]
+        P5["<b>int-gestor-mensajes</b><br/>InterfazGestorMensajes"]
+    end
+
+    subgraph ADAPTADORES["<b>Adaptadores · comp-* — una implementación por puerto</b>"]
+        direction LR
+        C1["<b>comp-protocolo-comunicacion</b><br/>ProtocoloComunicacion<br/>ManejadorConexion extends Thread<br/>PoolDeTrabajadores"]
+        C2["<b>comp-protocolo-clienteservidor</b><br/>Despachador<br/>+ 15 Command"]
+        C3["<b>comp-servicios</b><br/>Servicios"]
+        C4["<b>comp-usuarios</b><br/>Usuarios"]
+        C5["<b>comp-gestor-colas</b><br/>GestorColasDeMensajes"]
+    end
+
+    SPI["<b>SPI · META-INF/services</b> — acoplamiento SIN dependencia de compilación<br/>ProveedorProtocoloComunicacion · ProveedorClienteServidor<br/>ProveedorServiciosDisponibles · ProveedorUsuariosDisponibles · ProveedorGestorMensajes"]
+
+    subgraph APP["<b>servidor-app — composición (Spring Boot). Único módulo con Spring</b>"]
+        direction LR
+        A1["<b>Fachada</b><br/>implements ReceptorDeTramas<br/>implements FachadaSalida"]
+        A2["<b>Mensajes</b><br/>implements ConsumidorDeMensajes"]
+        A3["<b>PasswordConfig</b><br/>implements VerificadorCredenciales"]
+    end
+
+    TRAMA["<b>codec</b><br/>TramaCodec · CodecException"]
+
+    subgraph CLIENTES["<b>Clientes — replican el MISMO contrato dto</b>"]
+        direction LR
+        CL1["<b>Java</b><br/>JavaFX + H2<br/>FachadaCliente"]
+        CL2["<b>.NET</b><br/>WPF + WPF-UI<br/>FachadaCliente"]
+        CL3["<b>Python</b><br/>PySide6<br/>ChatWindow"]
+    end
+
+    P1 -->|"1 : 1"| C1
+    P2 -->|"1 : 1"| C2
+    P3 -->|"1 : 1"| C3
+    P4 -->|"1 : 1"| C4
+    P5 -->|"1 : 1"| C5
+
+    DTO --- PUERTOS
+    DTO --- ADAPTADORES
+    DTO --- UTIL
+    DTO --- TRAMA
+    C1 -->|"único módulo que lo usa"| TRAMA
+
+    ADAPTADORES -.->|"declaran su Proveedor"| SPI
+    SPI -.-> APP
+
+    %% Mermaid rechaza aristas subgraph -> subgraph, así que la relación
+    %% "servidor-app consume los 5 puertos" se expresa con las aristas
+    %% dotted "implements" de abajo (A1..P1, A1..P2, A2..P5, A3..P4)
+    %% más los pares 1:1 puerto->adaptador de arriba.
+
+    A1 -.->|"implementa"| P1
+    A1 -.->|"implementa"| P2
+    A2 -.->|"implementa"| P5
+    A3 -.->|"implementa"| P4
+
+    CL1 --> DTO
+    CL2 --> DTO
+    CL3 --> DTO
+
+    classDef puerto fill:#e8eaf6,stroke:#3949ab,stroke-width:2px,color:#1a237e
+    classDef adaptador fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef app fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef contrato fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f
+    classDef cliente fill:#e0f7fa,stroke:#0097a7,stroke-width:2px,color:#006064
+    classDef spi fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+
+    class P1,P2,P3,P4,P5 puerto
+    class C1,C2,C3,C4,C5 adaptador
+    class A1,A2,A3 app
+    class D1,TRAMA contrato
+    class CL1,CL2,CL3 cliente
+    class SPI spi

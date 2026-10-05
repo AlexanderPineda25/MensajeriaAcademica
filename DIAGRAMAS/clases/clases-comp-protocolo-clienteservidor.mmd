@@ -1,0 +1,159 @@
+---
+title: "comp-protocolo-clienteservidor — despachador y jerarquía de salidas"
+---
+classDiagram
+    direction TB
+
+    class Despachador {
+        <<final · adaptador>>
+        -static final Logger LOG
+        -Map~String,CommandHandler~ comandos
+        -volatile SalidaRespuestas salida
+        +Despachador(List~CommandHandler~)
+        +procesar(Mensaje, IdSesion) void
+        +registrarSalida(SalidaClienteServidor) void
+        +comandos() Map~String,CommandHandler~
+        +tiposSoportados() List~String~$
+        +mapaTipos() Map~String,String~$
+        -salida() SalidaRespuestas
+    }
+
+    class FabricaDelDespachador {
+        <<final>>
+        -static final FachadaSalida NULA
+        -FabricaDelDespachador() «privado»
+        +crear(FachadaSalida) Despachador$
+    }
+
+    class Proveedor {
+        <<static final class anidada>>
+        +crear() InterfazClienteServidor
+        +crear(FachadaSalida) InterfazClienteServidor
+    }
+
+    class CommandHandler {
+        <<interface>>
+        +handle(Mensaje, IdSesion) void
+        +tipo() String
+    }
+
+    class Comandos {
+        <<final · package-private>>
+        -Comandos() «privado»
+        +exigirAutenticacion(Mensaje, IdSesion, SalidaRespuestas) boolean$
+        +exigir(Mensaje, IdSesion, SalidaRespuestas, String valor, String campo) boolean$
+    }
+
+    class InterfazClienteServidor {
+        <<interface · puerto>>
+        +procesar(Mensaje, IdSesion) void
+        +registrarSalida(SalidaClienteServidor) void
+    }
+
+    class ProveedorClienteServidor {
+        <<interface · SPI>>
+        +crear() InterfazClienteServidor
+        +crear(FachadaSalida) InterfazClienteServidor «default»
+    }
+
+    class SalidaClienteServidor {
+        <<interface · marcadora>>
+        «sin métodos propios»
+    }
+
+    class SalidaAutenticacion {
+        <<interface anidada>>
+        +autenticar(IdSesion, String codigo, String contrasena, String idSolicitud) void
+        +cerrar(IdSesion, String idSolicitud) void
+        +expulsarOtrasSesiones(IdSesion, String codigo, String idSolicitud) void
+    }
+
+    class SalidaMensajeria {
+        <<interface anidada>>
+        +recibirTexto(IdSesion, String, String, String, String) void
+        +recibirImagen(IdSesion, String, String, String, String, String, String) void
+        +recibirArchivo(IdSesion, String, String, String, String, String, String) void
+        +iniciarArchivo(IdSesion, String, String, String, long, int, String, String) void
+        +parteArchivo(IdSesion, String, int, String, String, String) void
+        +finalizarArchivo(IdSesion, String, String, String, String) void
+        +difundir(IdSesion, String, String, String) void
+        +historial(IdSesion, String, int, String) void
+        +descargar(IdSesion, String, String) void
+        +notificarLectura(IdSesion, String, String, String, String) void «default»
+    }
+
+    class SalidaConsultas {
+        <<interface anidada>>
+        +listarConectados(IdSesion, String) void
+        +listarUsuarios(IdSesion, String) void
+    }
+
+    class SalidaRespuestas {
+        <<interface anidada>>
+        +responder(IdSesion, Mensaje) void
+        +error(IdSesion, String, TipoMensaje, String) void
+    }
+
+    class FachadaSalida {
+        <<interface anidada>>
+        «agrega las 4 sub-interfaces»
+    }
+
+    class Mensaje {
+        <<record · dto>>
+        +TipoMensaje tipo
+        +String contenido
+    }
+
+    class IdSesion {
+        <<record · dto>>
+        +String id
+        +String codigo
+    }
+
+    class TipoMensaje {
+        <<enumeration · dto>>
+        LOGIN
+        MENSAJE_TEXTO
+        ERROR
+    }
+
+    InterfazClienteServidor <|.. Despachador
+    ProveedorClienteServidor <|.. Proveedor
+    FabricaDelDespachador *-- Proveedor : «anidada»
+    FabricaDelDespachador ..> Despachador : «crear con los 15 Command»
+    FabricaDelDespachador ..> FachadaSalida : «NULA por defecto»
+
+    Despachador o-- CommandHandler : «mapa String -> handler»
+    Despachador ..> SalidaRespuestas : «salida actual»
+    Comandos ..> SalidaRespuestas : «validación previa»
+
+    SalidaClienteServidor <|-- SalidaAutenticacion
+    SalidaClienteServidor <|-- SalidaMensajeria
+    SalidaClienteServidor <|-- SalidaConsultas
+    SalidaClienteServidor <|-- SalidaRespuestas
+    FachadaSalida <|-- SalidaClienteServidor
+    FachadaSalida <|-- SalidaAutenticacion
+    FachadaSalida <|-- SalidaMensajeria
+    FachadaSalida <|-- SalidaConsultas
+    FachadaSalida <|-- SalidaRespuestas
+
+    InterfazClienteServidor ..> SalidaClienteServidor : «registrarSalida»
+    ProveedorClienteServidor ..> InterfazClienteServidor
+    ProveedorClienteServidor ..> FachadaSalida
+    SalidaRespuestas ..> Mensaje
+    SalidaRespuestas ..> TipoMensaje
+
+    note for Despachador "El constructor recibe List~CommandHandler~ y
+construye el mapa con handler.tipo() como clave. Si el tipo
+no está en el mapa responde ERROR sin lanzar. Un tipo
+duplicado o una lista vacía se rechazan en el constructor.
+
+Los 15 Command concretos, agrupados por la salida que
+necesitan, están en comandos-servidor.mmd. Van aparte
+porque 15 clases casi idénticas en un solo diagrama de
+clases salen ilegibles."
+    note for FabricaDelDespachador "NULA es una instancia anónima de
+FachadaSalida. Deliberadamente NO sobrescribe
+notificarLectura, así hereda el default vacío: el servidor
+funciona aunque no se implemente la notificacion de lectura."

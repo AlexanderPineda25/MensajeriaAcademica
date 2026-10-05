@@ -1,0 +1,150 @@
+---
+title: "client-interfaces — los puertos del cliente Java (hexagonal también en el cliente)"
+---
+classDiagram
+    direction TB
+
+    class InterfazAutenticacion {
+        <<interface · puerto>>
+        +login(String codigo, String contrasena) boolean
+        +logout() void
+        +olvidarSesion() void
+        +codigoActual() String
+        +sesionAbierta() boolean
+    }
+
+    class InterfazConexionRed {
+        <<interface · puerto>>
+        +conectar() void
+        +desconectar() void
+        +conectado() boolean
+        +suscribir(ReceptorMensajes) void
+        +login(String codigo, String contrasena) Mensaje
+        +enviarTexto(String remitente, String destinatario, String contenido) Mensaje
+        +enviarTexto(String id, String remitente, String destinatario, String contenido) Mensaje «default»        +enviarImagen(String, String, String, String, String) Mensaje
+        +enviarImagen(String id, String, String, String, String) Mensaje «default»
+        +enviarArchivo(String, String, String, String, String) Mensaje
+        +enviarArchivo(String id, String, String, String, String) Mensaje «default»
+        +difundir(String remitente, String contenido) Mensaje
+        +difundir(String id, String remitente, String contenido) Mensaje «default»
+        +listarConectados() Mensaje
+        +expulsar(String codigo) Mensaje
+        +solicitarHistorial(String remitente, String destinatario, int pagina) Mensaje
+        +descargarArchivo(String archivoId) Mensaje
+        +enviarLectura(String lector, String autor, String idOriginal) Mensaje «default»
+        +listarUsuarios() Mensaje «default»
+        +logout() void
+    }
+
+    class ReceptorMensajes {
+        <<interface · callbacks>>
+        +alRecibir(Mensaje) void
+        +alCierre(Mensaje aviso) void
+        +alError(String motivo) void
+        +alDesconexion() void
+    }
+
+    class InterfazCacheUsuarios {
+        <<interface · puerto>>
+        +guardar(UsuarioLocal) void
+        +reemplazarDirectorio(List~UsuarioLocal~) void «default»
+        +listar() List~UsuarioLocal~
+        +porCodigo(String codigo) Optional~UsuarioLocal~
+        +marcarConectados(List~String~) void
+    }
+
+    class InterfazHistorialLocal {
+        <<interface · puerto>>
+        +prepararCuenta(String codigo) void «default»
+        +guardar(MensajeLocal) void
+        +pagina(String remitente, String destinatario, int limite, int offset) List~MensajeLocal~
+        +contar(String remitente, String destinatario) int
+        +marcarDescargado(String idMensaje, String rutaArchivo) void
+        +marcarEstado(String idMensaje, String estado) void
+        +marcarLeidosDe(String yo, String otro) void
+        +idsNoLeidos(String yo, String otro) List~String~
+        +recientes(String yo) List~RecienteChat~
+        +blobPorId(String idMensaje) Optional~String~
+        +archivoIdPorId(String idMensaje) Optional~String~
+        +actualizarArchivoId(String idMensaje, String archivoId) void
+        +actualizarContenido(String idMensaje, String base64) void
+        +pendientes() List~PendienteEnvio~
+        +registrarPendiente(PendienteEnvio) void
+        +incrementarIntento(String id, String ultimoError) void
+        +eliminarPendiente(String id) void
+        +pendientePorId(String id) Optional~PendienteEnvio~
+    }
+
+    class UsuarioLocal {
+        <<record · transversal>>
+        +String codigo
+        +String nombres
+        +String apellidos
+        +String programa
+        +boolean conectado
+        +String fechaRegistro
+        +String actualizado
+    }
+
+    class MensajeLocal {
+        <<record · transversal>>
+        +String idMensaje
+        +String origen
+        +String destino
+        +String tipo
+        +String contenido
+        +Long tamanoArchivo
+        +String fechaEnvio
+        +boolean enviado
+        +boolean descargado
+        +String estado
+        +String archivoId
+    }
+
+    class PendienteEnvio {
+        <<record · transversal>>
+        +String id
+        +String origen
+        +String destino
+        +byte[] payload
+        +int intentos
+        +String ultimoError
+    }
+
+    class RecienteChat {
+        <<record · transversal>>
+        +String otro
+        +String ultimoContenido
+        +String ultimoTipo
+        +String fechaUltimo
+        +int noLeidos
+        +boolean conectado
+    }
+
+    class EstadoMensaje {
+        <<enumeration · transversal>>
+        PENDIENTE
+        ERROR
+        ENVIADO
+        ENTREGADO
+        LEIDO
+        +desde(String) EstadoMensaje$
+    }
+
+    class Mensaje {
+        <<record · dto>>
+        +TipoMensaje tipo
+        +String contenido
+    }
+
+    InterfazCacheUsuarios ..> UsuarioLocal
+    InterfazHistorialLocal ..> MensajeLocal
+    InterfazHistorialLocal ..> PendienteEnvio
+    InterfazHistorialLocal ..> RecienteChat
+    InterfazConexionRed ..> Mensaje
+    InterfazConexionRed o-- ReceptorMensajes : «suscribir»
+    ReceptorMensajes ..> Mensaje
+    MensajeLocal ..> EstadoMensaje : «columna estado»
+
+    note for InterfazHistorialLocal "18 métodos. Los tres últimos grupos\n(pendientes / incrementarIntento / eliminarPendiente)\nimplementan la COLA LOCAL de salida: es lo que permite\nenviar sin red y reintentar al reconectar."
+    note for InterfazConexionRed "20 métodos, 8 de ellos default con sobrecarga\nde 'id'.fachadaCliente depende de esta interfaz, no al revés."

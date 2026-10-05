@@ -1,0 +1,175 @@
+---
+title: "dto — DTOs de consulta: informes, archivos y resultados"
+---
+classDiagram
+    direction TB
+
+    class InformeDTO {
+        <<record>>
+        +String titulo
+        +List~String~ columnas
+        +List~List~String~~ filas
+        +nombreArchivoCsv() String
+    }
+
+    class InformeFiltroDTO {
+        <<record>>
+        +String desde
+        +String hasta
+        +String codigo
+        +sinFiltro() InformeFiltroDTO$
+    }
+
+    class UsuarioInformeDTO {
+        <<record>>
+        +String codigo
+        +String nombres
+        +String apellidos
+        +String programa
+        +String fechaRegistro
+        +String fechaUltimaConexion
+        +boolean conectado
+        +conConectado(boolean) UsuarioInformeDTO
+    }
+
+    class ConexionInformeDTO {
+        <<record>>
+        +String codigo
+        +long vecesConectado
+        +int sesionesVivas
+        +String fechaUltimaConexion
+        +String nombres
+        +String apellidos
+    }
+
+    class MensajeResumenDTO {
+        <<record>>
+        +long id
+        +String remitente
+        +String destinatario
+        +String tipo
+        +String contenido
+        +String hashSha256
+        +Integer numCaracteres
+        +Integer numPalabras
+        +String nombreArchivo
+        +Long tamanoArchivo
+        +Long archivoId
+        +String mime
+        +String etapasFiltrado
+        +String fechaEnvio
+        +String remitenteNombres
+        +String remitenteApellidos
+        +String destinatarioNombres
+        +String destinatarioApellidos
+    }
+
+    class AuditoriaInformeDTO {
+        <<record>>
+        +long id
+        +String tipo
+        +String usuario
+        +String descripcion
+        +String fecha
+        +String ip
+        +String nombres
+        +String apellidos
+    }
+
+    class ArchivoDTO {
+        <<record>>
+        +long id
+        +String nombre
+        +String ruta
+        +long tamano
+        +String tipo
+        +String mime
+        +String hashSha256
+    }
+
+    class ArchivoGuardarDTO {
+        <<record>>
+        +String nombre
+        +String ruta
+        +long tamano
+        +String tipo
+        +String mime
+        +String hashSha256
+        +String codigoPropietario
+    }
+
+    class MensajeGuardarDTO {
+        <<record>>
+        +String remitente
+        +String destinatario
+        +String tipo
+        +String contenido
+        +String hashSha256
+        +Integer numCaracteres
+        +Integer numPalabras
+        +Long archivoId
+        +String etapasFiltrado
+        +String ipRemitente
+    }
+
+    class ResultadoMensajeDTO {
+        <<record>>
+        +Long mensajeId
+        +String hashSha256
+        +Integer numCaracteres
+        +Integer numPalabras
+        +List~String~ rutasDerivadas
+        +Long archivoId
+        +List~EventoEtapa~ traza
+    }
+
+    class EventoEtapa {
+        <<record>>
+        +String etapa
+        +long ms
+        +String hilo
+        +String rutaSalida
+    }
+
+    class PaginaDTO~T~ {
+        <<record genérico>>
+        +List~T~ contenido
+        +int pagina
+        +int totalPaginas
+    }
+
+    InterfazServiciosDisponibles ..> InformeDTO : «produce los 4 informes»
+    InterfazServiciosDisponibles ..> InformeFiltroDTO : «filtro de entrada»
+    InterfazServiciosDisponibles ..> UsuarioInformeDTO
+    InterfazServiciosDisponibles ..> ConexionInformeDTO
+    InterfazServiciosDisponibles ..> MensajeResumenDTO
+    InterfazServiciosDisponibles ..> AuditoriaInformeDTO
+
+    MensajeResumenDTO ..> ResultadoMensajeDTO : «mismo hash y contadores»
+    ResultadoMensajeDTO --> EventoEtapa : «traza de la tubería»
+    MensajeGuardarDTO ..> ResultadoMensajeDTO : «ENTRADA → SALIDA»
+    ArchivoGuardarDTO ..> ArchivoDTO : «ENTRADA → LECTURA»
+    PaginaDTO~T~ ..> MensajeResumenDTO : «contenido»
+
+    class InterfazServiciosDisponibles {
+        <<interface · int-servicios>>
+        +armarInformeUsuarios(List, InformeFiltroDTO) InformeDTO
+        +armarInformeConexiones(List, InformeFiltroDTO) InformeDTO
+        +armarInformeMensajes(List, InformeFiltroDTO) InformeDTO
+        +armarInformeAuditoria(List, InformeFiltroDTO) InformeDTO
+    }
+
+    note for InformeDTO "No es un informe tipado: es titulo + columnas +
+filas. Por eso los cuatro armarInforme* devuelven el mismo
+tipo y el CSV sale directo de columnas y filas.
+Servicios es lógica pura: no escribe disco."
+
+    note for MensajeResumenDTO "Los cuatro campos remitenteNombres,
+remitenteApellidos, destinatarioNombres y
+destinatarioApellidos están desnormalizados a propósito:
+el informe se arma sin volver a consultar usuarios."
+
+    note for ResultadoMensajeDTO "traza es la lista de EventoEtapa que
+emite la tubería de filtros de utilerias. Cada evento lleva
+etapa, ms y hilo, así que un informe de rendimiento sale
+de aquí sin instrumentación adicional."

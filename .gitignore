@@ -1,0 +1,50 @@
+# Artefactos de build y entornos virtuales. Nunca se versionan.
+# Este archivo cubre el RAIZ del repo (el .gitignore de universidad-mensajeria/
+# solo aplica a rutas dentro de ese directorio).
+.idea/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+
+# Salidas de compilacion
+target/
+bin/
+obj/
+dist/
+build/
+*.class
+
+# Datos de runtime: son del SERVIDOR y contienen datos de los usuarios.
+# El historial/cache local de los clientes tampoco va al repo.
+uploads/
+work/
+logs/
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.mv.db
+
+# Secretos y material criptografico. Politica de secretos: nunca se versionan,
+# ni siquiera los de desarrollo (.env.prod.example si va, es solo plantilla).
+.env
+.env.*
+!.env.prod.example
+*.p12
+*.pfx
+*.jks
+*.keystore
+config/keystore.p12
+id_rsa*
+*.pem
+
+# Sistema
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editores: IntelliJ deja esto incluso con .idea/ ignorada
+*.iml

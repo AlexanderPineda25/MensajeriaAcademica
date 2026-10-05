@@ -1,0 +1,26 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Tema normal/claro (UI-09). Mismas claves que TemaOscuro.xaml. -->
+    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="CardBorderBrush" Color="#FFD7DEE8" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="#FF1F3A5F" />
+    <SolidColorBrush x:Key="TitleBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SubtitleBrush" Color="#FFC9D6E8" />
+    <SolidColorBrush x:Key="EyebrowBrush" Color="#FF9FB6D8" />
+    <SolidColorBrush x:Key="LabelBrush" Color="#FF202124" />
+    <SolidColorBrush x:Key="MutedBrush" Color="#FF61717F" />
+    <SolidColorBrush x:Key="ChatBgBrush" Color="#FFF7F9FA" />
+    <SolidColorBrush x:Key="WindowBgBrush" Color="#FFEEF1F6" />
+    <SolidColorBrush x:Key="BubbleOwnBrush" Color="#FFD9FDD3" />
+    <SolidColorBrush x:Key="BubbleInBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="BubbleBorderBrush" Color="#FFE2E8EA" />
+    <SolidColorBrush x:Key="BubbleOwnFgBrush" Color="#FF202124" />
+    <SolidColorBrush x:Key="BubbleInFgBrush" Color="#FF202124" />
+    <SolidColorBrush x:Key="RemitenteBrush" Color="#FF17635B" />
+    <SolidColorBrush x:Key="FechaBrush" Color="#FF687A80" />
+    <SolidColorBrush x:Key="VistoLeidoBrush" Color="#FF1D9BF0" />
+    <SolidColorBrush x:Key="VistoOtroBrush" Color="#FF61717F" />
+    <SolidColorBrush x:Key="CitaBgBrush" Color="#FFE6F4F2" />
+    <SolidColorBrush x:Key="CitaBorderBrush" Color="#FF147D73" />
+    <SolidColorBrush x:Key="CitaTextBrush" Color="#FF147D73" />
+</ResourceDictionary>

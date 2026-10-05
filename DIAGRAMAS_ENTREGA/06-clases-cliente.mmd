@@ -1,0 +1,42 @@
+---
+title: "Cliente por componentes — mismo contrato en 3 lenguajes"
+---
+classDiagram
+    direction TB
+
+    class Contrato {
+        <<dto compartido>>
+        +Mensaje (29 campos)
+        +TipoMensaje (30 valores)
+        +DTOs de informe y sesión
+    }
+
+    class Red {
+        +conectar / desconectar
+        +enviar texto/imagen/archivo
+        +historial y descarga
+    }
+
+    class FachadaCliente {
+        +login / logout
+        +enviar y reintentar cola
+        +directorio y presencia
+    }
+
+    class Store {
+        +historial local SQLite
+        +caché de usuarios
+        +cola de pendientes
+    }
+
+    class UI {
+        +Login (solo muestra servidor)
+        +Chat (cita + adjuntos)
+        +Estados de entrega
+    }
+
+    Contrato <.. Red : usa
+    Red <.. FachadaCliente : usa
+    FachadaCliente --> Store
+    FachadaCliente --> UI : sirve datos
+    UI --> FachadaCliente : acciones

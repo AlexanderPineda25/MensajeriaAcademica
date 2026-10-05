@@ -1,0 +1,167 @@
+---
+title: "comp-protocolo-comunicacion — adaptador TCP/TLS con pool de hilos"
+---
+classDiagram
+    direction TB
+
+    class ProtocoloComunicacion {
+        <<final · adaptador>>
+        -static final Logger LOG
+        -ConfigRed config
+        -FabricaPoolDeTrabajadores fabricaPool
+        -ConcurrentHashMap~String,SesionTcp~ vivas
+        -volatile ServerSocket serverSocket
+        -volatile ServerSocket tlsSocket
+        -volatile PoolDeTrabajadores pool
+        -volatile boolean activo
+        -volatile ReceptorDeTramas receptor
+        +ProtocoloComunicacion(ConfigRed)
+        +iniciar() void «synchronized»
+        +detener() void «synchronized»
+        +estaActivo() boolean
+        +puerto() int
+        +puertoTls() int «NO está en la interfaz»
+        +estadoPool() EstadoPool
+        +enviar(IdSesion, Mensaje) void «throws IOException»
+        +autenticar(IdSesion, String) IdSesion
+        +cerrarSesion(IdSesion, String) void
+        +registrarReceptor(ReceptorDeTramas) void
+        -esperarClientes(ServerSocket) void
+        -rechazarPorSaturacion(Socket) void
+        +sesionesVivas() int «package-private»
+    }
+
+    class ProveedorProtocoloComunicacionImpl {
+        <<final · SPI>>
+        +crear(ConfigRed) InterfazProtocoloComunicacion
+        «return new ProtocoloComunicacion(config)»
+    }
+
+    class PoolDeTrabajadores {
+        <<interface · package-private>>
+        +adquirir() ManejadorConexion
+        +adquirir(long, TimeUnit) ManejadorConexion
+        +liberar(ManejadorConexion) void
+        +estado() EstadoPool
+        +cerrar() void
+    }
+
+    class PoolDeTrabajadoresImpl {
+        <<final · package-private>>
+        -int capacidad
+        -ConcurrentHashMap~String,SesionTcp~ sesiones
+        -ArrayBlockingQueue~ManejadorConexion~ disponibles
+        -List~ManejadorConexion~ trabajadores
+        -volatile int esperaSegundos
+        +adquirir() ManejadorConexion
+        +adquirir(long, TimeUnit) ManejadorConexion
+        +liberar(ManejadorConexion) void
+        +estado() EstadoPool
+        +cerrar() void
+        +esperaSegundos(int) void
+    }
+
+    class FabricaPoolDeTrabajadores {
+        <<final · package-private>>
+        +crear(int, ConcurrentHashMap, Supplier, int) PoolDeTrabajadores
+        +crear(int, ConcurrentHashMap, Supplier, int, int) PoolDeTrabajadores
+        +crear(int, ConcurrentHashMap, Supplier, int, int, int) PoolDeTrabajadores
+    }
+
+    class ManejadorConexion {
+        <<final · extends Thread>>
+        -ConcurrentHashMap~String,SesionTcp~ vivas
+        -Supplier~ReceptorDeTramas~ receptor
+        -long timeoutMs
+        -PoolDeTrabajadores pool
+        -ArrayBlockingQueue~SesionTcp~ asignaciones
+        -AtomicBoolean ocupado
+        -volatile SesionTcp sesion
+        -volatile boolean detenido
+        -int tramasPorSegundo
+        -double fichas
+        -long ultimoRecargoNs
+        +preparar(Socket) void
+        -consumirFicha() boolean «token bucket»
+        +sesion() SesionTcp
+        +iniciarAtencion() void
+        +cancelar() void
+        +reiniciable() boolean
+        +detener() void
+        +run() void «el cuerpo del hilo»
+        -atender(SesionTcp) void
+    }
+
+    class SesionTcp {
+        <<final · package-private>>
+        -Socket socket
+        -Object candadoSalida
+        -volatile IdSesion id
+        -volatile boolean cerrada
+        +id() IdSesion
+        +autenticar(String) void
+        +activa() boolean
+        +leer() Mensaje
+        +enviar(Mensaje) void
+        +fijarTimeoutLectura(int) void
+        +cerrar() void
+    }
+
+    class InterfazProtocoloComunicacion {
+        <<interface>>
+        +iniciar() void
+        +detener() void
+        +enviar(IdSesion, Mensaje) void
+        ...
+    }
+
+    class ReceptorDeTramas {
+        <<interface>>
+        +alConectar(IdSesion) void
+        +alRecibir(IdSesion, Mensaje) void
+        +alDesconectar(IdSesion, String) void
+    }
+
+    class ProveedorProtocoloComunicacion {
+        <<interface · SPI>>
+        +crear(ConfigRed) InterfazProtocoloComunicacion
+    }
+
+    class TramaCodec {
+        <<final · codec>>
+        +escribir(OutputStream, Mensaje) void
+        +leer(InputStream) Mensaje
+    }
+
+    class EstadoPool {
+        <<record · dto>>
+        +int ocupados
+        +int disponibles
+        +int total
+    }
+
+    InterfazProtocoloComunicacion <|.. ProtocoloComunicacion
+    ProveedorProtocoloComunicacion <|.. ProveedorProtocoloComunicacionImpl
+    ProveedorProtocoloComunicacionImpl ..> ProtocoloComunicacion : «crea»
+
+    PoolDeTrabajadores <|.. PoolDeTrabajadoresImpl
+    FabricaPoolDeTrabajadores ..> PoolDeTrabajadoresImpl : «crea»
+    ProtocoloComunicacion --> FabricaPoolDeTrabajadores
+    ProtocoloComunicacion --> PoolDeTrabajadores : «campo pool»
+
+    ManejadorConexion --|> Thread : «un hilo por trabajador»
+    PoolDeTrabajadores o-- ManejadorConexion : «adquirir / liberar»
+    PoolDeTrabajadoresImpl o-- ManejadorConexion : «cola disponibles»
+    ManejadorConexion --> SesionTcp : «atender actual»
+    PoolDeTrabajadoresImpl --> SesionTcp : «mapa sesiones»
+    ProtocoloComunicacion --> SesionTcp : «mapa vivas»
+
+    ProtocoloComunicacion ..> ReceptorDeTramas : «registrarReceptor»
+    ProtocoloComunicacion ..> TramaCodec : «delega I/O»
+    SesionTcp ..> TramaCodec : «lee / escribe tramas»
+    ManejadorConexion ..> ReceptorDeTramas : «Supplier»
+    PoolDeTrabajadores ..> EstadoPool
+    ProtocoloComunicacion ..> EstadoPool
+
+    note for ManejadorConexion "extends Thread: el pool es un conjunto de hilos\nconcretos, no un ExecutorService. El token bucket\n(fichas / ultimoRecargoNs) limita tramasPorSegundo."
+    note for ProtocoloComunicacion "enviar declara IOException aquí,\nmientras la interfaz declara Exception.\nEs un narrowing de throws legítimo."

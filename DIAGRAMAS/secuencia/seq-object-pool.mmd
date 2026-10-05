@@ -1,0 +1,69 @@
+---
+title: "Secuencia — Object Pool: adquirir, usar y devolver un trabajador"
+---
+%% Lo que NO existia: el ciclo de vida del pool. Las clases estan en
+%% clases-comp-protocolo-comunicacion.mmd pero el acquire/release nunca se
+%% dibujo.
+%% Correspondencia: PoolDeTrabajadoresImpl.java, FabricaPoolDeTrabajadores.java,
+%% ManejadorConexion.java, ProtocoloComunicacion.java.
+%% Hecho de fidelidad: ManejadorConexion extends Thread; el pool es un conjunto
+%% de hilos CONCRETOS con token bucket (fichas / ultimoRecargoNs), NO un
+%% ExecutorService.
+sequenceDiagram
+    autonumber
+    participant P as ProtocoloComunicacion
+    participant F as FabricaPoolDeTrabajadores
+    participant POOL as PoolDeTrabajadoresImpl
+    participant Q as ArrayBlockingQueue<br/>de disponibles
+    participant M1 as ManejadorConexion #1
+    participant M2 as ManejadorConexion #2
+    participant CLI as Cliente
+
+    Note over F: Al arrancar (InicioServidor):<br/>se preinstancian N = pool.hilos<br/>y TODOS entran en Q (RF-S43).
+
+    CLI ->> P: conectar()
+    P ->> POOL: adquirir()
+
+    alt Q vacia
+        POOL ->> POOL: esperar hasta espera.max (configurable)
+        alt sigue vacia
+            POOL -->> P: null
+            P -->> CLI: ERROR "servidor lleno" (RF-S46)
+            P ->> LG: registrar(LIMITE_ALCANZADO)
+        else llego un trabajador
+            POOL -->> P: M2
+        end
+    else Q con tokens
+        POOL ->> Q: take()
+        Q -->> POOL: M1
+        POOL -->> P: M1
+    end
+
+    P ->> M1: iniciar(socket, callbacks)
+    M1 ->> M1: consumir ficha (token bucket)
+    loop sesion viva
+        M1 ->> M1: leer trama y despachar
+    end
+
+    alt el cliente se va bien
+        CLI ->> M1: FIN / LOGOUT
+    else corte de red
+        CLI --x M1: socket cerrado
+    else error en el manejador
+        M1 ->> M1: catch y log
+    end
+
+    M1 ->> M1: reiniciar estado de sesion
+    M1 ->> POOL: devolver()
+    POOL ->> Q: offer(M1)
+    Note over POOL: Nunca se pierde un trabajador:<br/>el release va en finally (RF-S47).
+
+    P ->> POOL: cerrar()
+    Note over POOL: Al detener el servidor se cierra<br/>ordenadamente, no se abandona.
+
+    note over P,Q
+        No se crea un hilo por conexion.
+        El tamano del pool se alinea con el limite
+        maximo de usuarios conectados (RF-S45) y
+        ambos son configurables (RNF-06).
+    end note

@@ -1,0 +1,157 @@
+---
+title: "dto — DTOs de sesión y estado, más las dos excepciones"
+---
+classDiagram
+    direction TB
+
+    class IdSesion {
+        <<record>>
+        +String id
+        +String codigo
+        +String direccionIp
+        +anonima(String direccionIp) IdSesion$
+        +autenticada(String codigo) IdSesion
+        +autenticada() boolean
+    }
+
+    class UsuarioDTO {
+        <<record>>
+        +String codigo
+        +String nombres
+        +String apellidos
+        +String programa
+        +String hashContrasena
+        +boolean activo
+    }
+
+    class UsuarioResumen {
+        <<record>>
+        +String codigo
+        +String nombres
+        +String apellidos
+        +String programa
+        +boolean conectado
+    }
+
+    class FechasUsuarioDTO {
+        <<record>>
+        +String codigo
+        +String fechaRegistro
+        +String fechaUltimaConexion
+    }
+
+    class LoginConteoDTO {
+        <<record>>
+        +String codigo
+        +long veces
+    }
+
+    class LimitesDTO {
+        <<record>>
+        +int maxConexiones
+        +int maxConexionesPorUsuario
+        +long maxTamanoArchivo
+    }
+
+    class EstadoPool {
+        <<record>>
+        +int ocupados
+        +int disponibles
+        +int total
+    }
+
+    class EstadoServidor {
+        <<record>>
+        +boolean activo
+        +int puerto
+        +int usuariosConectados
+        +int sesionesActivas
+        +int maxConexiones
+        +int mensajesEnCola
+        +int trabajadoresOcupados
+        +int trabajadoresDisponibles
+        +int trabajadoresTotal
+        +long mensajesProcesados
+    }
+
+    class TipoAccion {
+        <<enumeration · 16 valores>>
+        CONECTADO
+        DESCONECTADO
+        LOGIN
+        LOGIN_FALLIDO
+        REGISTRO
+        MENSAJE_TEXTO
+        MENSAJE_IMAGEN
+        MENSAJE_ARCHIVO
+        ETAPA_FILTRADO
+        USUARIO_REGISTRADO
+        BROADCAST
+        HISTORIAL
+        DESCARGA
+        CIERRE_CONEXION
+        LIMITE_ALCANZADO
+        ERROR
+    }
+
+    class UsuarioYaExisteException {
+        <<exception>>
+        +UsuarioYaExisteException(String codigo)
+    }
+
+    class UsuarioNoEncontradoException {
+        <<exception>>
+        +UsuarioNoEncontradoException(String codigo)
+    }
+
+    class InterfazUsuariosDisponibles {
+        <<interface · int-usuarios>>
+        +validarCredenciales(String, String, VerificadorCredenciales) Optional~UsuarioDTO~
+        +registrar(String, String, String, String, String) UsuarioDTO
+        +listar() List~UsuarioDTO~
+        +buscar(String) Optional~UsuarioDTO~
+    }
+
+    class InterfazServiciosDisponibles {
+        <<interface · int-servicios>>
+        +puedeIniciarSesion(String, int, int, LimitesDTO) boolean
+        +maxConexiones(LimitesDTO) int
+        +maxConexionesPorUsuario(LimitesDTO) int
+        +validarTamanoArchivo(long, long) void
+    }
+
+    class InterfazProtocoloComunicacion {
+        <<interface · int-protocolo>>
+        +autenticar(IdSesion, String) IdSesion
+        +estadoPool() EstadoPool
+    }
+
+    InterfazUsuariosDisponibles ..> UsuarioDTO : «produce»
+    InterfazUsuariosDisponibles ..> UsuarioYaExisteException : «lanza»
+    UsuarioDTO ..> UsuarioResumen : «mismos datos, sin hash»
+    UsuarioResumen ..> FechasUsuarioDTO
+    UsuarioResumen ..> LoginConteoDTO
+    InterfazServiciosDisponibles ..> LimitesDTO : «consulta»
+    InterfazProtocoloComunicacion ..> IdSesion : «identidad de la conexión»
+    InterfazProtocoloComunicacion ..> EstadoPool : «métricas del pool»
+    EstadoPool ..> EstadoServidor : «se refleja dentro de»
+
+    UsuarioYaExisteException --|> RuntimeException
+    UsuarioNoEncontradoException --|> RuntimeException
+
+    note for IdSesion "Es el puente entre el protocolo de transporte y
+la aplicación. Nace anónima (solo IP) en
+ReceptorDeTramas.alConectar y se autentica después con
+el código del usuario. Todos los puertos del servidor
+la reciben en cada llamada, así que no hay estado
+global de 'usuario actual'."
+
+    note for EstadoServidor "Los tres últimos campos (trabajadores*) y
+mensajesProcesados se rellenan desde EstadoPool y desde
+el gestor de colas. Es lo que alimenta el panel de
+monitorización del servidor."
+
+    note for UsuarioNoEncontradoException "La declara el módulo dto pero
+en el alcance de servidor no hay ninguna clase que la
+lance: se conserva por simetría con
+UsuarioYaExisteException, que sí la usa comp-usuarios."

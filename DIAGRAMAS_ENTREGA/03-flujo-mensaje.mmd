@@ -1,0 +1,29 @@
+---
+title: "Flujo de envío de mensaje"
+---
+sequenceDiagram
+    actor U as Usuario
+    participant C as Chat
+    participant F as FachadaCliente
+    participant S as Servidor
+    participant D as Destinatario
+
+    U ->> C: escribe y pulsa Enviar
+    C ->> C: burbuja PENDIENTE
+    C ->> F: enviar(texto/imagen/archivo)
+    alt con red
+        F ->> S: MENSAJE_TEXTO / IMAGEN / ARCHIVO
+        S -->> F: ACK
+        F -->> C: ENVIADO
+        S ->> D: entrega
+        D -->> S: MENSAJE_ENTREGADO
+        S -->> F: MENSAJE_ENTREGADO
+        F -->> C: ENTREGADO ✓✓
+        D -->> S: MENSAJE_LEIDO
+        S -->> F: MENSAJE_LEIDO
+        F -->> C: LEIDO ✓✓
+    else sin red
+        F ->> F: guarda en pendientes
+        F -->> C: sigue PENDIENTE
+        Note over F: reintenta solo cada 30 s
+    end

@@ -1,0 +1,54 @@
+---
+title: "Actividad — envío de archivo fragmentado y ensamblado"
+---
+%% Lo que NO existia como flujo. Solo habia una nota estatica en
+%% comandos-servidor.mmd ("ARCHIVO_INICIO -> N x ARCHIVO_PARTE -> ARCHIVO_FIN").
+%% Correspondencia: ArchivoInicioCommand/ArchivoParteCommand/ArchivoFinCommand,
+%% FragmentoArchivoCaso.java, AlmacenarInformacion.java.
+flowchart TD
+    U([Usuario adjunta un archivo]) --> CHK{Existe y se puede leer?}
+    CHK -->|no| E1[Error al usuario]
+    CHK -->|si| LEN{Tamano mayor a 50 MB?}
+    LEN -->|si| E2[Avisar: supera el tope.<br/>No habilitar Enviar]
+    LEN -->|no| META[Leer metadatos:<br/>nombre, tamano, hash SHA-256]
+    E1 --> FIN([No se envia])
+    E2 --> FIN
+
+    META --> CHUNK[Dividir en partes de 1 MiB<br/>y numerar: indiceParte 0..N]
+    CHUNK --> EST[Guardar el archivo entero<br/>en pendientes_envio.<br/>blob BLOB con el payload]
+    EST --> TIEMPO[Se imprime el tiempo restante<br/>en la barra de progreso]
+
+    TIEMPO --> RED{Hay red?}
+    RED -->|no| COLAQ[Queda en la cola.<br/>El usuario ve "Sin red:<br/>guardado para reintentar"]
+    COLAQ --> ESP[Esperar reconexion]
+    ESP --> RED
+
+    RED -->|si| INI[Enviar ARCHIVO_INICIO<br/>con nombre, tamano y hash<br/>y un archivoId del cliente]
+
+    INI --> SER1[Servidor: valida destino y tamano<br/>abre el archivo destino<br/>en uploads/Nombre CODIGO/hash/]
+    SER1 --> LOTE[Ciclo por cada parte]
+
+    LOTE --> PARTE[Enviar ARCHIVO_PARTE<br/>archivoId + indiceParte + bytes]
+    PARTE --> SER2[Servidor: escribe en el offset<br/>del indiceParte]
+    SER2 --> OKP{Escribio bien?}
+    OKP -->|no| E3[Error en esa parte:<br/>reintentar o abortar]
+    OKP -->|si| SUM[Acumular bytes escritos]
+    SUM --> MAS{Quedan partes?}
+    MAS -->|si| LOTE
+    MAS -->|no| FINP[Enviar ARCHIVO_FIN]
+
+    FINP --> SER3[Servidor: compara<br/>bytes escritos vs tamano declarado]
+    SER3 --> IGUAL{Totales coinciden?}
+    IGUAL -->|no| E4[Descartar el archivo incompleto.<br/>Registrar auditoria]
+    IGUAL -->|si| OK[Solo ahora se persiste<br/>la fila en la tabla archivos]
+
+    OK --> RESP[Servidor responde con<br/>archivoId y ruta]
+    RESP --> HIST[Guardar en historial_local:<br/>nombre, tamano, archivo_id, ruta]
+    HIST --> DONE([El receptor lo ve en su<br/>historial y lo descarga])
+
+    %% ---- la trampa de concurrencia ya resuelta ----
+    note1[Trampa real, ya corregida:<br/>N copias del mismo texto desde el mismo<br/>remitente comparten hash y ruta final en uploads/,<br/>y varias tareas de poolFiltros hacian Files.move<br/>sobre el MISMO archivo. En Windows se perdian copias.<br/>Corregido con candado POR RUTA en AlmacenarInformacion<br/>y cubierto por difusionDelMismoTextoEnParaleloNoPierdeCopias.]
+    OK -.-> note1
+
+    note2[El cliente puede enviar solo imagen o solo archivo;<br/>el boton Enviar es uno solo y siempre hace el envio<br/>de lo que haya (RF-C09..RF-C13).]
+    META -.-> note2

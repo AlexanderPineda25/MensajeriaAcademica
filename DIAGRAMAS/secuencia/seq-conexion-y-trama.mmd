@@ -1,0 +1,77 @@
+---
+title: "Secuencia — conexión TCP/TLS, framed JSON y despacho de tramas"
+---
+%% Lo que NO existia: el diagrama de como se abre una conexion y como viaja
+%% una trama. Las clases existen (clases-codec.mmd, clases-comp-protocolo-
+%% comunicacion.mmd) pero nadie habia dibujado la interaccion.
+%% Correspondencia: ProtocoloComunicacion.java, SesionTcp.java, TramaCodec.java,
+%% Despachador.java, FabricaPoolDeTrabajadores.java.
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant C as Cliente<br/>(ConexionCliente / ConexionRed / conexion_red)
+    participant P as ProtocoloComunicacion
+    participant POOL as Pool de trabajadores
+    participant H as ManejadorConexion
+    participant TC as SesionTcp
+    participant CO as TramaCodec
+    participant D as Despachador
+    participant F as FachadaDeServicios
+
+    U ->> C: abrir aplicacion
+    C ->> P: abrir(puerto, tls?)
+
+    alt TLS habilitado
+        P ->> P: SSLContext + keyStore desde config
+        Note over P,H: handshake TLS 1.x<br/>Python valida fail-fast aqui.<br/>Java y .NET validan en otro sitio.
+    else TCP plano
+        Note over P,H: sin cifrado
+    end
+
+    P ->> POOL: adquirir()
+    alt pool saturado
+        POOL -->> P: null
+        P -->> C: ERROR "servidor lleno" (RF-S46)
+    else trabajador disponible
+        POOL -->> P: ManejadorConexion
+        P ->> H: arrancar como hilo
+        H ->> TC: SesionTcp(socket)
+        Note right of TC: IdSesion ANONIMA<br/>aun no hay codigo
+        H ->> CO: bucle de lectura
+
+        loop cada trama recibida
+            TC ->> CO: leer bytes del socket
+            CO ->> CO: cabecera 4 bytes big-endian
+            Note right of CO: longitud del contenido<br/>en JSON UTF-8 (RNF-13).<br/>Tope 16 MiB.
+            CO -->> H: Mensaje (Gson)
+            H ->> D: procesar(mensaje, sesion)
+            D ->> D: comandos.get(tipo)
+
+            alt tipo sin CommandHandler
+                D -->> H: ERROR "tipo no soportado"
+            else LOGIN
+                D ->> F: autenticar(sesion, codigo, clave)
+                F ->> F: usuarios.validar(codigo, clave)
+                F -->> D: exito | ERROR
+                alt exito
+                    F -->> H: IdSesion AUTENTICADA(codigo)
+                end
+            else comando autenticado (12 de 15)
+                D ->> D: exigirAutenticacion(sesion)
+                alt sesion no autenticada
+                    D -->> H: ERROR "autenticate primero con LOGIN"
+                else ok
+                    D ->> F: ejecuta el caso de uso
+                end
+            else comando SIN guarda (3 de 15)
+                Note over D: LOGOUT / LISTAR_CONECTADOS /<br/>LISTAR_USUARIOS no validan sesion.<br/>Ver SEC-05 en ANALISIS_TECNICO.md.
+                D ->> F: ejecuta el caso de uso sin comprobar
+            end
+
+            H ->> CO: escribir(respuesta)
+            CO ->> TC: cabecera + JSON
+            TC -->> C: trama
+        end
+    end
+
+    Note over C,H: al cerrar el socket, H devuelve el trabajador al pool<br/>(release) y reinicia su estado (RF-S44).

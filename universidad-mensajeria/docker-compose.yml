@@ -1,0 +1,96 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mensajeria_mysql
+    restart: unless-stopped
+    environment:
+      # SOLO DESARROLLO: credenciales publicas de ejemplo. En produccion usa
+      # secretos (env_file / docker secrets) y no publiques el puerto a la LAN.
+      MYSQL_DATABASE: mensajeria_db
+      MYSQL_ROOT_PASSWORD: 12345
+      TZ: America/Bogota
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p12345"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres:
+    image: postgres:16
+    container_name: mensajeria_postgres
+    environment:
+      POSTGRES_DB: mensajeria_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mensajeria_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Servidor de mensajeria: JAR + JRE 21. Requiere mysql sano.
+  # Credenciales de desarrollo; en produccion usa secretos y otro compose.
+  # Configuracion efectiva (args Spring Boot, prevalecen sobre el JAR):
+  #   --db.active / --db.mysql.url / --db.mysql.user / --db.mysql.pass -> MySQL interno mysql:3306
+  #   --red.puerto=5000 -> TCP de mensajeria (clientes). Cambiar aqui + mapeo de ports.
+  #   uploads/logs -> volumenes nombrados uploads_data/logs_data (persisten entre actualizaciones).
+  #   TLS opcional: descomenta el mapeo 5001 y anade --red.tls.habilitado=true + keystore en /app/config.
+  servidor:
+    image: mensajeria-servidor:1.0.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mensajeria_servidor
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+      # - "5001:5001"  # solo con TLS habilitado (red.tls.habilitado=true)
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+      # Opcional: configuracion externa (server.properties / keystore.p12 / usuarios.csv):
+      # - ./config:/app/config:ro
+    command:
+      - --db.active=mysql
+      - --db.mysql.url=jdbc:mysql://mysql:3306/mensajeria_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Bogota
+      - --db.mysql.user=root
+      - --db.mysql.pass=12345
+      - --red.puerto=5000
+    healthcheck:
+      # Sonda TCP al puerto de mensajeria (bash /dev/tcp, sin paquetes extra).
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5000'"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 90s
+
+  # Motor opcional del ADAPTER §5.4 (verificacion adicional, criterio §13.11)
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: mensajeria_oracle
+    environment:
+      ORACLE_PASSWORD: 12345
+      APP_USER: MENSAJERIA_DB
+      APP_USER_PASSWORD: 12345
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracledata:/opt/oracle/oradata
+
+volumes:
+  mysqldata:
+  uploads_data:
+  logs_data:
+  pgdata:
+  oracledata:

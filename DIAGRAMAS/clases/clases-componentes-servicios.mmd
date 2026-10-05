@@ -1,0 +1,119 @@
+---
+title: "Componente servicios — límites e informes (int-servicios-disponibles + comp-servicios)"
+---
+classDiagram
+    direction TB
+
+    class InterfazServiciosDisponibles {
+        <<interface · puerto · int-servicios>>
+        +puedeIniciarSesion(String codigo, int sesionesDelCodigo, int sesionesTotales, LimitesDTO) boolean
+        +maxConexiones(LimitesDTO) int
+        +maxConexionesPorUsuario(LimitesDTO) int
+        +validarTamanoArchivo(long tamanoBytes, long maximoBytes) void
+        +armarInformeUsuarios(List~UsuarioInformeDTO~, InformeFiltroDTO) InformeDTO
+        +armarInformeConexiones(List~ConexionInformeDTO~, InformeFiltroDTO) InformeDTO
+        +armarInformeMensajes(List~MensajeResumenDTO~, InformeFiltroDTO) InformeDTO
+        +armarInformeAuditoria(List~AuditoriaInformeDTO~, InformeFiltroDTO) InformeDTO
+    }
+
+    class ProveedorServiciosDisponibles {
+        <<interface · SPI · int-servicios>>
+        +crear() InterfazServiciosDisponibles
+    }
+
+    class Servicios {
+        <<final · adaptador · comp-servicios>>
+        -static final Pattern RUTA_ETAPA
+        -static final Pattern MS_ETAPA
+        +puedeIniciarSesion(String, int, int, LimitesDTO) boolean
+        +maxConexiones(LimitesDTO) int
+        +maxConexionesPorUsuario(LimitesDTO) int
+        +validarTamanoArchivo(long, long) void
+        +armarInformeUsuarios(List, InformeFiltroDTO) InformeDTO
+        +armarInformeConexiones(List, InformeFiltroDTO) InformeDTO
+        +armarInformeMensajes(List, InformeFiltroDTO) InformeDTO
+        +armarInformeAuditoria(List, InformeFiltroDTO) InformeDTO
+        -detalleDe(MensajeResumenDTO) String$
+        -etapasDe(String) List~String~$
+        -filtrarPorCodigo(List, Function, InformeFiltroDTO) List$
+        -codigoVacio(InformeFiltroDTO) boolean$
+        -coincide(String, InformeFiltroDTO) boolean$
+        -txt(String) String$
+        -persona(String, String, String) String$
+    }
+
+    class Proveedor {
+        <<static final class anidada>>
+        +crear() InterfazServiciosDisponibles
+        «return new Servicios()»
+    }
+
+    class LimitesDTO {
+        <<record · dto>>
+        +int maxConexiones
+        +int maxConexionesPorUsuario
+        +long maxTamanoArchivo
+    }
+
+    class InformeDTO {
+        <<record · dto>>
+        +String titulo
+        +List~String~ columnas
+        +List~List~String~~ filas
+        +nombreArchivoCsv() String
+    }
+
+    class InformeFiltroDTO {
+        <<record · dto>>
+        +String desde
+        +String hasta
+        +String codigo
+        +sinFiltro() InformeFiltroDTO$
+    }
+
+    class UsuarioInformeDTO {
+        <<record · dto>>
+        +String codigo
+        +String nombres
+        +String fechaRegistro
+        +boolean conectado
+        +conConectado(boolean) UsuarioInformeDTO
+    }
+
+    class ConexionInformeDTO {
+        <<record · dto>>
+        +String codigo
+        +long vecesConectado
+        +int sesionesVivas
+    }
+
+    class MensajeResumenDTO {
+        <<record · dto>>
+        +long id
+        +String remitente
+        +String etapasFiltrado
+    }
+
+    class AuditoriaInformeDTO {
+        <<record · dto>>
+        +long id
+        +String tipo
+        +String usuario
+    }
+
+    InterfazServiciosDisponibles <|.. Servicios
+    ProveedorServiciosDisponibles <|.. Proveedor
+    Servicios *-- Proveedor : «anidada»
+
+    InterfazServiciosDisponibles ..> LimitesDTO
+    InterfazServiciosDisponibles ..> InformeDTO
+    InterfazServiciosDisponibles ..> InformeFiltroDTO
+    InterfazServiciosDisponibles ..> UsuarioInformeDTO
+    InterfazServiciosDisponibles ..> ConexionInformeDTO
+    InterfazServiciosDisponibles ..> MensajeResumenDTO
+    InterfazServiciosDisponibles ..> AuditoriaInformeDTO
+
+    Servicios ..> MensajeResumenDTO : «detalleDe / etapasDe»
+    Servicios ..> InformeFiltroDTO : «filtrarPorCodigo»
+
+    note for Servicios "Es lógica pura: sin estado, sin I/O y sin Spring.\nUn 0 en un límite significa SIN LÍMITE (verificado en\nServiciosTest.rechazaPorUsuarioYPorTotal / ceroSignificaSinLimite).\nLos informes son genéricos sobre List<T> filtrada por código."

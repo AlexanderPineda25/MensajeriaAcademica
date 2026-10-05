@@ -1,0 +1,199 @@
+---
+title: "Módulo utilerias — tubería de filtros (patrón Chain of Responsibility)"
+---
+classDiagram
+    direction TB
+
+    class Filtro {
+        <<interface>>
+        +ejecutar(List~File~, ContextoTuberia) ResultadoFiltro
+        +nombre() String
+    }
+
+    class FiltroException {
+        <<exception>>
+        +FiltroException(String etapa, String mensaje)
+        +FiltroException(String etapa, String mensaje, Throwable causa)
+    }
+
+    class ResultadoFiltro {
+        <<record>>
+        +List~File~ archivos
+        +Metadatos metadatos
+    }
+
+    class Metadatos {
+        <<record anidado>>
+        +Map~String,String~ valores
+        +vacios() Metadatos$
+        +de(String, String) Metadatos$
+        +obtener(String) String
+        +fusionar(Metadatos) Metadatos
+    }
+
+    class ContextoTuberia {
+        <<record>>
+        +Path directorioTrabajo
+        +Consumer~EventoEtapa~ listener
+        +sinOyente(Path) ContextoTuberia$
+    }
+
+    class Tuberia {
+        <<final>>
+        -List~Filtro~ etapas
+        +agregar(Filtro) Tuberia «devuelve this»
+        +ejecutar(List~File~, ContextoTuberia) ResultadoTuberia
+        +numeroEtapas() int
+    }
+
+    class ResultadoTuberia {
+        <<record anidado en Tuberia>>
+        +List~File~ archivos
+        +Metadatos metadatos
+        +List~EventoEtapa~ traza
+    }
+
+    class InterfazTuberiaFactory {
+        <<interface>>
+        +texto() Tuberia
+        +imagen() Tuberia
+        +archivo() Tuberia
+    }
+
+    class TuberiaFactory {
+        <<final>>
+        -int giroGrados
+        -double brilloFactor
+        -double reduccionFactor
+        +TuberiaFactory() «180, 1.25, 0.5»
+        +TuberiaFactory(int, double, double)
+        +texto() Tuberia
+        +imagen() Tuberia
+        +archivo() Tuberia
+    }
+
+    class FiltroMain {
+        <<final>>
+        -static final Map~String,Function~ REGISTRO
+        -FiltroMain() «privado»
+        +main(String[]) void$
+        +crear(String) Filtro$
+        +ejecutarUna(String, File, Path) List~File~$
+    }
+
+    class FiltroVisualBase {
+        <<abstract sealed>>
+        -String archivo
+        #FiltroVisualBase(String)
+        #transformar(BufferedImage) BufferedImage
+        +ejecutar(List~File~, ContextoTuberia) ResultadoFiltro
+    }
+
+    class EscalaGrisesFiltro {
+        <<final>>
+        +EscalaGrisesFiltro() «01_grises.png»
+        #transformar(BufferedImage) BufferedImage
+        +nombre() String = EscalaGrises
+    }
+
+    class SepiaFiltro {
+        <<final>>
+        +SepiaFiltro() «02_sepia.png»
+        #transformar(BufferedImage) BufferedImage
+        +nombre() String = Sepia
+    }
+
+    class GiroFiltro {
+        <<final>>
+        -int grados
+        +GiroFiltro() «03_giro180.png, 180»
+        +GiroFiltro(int)
+        #transformar(BufferedImage) BufferedImage
+        +nombre() String = Giro + grados
+    }
+
+    class BrilloFiltro {
+        <<final>>
+        -double factor
+        +BrilloFiltro() «04_brillo.png, 1.25»
+        +BrilloFiltro(double)
+        #transformar(BufferedImage) BufferedImage
+        +nombre() String = Brillo
+    }
+
+    class ReduccionFiltro {
+        <<final>>
+        -double factor
+        +ReduccionFiltro() «05_reduccion.png, 0.5»
+        +ReduccionFiltro(double)
+        #transformar(BufferedImage) BufferedImage
+        +nombre() String = Reduccion
+    }
+
+    class Sha256Filtro {
+        <<final · utilerias.texto>>
+        +nombre() String = SHA256
+    }
+
+    class ContarCaracteresFiltro {
+        <<final · utilerias.texto>>
+        +nombre() String = ContarCaracteres
+    }
+
+    class ContarPalabrasFiltro {
+        <<final · utilerias.texto>>
+        +nombre() String = ContarPalabras
+    }
+
+    class Sha256ImagenFiltro {
+        <<final · utilerias.imagen>>
+        +nombre() String = SHA256
+        «implementa Filtro directo, NO FiltroVisualBase»
+    }
+
+    class Sha256ArchivoFiltro {
+        <<final · utilerias.archivo>>
+        +nombre() String = SHA256
+    }
+
+    class Imagenes {
+        <<final · clase de utilidad>>
+        -Imagenes() «privado»
+        +esImagenValida(byte[]) boolean$
+        +leer(Path) BufferedImage$
+        +escribir(BufferedImage, Path, String) Path$
+        +nuevaCopia(BufferedImage) BufferedImage$
+        +aGrises(BufferedImage) BufferedImage$
+        +aSepia(BufferedImage) BufferedImage$
+        +girar(BufferedImage, int) BufferedImage$
+        +ajustarBrillo(BufferedImage, double) BufferedImage$
+        +reducir(BufferedImage, double) BufferedImage$
+    }
+
+    Filtro <|.. FiltroVisualBase
+    Filtro <|.. Sha256Filtro
+    Filtro <|.. ContarCaracteresFiltro
+    Filtro <|.. ContarPalabrasFiltro
+    Filtro <|.. Sha256ImagenFiltro
+    Filtro <|.. Sha256ArchivoFiltro
+
+    FiltroVisualBase <|-- EscalaGrisesFiltro
+    FiltroVisualBase <|-- SepiaFiltro
+    FiltroVisualBase <|-- GiroFiltro
+    FiltroVisualBase <|-- BrilloFiltro
+    FiltroVisualBase <|-- ReduccionFiltro
+
+    Tuberia o-- Filtro : «agregar · secuencia»
+    Tuberia ..> ContextoTuberia
+    Tuberia ..> ResultadoTuberia
+    ResultadoTuberia *-- Metadatos
+    ResultadoFiltro *-- Metadatos
+    ContextoTuberia ..> EventoEtapa : «traza por etapa»
+    FiltroException --|> Exception
+
+    InterfazTuberiaFactory <|.. TuberiaFactory
+    TuberiaFactory ..> Tuberia : «texto / imagen / archivo»
+    TuberiaFactory ..> FiltroVisualBase : «solo imagen()»
+    FiltroMain ..> TuberiaFactory
+    FiltroMain ..> Filtro : «REGISTRO por nombre»
+    FiltroVisualBase ..> Imagenes

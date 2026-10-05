@@ -1,0 +1,41 @@
+---
+title: "Estados — ciclo de vida de un MENSAJE (cliente y servidor)"
+---
+%% Lo que NO existia: no habia ningun stateDiagram en el repo. El ciclo solo
+%% aparecia como 5 estados visuales en un mockup y como un CASE SQL escrito
+%% 3 veces (una por cliente). Esta es la maquina de estados canonica; las 3
+%% copias del CASE deben parecerse a ESTA.
+%% Origen: EstadoMensaje.java / enum EstadoMensaje / column estado de
+%% historial_local. Orden importante: la precedencia de las transiciones es
+%% lo que hace que las copias se puedan parecer.
+stateDiagram-v2
+    direction LR
+
+    [*] --> PENDIENTE : "el cliente lo guarda<br/>antes de enviar"
+
+    PENDIENTE --> ENVIADO : "ACK del servidor"
+    PENDIENTE --> ERROR : "timeout de 15 s<br/>o error explicito"
+    PENDIENTE --> PENDIENTE : "queda en cola por<br/>falta de red, se reintenta"
+
+    ENVIADO --> ENTREGADO : "el servidor lo<br/>tiene y lo entrega"
+    ENVIADO --> ERROR : "la entrega falla"
+
+    ENTREGADO --> LEIDO : "el receptor lo marca<br/>como leido"
+
+    ERROR --> PENDIENTE : "el usuario reintenta"
+    ERROR --> ENVIADO : "reenvio automatico<br/>tras reconectar"
+
+    LEIDO --> [*]
+    ENVIADO --> [*] : "el cliente cierra la app"
+
+    note right of PENDIENTE
+        PENDIENTE es el unico estado que
+        puede volver atras: por eso
+        Error -> Pendiente tiene sentido
+        y Error -> Enviado tambien.
+    end note
+
+    note left of LEIDO
+        LEIDO es terminal en el cliente.
+        No hay retroceder desde ahi.
+    end note

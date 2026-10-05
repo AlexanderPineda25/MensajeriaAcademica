@@ -1,0 +1,21 @@
+---
+title: "Flujo de inicio de sesión"
+---
+sequenceDiagram
+    actor U as Usuario
+    participant L as Login
+    participant F as FachadaCliente
+    participant S as Servidor
+
+    U ->> L: código + contraseña
+    L ->> F: login(codigo, clave)
+    F ->> S: LOGIN
+    alt credenciales OK
+        S -->> F: LOGIN_RESPUESTA (exito)
+        F -->> L: exito
+        L ->> L: abre Chat
+    else credenciales mal
+        S -->> F: LOGIN_RESPUESTA (error)
+        F -->> L: error
+        L -->> U: "datos incorrectos"
+    end

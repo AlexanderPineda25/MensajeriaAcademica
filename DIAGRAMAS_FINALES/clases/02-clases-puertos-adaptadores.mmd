@@ -1,0 +1,56 @@
+---
+title: "Puertos y adaptadores — qué expone cada uno (sin atributos)"
+---
+classDiagram
+    direction TB
+
+    class InterfazProtocoloComunicacion {
+        <<interface>>
+        +iniciar / detener
+        +enviar(sesion, mensaje)
+    }
+    class ProtocoloComunicacion {
+        +TCP + TLS doble puerto
+        +pool de hilos
+    }
+
+    class InterfazClienteServidor {
+        <<interface>>
+        +procesar(mensaje, sesion)
+    }
+    class Despachador {
+        +15 Command, 1 por tipo
+    }
+
+    class InterfazServiciosDisponibles {
+        <<interface>>
+        +puedeIniciarSesion(...)
+        +armarInforme* (4)
+    }
+    class Servicios {
+        +lógica pura, sin estado
+    }
+
+    class InterfazUsuariosDisponibles {
+        <<interface>>
+        +validarCredenciales(...)
+        +registrar / listar
+    }
+    class Usuarios {
+        +directorio en memoria
+    }
+
+    class InterfazGestorMensajes {
+        <<interface>>
+        +encolar / buscarPorId
+        +conversacion paginada
+    }
+    class GestorColasDeMensajes {
+        +cola + índice por id
+    }
+
+    InterfazProtocoloComunicacion <|.. ProtocoloComunicacion
+    InterfazClienteServidor <|.. Despachador
+    InterfazServiciosDisponibles <|.. Servicios
+    InterfazUsuariosDisponibles <|.. Usuarios
+    InterfazGestorMensajes <|.. GestorColasDeMensajes

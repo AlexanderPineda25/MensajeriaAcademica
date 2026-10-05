@@ -1,0 +1,45 @@
+---
+title: "Paquete base — contrato, codec y tubería de filtros"
+---
+classDiagram
+    direction TB
+
+    class Mensaje {
+        <<record>>
+        +29 campos
+        +builder() / de(...)
+    }
+    class TipoMensaje {
+        <<enumeration>>
+        +30 valores
+    }
+    class TramaCodec {
+        +codificar / decodificar
+        +escribir / leer
+        +aJson(...)
+    }
+
+    class Tuberia {
+        +agregar(filtro)
+        +ejecutar(...) 
+        +numeroEtapas()
+    }
+    class Filtro {
+        <<interface>>
+        +ejecutar(...) 
+        +nombre()
+    }
+    class FiltroVisualBase {
+        <<abstract sealed>>
+        +5 filtros visuales
+    }
+    class FiltrosTexto {
+        +Sha256 / ContarCaracteres
+        +ContarPalabras
+    }
+
+    Mensaje --> TipoMensaje
+    TramaCodec ..> Mensaje : serializa
+    Tuberia o-- Filtro : encadena
+    Filtro <|.. FiltroVisualBase
+    Filtro <|.. FiltrosTexto

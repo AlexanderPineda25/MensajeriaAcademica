@@ -1,0 +1,127 @@
+---
+title: "dto — el contrato de trama: Mensaje, su Builder y TipoMensaje"
+---
+classDiagram
+    direction LR
+
+    class Mensaje {
+        <<record · 29 componentes>>
+        +TipoMensaje tipo
+        +String id
+        +String fechaHora
+        +String codigo
+        +String contrasena
+        +String nombres
+        +String apellidos
+        +String programa
+        +String remitente
+        +String destinatario
+        +String contenido
+        +String hashSha256
+        +Integer numCaracteres
+        +Integer numPalabras
+        +String etapasFiltrado
+        +String nombreArchivo
+        +Long tamanoArchivo
+        +String archivoId
+        +String mime
+        +String contenidoImagen
+        +Integer pagina
+        +Integer totalPaginas
+        +Boolean exito
+        +String mensajeError
+        +String ipRemitente
+        +String ipDestinatario
+        +List~String~ usuariosConectados
+        +Integer totalPartes
+        +Integer indiceParte
+        +builder() Mensaje$
+        +de(TipoMensaje) Mensaje$
+    }
+
+    class MensajeBuilder {
+        <<static final class anidada>>
+        +tipo(TipoMensaje) MensajeBuilder
+        +id(String) MensajeBuilder
+        +fechaHora(String) MensajeBuilder
+        +codigo(String) MensajeBuilder
+        +contrasena(String) MensajeBuilder
+        +nombres(String) MensajeBuilder
+        +apellidos(String) MensajeBuilder
+        +programa(String) MensajeBuilder
+        +remitente(String) MensajeBuilder
+        +destinatario(String) MensajeBuilder
+        +contenido(String) MensajeBuilder
+        +hashSha256(String) MensajeBuilder
+        +numCaracteres(Integer) MensajeBuilder
+        +numPalabras(Integer) MensajeBuilder
+        +etapasFiltrado(String) MensajeBuilder
+        +nombreArchivo(String) MensajeBuilder
+        +tamanoArchivo(Long) MensajeBuilder
+        +archivoId(String) MensajeBuilder
+        +mime(String) MensajeBuilder
+        +contenidoImagen(String) MensajeBuilder
+        +pagina(Integer) MensajeBuilder
+        +totalPaginas(Integer) MensajeBuilder
+        +exito(Boolean) MensajeBuilder
+        +mensajeError(String) MensajeBuilder
+        +ipRemitente(String) MensajeBuilder
+        +ipDestinatario(String) MensajeBuilder
+        +usuariosConectados(List) MensajeBuilder
+        +totalPartes(Integer) MensajeBuilder
+        +indiceParte(Integer) MensajeBuilder
+        +build() Mensaje
+    }
+
+    class TipoMensaje {
+        <<enumeration · 30 valores>>
+        LOGIN
+        LOGIN_RESPUESTA
+        REGISTRO
+        REGISTRO_RESPUESTA
+        LOGOUT
+        CLOSE_NOTICE
+        KICK
+        MENSAJE_TEXTO
+        MENSAJE_IMAGEN
+        MENSAJE_ARCHIVO
+        ARCHIVO_INICIO
+        ARCHIVO_PARTE
+        ARCHIVO_FIN
+        IMAGE_FILTERED_RESULT
+        BROADCAST
+        MENSAJE_ENTREGADO
+        MENSAJE_LEIDO
+        PRESENCIA
+        LISTAR_CONECTADOS
+        LISTAR_CONECTADOS_RESPUESTA
+        LISTAR_USUARIOS
+        LISTAR_USUARIOS_RESPUENTA
+        HISTORIAL_REQ
+        HISTORIAL_PAGE
+        DESCARGAR_ARCHIVO
+        DESCARGAR_ARCHIVO_RESPUESTA
+        SYNC_LOGIN
+        ACK
+        ERROR
+    }
+
+    Mensaje *-- MensajeBuilder : «anidada static»
+    Mensaje --> TipoMensaje : «campo tipo»
+
+    note for Mensaje "Único tipo que cruza la red. Los tres lenguajes
+lo construyen y lo interpretan: Java con Mensaje.builder(),
+.NET y Python con su propio mapeo del mismo JSON.
+
+Por eso tiene 29 campos: uno por cosa que el protocolo
+puede transportar en una sola trama, en vez de usar un
+árbol de tipos versionado."
+
+    note for TipoMensaje "Es el discriminante de todo el sistema.
+Despachador indexa sus 15 Command por este valor, y
+cada Command.tipo() devuelve una constante que debe
+coincidir exactamente con un valor de aquí.
+
+Nota: dos valores están mal escritos en el fuente
+(ListAR_USUARIOS_RESPUENTA) y se replican tal cual
+en los tres lenguajes por compatibilidad."

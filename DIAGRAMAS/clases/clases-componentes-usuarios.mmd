@@ -1,0 +1,76 @@
+---
+title: "Componente usuarios — puerto int-usuarios-disponibles + adaptador comp-usuarios"
+---
+classDiagram
+    direction TB
+
+    class InterfazUsuariosDisponibles {
+        <<interface · puerto · int-usuarios>>
+        +validarCredenciales(String codigo, String contrasena, VerificadorCredenciales) Optional~UsuarioDTO~
+        +registrar(String codigo, String hashContrasena, String nombres, String apellidos, String programa) UsuarioDTO
+        +listar() List~UsuarioDTO~
+        +buscar(String codigo) Optional~UsuarioDTO~
+        +existe(String codigo) boolean
+        +sembrar(List~UsuarioDTO~) void
+    }
+
+    class VerificadorCredenciales {
+        <<interface anidada>>
+        +verificar(String plano, String hash) boolean
+        +cifrar(String plano) String
+    }
+
+    class ProveedorUsuariosDisponibles {
+        <<interface · SPI · int-usuarios>>
+        +crear() InterfazUsuariosDisponibles
+    }
+
+    class Usuarios {
+        <<final · adaptador · comp-usuarios>>
+        -ConcurrentHashMap~String,UsuarioDTO~ directorio
+        +validarCredenciales(String, String, VerificadorCredenciales) Optional~UsuarioDTO~
+        +registrar(String, String, String, String, String) UsuarioDTO
+        +listar() List~UsuarioDTO~
+        +buscar(String codigo) Optional~UsuarioDTO~
+        +existe(String codigo) boolean
+        +sembrar(List~UsuarioDTO~) void
+    }
+
+    class Proveedor {
+        <<static final class anidada>>
+        +crear() InterfazUsuariosDisponibles
+        «return new Usuarios()»
+    }
+
+    class UsuarioDTO {
+        <<record · dto>>
+        +String codigo
+        +String nombres
+        +String apellidos
+        +String programa
+        +String hashContrasena
+        +boolean activo
+    }
+
+    class UsuarioYaExisteException {
+        <<exception · dto>>
+        +UsuarioYaExisteException(String codigo)
+    }
+
+    class UsuarioNoEncontradoException {
+        <<exception · dto>>
+        +UsuarioNoEncontradoException(String codigo)
+    }
+
+    InterfazUsuariosDisponibles *-- VerificadorCredenciales : «anidada»
+    InterfazUsuariosDisponibles <|.. Usuarios
+    ProveedorUsuariosDisponibles <|.. Proveedor
+
+    Proveedor *-- Usuarios : «anidada en Usuarios»
+    Usuarios --> UsuarioDTO : «directorio en memoria»
+    Usuarios ..> VerificadorCredenciales : «la usa, no la implementa»
+    Usuarios ..> UsuarioYaExisteException : «lanza en registrar()»
+    InterfazUsuariosDisponibles ..> UsuarioDTO
+
+    note for Usuarios "El directorio es un ConcurrentHashMap EN MEMORIA.\nLa persistencia de usuarios (tabla usuarios) la hace\nservidor-app, no este componente. Por eso este módulo\nsolo depende de int-usuarios-disponibles y dto."
+    note for VerificadorCredenciales "La implementación vive en servidor-app\n(PasswordConfig). El componente la recibe como parámetro\nen validarCredenciales: no conoce el algoritmo de hashing."

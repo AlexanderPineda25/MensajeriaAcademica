@@ -1,0 +1,19 @@
+# Artefactos de runtime (Fases 3-5): nunca se versionan.
+uploads/
+work/
+logs/
+target/
+bin/
+obj/
+__pycache__/
+.venv/
+*.db
+*.log
+# Secretos y material criptografico: nunca se versionan (politica de secretos).
+*.p12
+*.pfx
+*.jks
+config/keystore.p12
+.env.prod
+# Salidas de distribucion local (DIST-02): se regeneran con los scripts.
+dist/

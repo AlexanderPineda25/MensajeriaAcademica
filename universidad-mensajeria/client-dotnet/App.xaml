@@ -1,0 +1,29 @@
+<Application x:Class="Mensajeria.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+            </ResourceDictionary.MergedDictionaries>
+            <SolidColorBrush x:Key="AppSurfaceBrush" Color="#FF0E1621" />
+            <SolidColorBrush x:Key="AppTextBrush" Color="#FFE8EEF2" />
+            <SolidColorBrush x:Key="TelegramOwnBrush" Color="#FF7B61B8" />
+            <SolidColorBrush x:Key="TelegramOwnBorderBrush" Color="#FF6A4FA3" />
+            <SolidColorBrush x:Key="TelegramInBrush" Color="#FF182533" />
+            <SolidColorBrush x:Key="TelegramInBorderBrush" Color="#FF2A3B4D" />
+            <SolidColorBrush x:Key="TelegramBgBrush" Color="#FF0E1621" />
+            <SolidColorBrush x:Key="TelegramPanelBrush" Color="#FF182533" />
+            <SolidColorBrush x:Key="TelegramAccentBrush" Color="#FFA78BFA" />
+            <SolidColorBrush x:Key="TelegramMutedBrush" Color="#FFA8B8C1" />
+            <SolidColorBrush x:Key="TelegramReadBrush" Color="#FF5EB1FF" />
+            <Style TargetType="{x:Type Window}">
+                <Setter Property="FontFamily" Value="Segoe UI" />
+                <Setter Property="Background" Value="{StaticResource AppSurfaceBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

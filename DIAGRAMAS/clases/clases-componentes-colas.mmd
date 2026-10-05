@@ -1,0 +1,65 @@
+---
+title: "Componente colas — gestor de mensajes (int-gestor-mensajes + comp-gestor-colas)"
+---
+classDiagram
+    direction TB
+
+    class InterfazGestorMensajes {
+        <<interface · puerto · int-gestor-mensajes>>
+        +encolar(Mensaje) void
+        +buscarPorId(String id) Optional~Mensaje~
+        +conversacion(String origen, String destino, int pagina, int tamano) List~Mensaje~
+        +tamano() int
+        +limpiar() void
+        +registrarConsumidor(ConsumidorDeMensajes) void
+    }
+
+    class ConsumidorDeMensajes {
+        <<interface · callbacks>>
+        +procesar(Mensaje) void
+    }
+
+    class ProveedorGestorMensajes {
+        <<interface · SPI · int-gestor-mensajes>>
+        +crear() InterfazGestorMensajes
+    }
+
+    class GestorColasDeMensajes {
+        <<final · adaptador · comp-gestor-colas>>
+        -LinkedBlockingQueue~Mensaje~ colaProcesamiento
+        -ConcurrentHashMap~String,Mensaje~ indice
+        -CopyOnWriteArrayList~ConsumidorDeMensajes~ consumidores
+        +encolar(Mensaje) void
+        +buscarPorId(String id) Optional~Mensaje~
+        +conversacion(String, String, int, int) List~Mensaje~
+        +tamano() int
+        +limpiar() void
+        +registrarConsumidor(ConsumidorDeMensajes) void
+        -esDe(Mensaje, String, String) boolean$
+    }
+
+    class Proveedor {
+        <<static final class anidada>>
+        +crear() InterfazGestorMensajes
+        «return new GestorColasDeMensajes()»
+    }
+
+    class Mensaje {
+        <<record · dto>>
+        +TipoMensaje tipo
+        +String id
+        +String remitente
+        +String destinatario
+        +String contenido
+    }
+
+    InterfazGestorMensajes <|.. GestorColasDeMensajes
+    ProveedorGestorMensajes <|.. Proveedor
+    GestorColasDeMensajes *-- Proveedor : «anidada»
+
+    InterfazGestorMensajes o-- ConsumidorDeMensajes : «registrarConsumidor»
+    GestorColasDeMensajes o-- ConsumidorDeMensajes : «notifica a todos»
+    GestorColasDeMensajes --> Mensaje : «cola + indice»
+    InterfazGestorMensajes ..> Mensaje
+
+    note for GestorColasDeMensajes "Doble estructura: LinkedBlockingQueue para el\norden de procesamiento y ConcurrentHashMap por id\npara buscarPorId. Si el mensaje no trae id, se genera\nun UUID (verificado en GestorColasTest.sinIdGeneraUuid).\nCopyOnWriteArrayList porque los consumidores se registran\nuna vez al inicio pero se recorren en cada encolar()."

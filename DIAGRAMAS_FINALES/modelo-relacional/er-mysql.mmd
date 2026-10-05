@@ -1,0 +1,94 @@
+---
+title: "MySQL 8"
+---
+erDiagram
+    USUARIOS {
+        BIGINT id PK "AUTO_INCREMENT"
+        VARCHAR-20 codigo UK "NOT NULL"
+        VARCHAR-100 nombres "NOT NULL"
+        VARCHAR-100 apellidos "NOT NULL"
+        VARCHAR-120 password_hash "NOT NULL"
+        VARCHAR-120 programa_academico "NOT NULL"
+        VARCHAR-20 estado "NOT NULL DEFAULT PENDIENTE"
+        BOOLEAN conectado "NOT NULL DEFAULT FALSE"
+        DATETIME fecha_ultima_conexion "NULL"
+        DATETIME fecha_registro "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        BOOLEAN activo "NOT NULL DEFAULT TRUE"
+    }
+    SESIONES_ACTIVAS {
+        BIGINT id PK "AUTO_INCREMENT"
+        BIGINT usuario_id FK "NOT NULL, CASCADE"
+        VARCHAR-255 token UK "NOT NULL"
+        VARCHAR-45 ip "NOT NULL"
+        DATETIME inicio "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        DATETIME ultima_actividad "nullable"
+        BOOLEAN activa "NOT NULL DEFAULT TRUE"
+        VARCHAR-50 aplicacion "nullable"
+        VARCHAR-30 version_app "nullable"
+    }
+    CONEXIONES {
+        BIGINT id PK "AUTO_INCREMENT"
+        BIGINT usuario_id FK "NOT NULL, CASCADE"
+        VARCHAR-45 direccion_ip "NOT NULL"
+        DATETIME hora_conexion "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        DATETIME hora_desconexion "nullable"
+        INT mensajes_sesion "NOT NULL DEFAULT 0"
+        BOOLEAN activa "NOT NULL DEFAULT TRUE"
+        VARCHAR-120 sistema_operativo "nullable"
+        VARCHAR-120 dispositivo "nullable"
+        BIGINT sesion_id FK "SET NULL, nullable"
+    }
+    ARCHIVOS {
+        BIGINT id PK "AUTO_INCREMENT"
+        VARCHAR-255 nombre "NOT NULL"
+        VARCHAR-767 ruta UK "NOT NULL"
+        BIGINT tamano "NOT NULL DEFAULT 0"
+        VARCHAR-30 tipo "NOT NULL"
+        VARCHAR-255 mime "nullable"
+        CHAR-64 hash_sha256 "NOT NULL"
+        BIGINT propietario_id FK "NOT NULL, CASCADE"
+        DATETIME fecha_subida "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+    }
+    MENSAJES {
+        BIGINT id PK "AUTO_INCREMENT"
+        BIGINT remitente_id FK "NOT NULL, CASCADE"
+        BIGINT destinatario_id FK "NOT NULL, CASCADE"
+        VARCHAR-20 tipo "NOT NULL"
+        TEXT contenido "nullable"
+        CHAR-64 hash_sha256 "nullable"
+        INT num_caracteres "nullable"
+        INT num_palabras "nullable"
+        TEXT etapas_filtrado "nullable"
+        DATETIME fecha_envio "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        VARCHAR-45 ip_remitente "nullable"
+        VARCHAR-45 ip_destinatario "nullable"
+        BIGINT archivo_id FK "SET NULL, nullable"
+    }
+    REGISTRO_ACCIONES {
+        BIGINT id PK "AUTO_INCREMENT"
+        VARCHAR-30 tipo "NOT NULL"
+        BIGINT usuario_id FK "SET NULL, nullable"
+        TEXT descripcion "NOT NULL"
+        DATETIME fecha "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        VARCHAR-45 ip "nullable"
+        TEXT detalles "nullable"
+    }
+    CONFIGURACION_LIMITES {
+        BIGINT id PK "AUTO_INCREMENT"
+        INT max_conexiones_usuario "NOT NULL DEFAULT 3"
+        INT max_conexiones_totales "NOT NULL DEFAULT 100"
+        INT max_archivos_usuario "NOT NULL DEFAULT 100"
+        BIGINT max_tamano_archivo "V1 10485760, V2 52428800"
+        INT max_archivos_dia "NOT NULL DEFAULT 20"
+        BOOLEAN activa UK "NOT NULL, singleton"
+        DATETIME fecha_actualizacion "NOT NULL DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    USUARIOS ||--o{ SESIONES_ACTIVAS : "usuario_id CASCADE"
+    USUARIOS ||--o{ CONEXIONES : "usuario_id CASCADE"
+    USUARIOS ||--o{ ARCHIVOS : "propietario_id CASCADE"
+    USUARIOS ||--o{ MENSAJES : "remitente_id CASCADE"
+    USUARIOS ||--o{ MENSAJES : "destinatario_id CASCADE"
+    USUARIOS ||--o{ REGISTRO_ACCIONES : "usuario_id SET NULL"
+    ARCHIVOS ||--o{ MENSAJES : "archivo_id SET NULL"
+    SESIONES_ACTIVAS ||--o{ CONEXIONES : "sesion_id SET NULL"

@@ -1,0 +1,308 @@
+.root {
+    -fx-font-family: "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #0E1621;
+}
+
+.messenger-root, .split-pane {
+    -fx-background-color: #0E1621;
+    -fx-padding: 0;
+}
+
+.split-pane-divider {
+    -fx-padding: 0 0.5 0 0.5;
+    -fx-background-color: #2A3B4D;
+}
+
+.sidebar {
+    -fx-background-color: #182533;
+    -fx-spacing: 11px;
+    -fx-min-width: 280px;
+}
+
+.conversation-pane {
+    -fx-background-color: #0E1621;
+    -fx-spacing: 0;
+}
+
+.sidebar-heading, .conversation-header {
+    -fx-padding: 10px 12px;
+    -fx-background-color: #182533;
+    -fx-border-color: transparent transparent #2A3B4D transparent;
+}
+
+.sidebar-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #E8EEF2;
+}
+
+.session-label, .conversation-presence, .status-label, .message-time {
+    -fx-text-fill: #A8B8C1;
+    -fx-font-size: 11px;
+}
+
+.conversation-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #E8EEF2;
+}
+
+.search-field, .filter-select, .message-input {
+    -fx-background-color: #243447;
+    -fx-background-radius: 5px;
+    -fx-border-color: transparent;
+    -fx-text-fill: #E8EEF2;
+    -fx-prompt-text-fill: #7A8A99;
+}
+
+.search-field:focused, .message-input:focused {
+    -fx-background-color: #243447;
+    -fx-border-color: #7B61B8;
+    -fx-border-radius: 5px;
+}
+
+.chat-list, .message-list {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+.chat-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 1px 5px;
+}
+
+.chat-list .list-cell:filled:selected {
+    -fx-background-color: #243447;
+    -fx-background-radius: 5px;
+}
+
+.chat-list-row {
+    -fx-padding: 9px 7px;
+    -fx-min-height: 56px;
+}
+
+.presence-avatar {
+    -fx-background-color: #243447;
+    -fx-background-radius: 19px;
+}
+
+.chat-list-name {
+    -fx-font-weight: 700;
+    -fx-text-fill: #E8EEF2;
+}
+
+.chat-list-preview {
+    -fx-text-fill: #A8B8C1;
+    -fx-font-size: 11px;
+}
+
+.unread-badge {
+    -fx-background-color: #48a982;
+    -fx-background-radius: 12px;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-padding: 3px 6px;
+}
+
+.sidebar-actions {
+    -fx-padding: 8px 0 0 0;
+    -fx-border-color: #2A3B4D transparent transparent transparent;
+}
+
+.message-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.message-list .list-cell:filled:selected {
+    -fx-background-color: transparent;
+}
+
+.chat-message-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.message-bubble {
+    -fx-background-radius: 8px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 4, 0.12, 0, 1);
+}
+
+.message-in {
+    -fx-background-color: #182533;
+    -fx-border-color: #2A3B4D;
+    -fx-border-radius: 8px;
+}
+
+.message-out {
+    -fx-background-color: #7B61B8;
+    -fx-border-color: #6A4FA3;
+    -fx-border-radius: 8px;
+}
+
+.message-sender {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #C4B5FD;
+}
+
+.message-text {
+    -fx-text-fill: #E8EEF2;
+    -fx-font-size: 13px;
+}
+
+.message-out .message-text {
+    -fx-text-fill: #FFFFFF;
+}
+
+.message-quote {
+    -fx-text-fill: #C4B5FD;
+    -fx-font-size: 12px;
+    -fx-font-style: italic;
+    -fx-background-color: #243447;
+    -fx-background-radius: 4px;
+    -fx-border-color: #A78BFA;
+    -fx-border-width: 0 0 0 3px;
+    -fx-padding: 4px 4px 4px 8px;
+}
+
+.image-caption {
+    -fx-text-fill: #A8B8C1;
+    -fx-font-size: 11px;
+}
+
+.message-out .image-caption {
+    -fx-text-fill: #E8EEF2;
+}
+
+.image-placeholder {
+    -fx-alignment: center;
+    -fx-min-width: 260px;
+    -fx-min-height: 110px;
+    -fx-background-color: #243447;
+    -fx-background-radius: 4px;
+    -fx-text-fill: #A8B8C1;
+    -fx-cursor: hand;
+}
+
+.message-footer {
+    -fx-padding: 2px 0 0 0;
+}
+
+.message-tick {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.message-read {
+    -fx-text-fill: #5EB1FF;
+}
+
+.message-unread {
+    -fx-text-fill: #A8B8C1;
+}
+
+.message-out .message-time {
+    -fx-text-fill: #C4B5FD;
+}
+
+.reply-button, .icon-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #A8B8C1;
+    -fx-font-size: 15px;
+    -fx-padding: 3px 7px;
+    -fx-background-radius: 5px;
+    -fx-cursor: hand;
+}
+
+.reply-button:hover, .icon-button:hover {
+    -fx-background-color: #243447;
+}
+
+.composer-area {
+    -fx-padding: 9px 14px 8px 14px;
+    -fx-spacing: 7px;
+    -fx-background-color: #182533;
+    -fx-border-color: #2A3B4D transparent transparent transparent;
+}
+
+.composer-row {
+    -fx-spacing: 9px;
+}
+
+.message-input {
+    -fx-padding: 8px;
+    -fx-pref-height: 58px;
+    -fx-max-height: 100px;
+}
+
+.send-button {
+    -fx-background-color: #7B61B8;
+    -fx-background-radius: 5px;
+    -fx-text-fill: white;
+    -fx-font-weight: 700;
+    -fx-padding: 9px 15px;
+    -fx-cursor: hand;
+}
+
+.send-button:hover { -fx-background-color: #6A4FA3; }
+.send-button:disabled { -fx-opacity: 0.48; }
+
+.quiet-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4px;
+    -fx-text-fill: #A8B8C1;
+    -fx-padding: 6px 8px;
+    -fx-cursor: hand;
+}
+
+.quiet-button:hover { -fx-background-color: #243447; }
+
+.composer-footer { -fx-padding: 0 2px; }
+
+.reply-preview, .attachment-preview {
+    -fx-padding: 7px 9px;
+    -fx-background-color: #243447;
+    -fx-background-radius: 4px;
+    -fx-border-color: transparent transparent transparent #A78BFA;
+    -fx-border-width: 0 0 0 3px;
+}
+
+.reply-heading {
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #C4B5FD;
+}
+
+.reply-text, .attachment-name {
+    -fx-text-fill: #E8EEF2;
+    -fx-font-size: 11px;
+}
+
+.status-label { -fx-padding: 2px 0; }
+
+.offline-banner {
+    -fx-background-color: #FFFBEB;
+    -fx-border-color: #F2CE84;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-text-fill: #B45309;
+    -fx-font-weight: 700;
+    -fx-padding: 9px 12px;
+}
+
+.broadcast-pill {
+    -fx-background-color: #DCE8FF;
+    -fx-background-radius: 12px;
+    -fx-text-fill: #2456A6;
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-padding: 3px 8px;
+}
+
+.sidebar-title {
+    -fx-text-fill: #E8EEF2;
+}

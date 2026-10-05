@@ -1,0 +1,40 @@
+# Normalizacion de finales de linea. Sin esto, el `core.autocrlf` de cada
+# maquina produce un diff entero en el primer checkout de cada persona.
+* text=auto
+
+# Scripts de Windows: OBLIGATORIO CRLF. Con LF, `distribuir-servidor.cmd`,
+# `dist-client.cmd`, `distribuir.cmd` y `launch-client.cmd` fallan al ejecutarse.
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Java, Python, C#, SQL, XML, JSON, properties, Markdown: LF en el repo.
+*.java    text eol=lf
+*.py      text eol=lf
+*.cs      text eol=lf
+*.sql     text eol=lf
+*.xml     text eol=lf
+*.fxml    text eol=lf
+*.xaml    text eol=lf
+*.css     text eol=lf
+*.md      text eol=lf
+*.mmd     text eol=lf
+*.csv     text eol=lf
+*.properties text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Los drivers de JavaFX son binarios: renombrarlos rompe el module path del
+# cliente JavaFX, y `launch-client.cmd` deja de arrancar la ventana.
+*.jar    binary
+*.p12    binary
+*.pfx    binary
+*.jks    binary
+
+# Render de diagramas: binario. No sirven los .gitattributes de texto.
+*.png    binary
+*.svg    text eol=lf
+*.pdf    binary
+*.excalidraw text eol=lf

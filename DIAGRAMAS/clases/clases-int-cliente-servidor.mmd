@@ -1,0 +1,102 @@
+---
+title: "int-cliente-servidor — puerto de aplicación y jerarquía de salidas"
+---
+classDiagram
+    direction TB
+
+    class InterfazClienteServidor {
+        <<interface · puerto>>
+        +procesar(Mensaje, IdSesion) void
+        +registrarSalida(SalidaClienteServidor) void
+    }
+
+    class SalidaClienteServidor {
+        <<interface · marcadora>>
+        «sin métodos propios»
+        «contiene 4 sub-interfaces + FachadaSalida»
+    }
+
+    class SalidaAutenticacion {
+        <<interface anidada>>
+        +autenticar(IdSesion, String codigo, String contrasena, String idSolicitud) void
+        +cerrar(IdSesion, String idSolicitud) void
+        +expulsarOtrasSesiones(IdSesion, String codigo, String idSolicitud) void
+    }
+
+    class SalidaMensajeria {
+        <<interface anidada>>
+        +recibirTexto(IdSesion, String destinatario, String contenido, String idSolicitud, String ip) void
+        +recibirImagen(IdSesion, String destinatario, String nombreArchivo, String mime, String base64, String idSolicitud, String ip) void
+        +recibirArchivo(IdSesion, String destinatario, String nombreArchivo, String mime, String base64, String idSolicitud, String ip) void
+        +iniciarArchivo(IdSesion, String destinatario, String nombreArchivo, String mime, long tamanoTotal, int totalPartes, String idSolicitud, String ip) void
+        +parteArchivo(IdSesion, String idTransferencia, int indiceParte, String base64, String idSolicitud, String ip) void
+        +finalizarArchivo(IdSesion, String idTransferencia, String hashSha256, String idSolicitud, String ip) void
+        +difundir(IdSesion, String contenido, String idSolicitud, String ip) void
+        +historial(IdSesion, String otro, int pagina, String idSolicitud) void
+        +descargar(IdSesion, String archivoId, String idSolicitud) void
+        +notificarLectura(IdSesion, String destinatario, String idOriginal, String idSolicitud) void «default»
+    }
+
+    class SalidaConsultas {
+        <<interface anidada>>
+        +listarConectados(IdSesion, String idSolicitud) void
+        +listarUsuarios(IdSesion, String idSolicitud) void
+    }
+
+    class SalidaRespuestas {
+        <<interface anidada>>
+        +responder(IdSesion, Mensaje) void
+        +error(IdSesion, String idSolicitud, TipoMensaje, String motivo) void
+    }
+
+    class FachadaSalida {
+        <<interface anidada>>
+        «agrega las 4 sub-interfaces»
+    }
+
+    class ProveedorClienteServidor {
+        <<interface · SPI>>
+        +crear() InterfazClienteServidor
+        +crear(FachadaSalida) InterfazClienteServidor «default»
+    }
+
+    class Mensaje {
+        <<record · dto>>
+        +TipoMensaje tipo
+        +String contenido
+    }
+
+    class IdSesion {
+        <<record · dto>>
+        +String id
+        +String codigo
+    }
+
+    class TipoMensaje {
+        <<enumeration · dto>>
+        LOGIN
+        ERROR
+        ...
+    }
+
+    SalidaClienteServidor <|-- SalidaAutenticacion
+    SalidaClienteServidor <|-- SalidaMensajeria
+    SalidaClienteServidor <|-- SalidaConsultas
+    SalidaClienteServidor <|-- SalidaRespuestas
+    FachadaSalida <|-- SalidaClienteServidor
+    FachadaSalida <|-- SalidaAutenticacion
+    FachadaSalida <|-- SalidaMensajeria
+    FachadaSalida <|-- SalidaConsultas
+    FachadaSalida <|-- SalidaRespuestas
+
+    InterfazClienteServidor ..> SalidaClienteServidor : «registrarSalida»
+    ProveedorClienteServidor ..> InterfazClienteServidor : «produce»
+    ProveedorClienteServidor ..> FachadaSalida
+    SalidaMensajeria ..> Mensaje
+    SalidaRespuestas ..> Mensaje
+    SalidaRespuestas ..> TipoMensaje
+    InterfazClienteServidor ..> Mensaje
+    InterfazClienteServidor ..> IdSesion
+
+    note for SalidaClienteServidor "El servidor NUNCA depende de SalidaClienteServidor:\nla implementación real vive en servidor-app/Fachada y se\ninyecta calling registrarSalida(). Esta es la flecha que\ninvierte la dependencia del hexagono."
+    note for FachadaSalida "Es una interfaz que solo agrega otras interfaces.\nservidor-app la implementa una sola vez; los comandos\nreciben la sub-interfaz que necesitan."

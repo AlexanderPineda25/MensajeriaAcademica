@@ -1,0 +1,257 @@
+---
+title: "Clases — cliente .NET (WPF) — no existia"
+---
+%% Lo que NO existia: no habia classDiagram del cliente .NET. Solo aparecia
+%% como una caja de 5 nodos dentro de DIAGRAMAS_FINALES/clases/04.
+%% Notese la ausencia de capa de puertos: a diferencia de Java, .NET NO tiene
+%% modulo de interfaces separado. Solo FachadaCliente tiene IFachadaCliente.
+%% Correspondencia: client-dotnet/*.cs
+classDiagram
+    direction TB
+
+    %% ---------- composicion ----------
+    class App {
+        -OnStartup()
+        -OnExit()
+    }
+    class Temas.Tema {
+        +Leer()$
+        +Guardar(modo)$
+        +Aplicar(app)$
+    }
+
+    %% ---------- presentacion ----------
+    class LoginWindow {
+        -CargarServidor()
+        -BtnEntrar_Click(sender, e)
+        -OnClosing(e)$
+        -CmbTema_SelectionChanged(sel)$
+    }
+    class ChatWindow {
+        -FachadaCliente _fachada
+        -ObservableCollection~UsuarioVM~ _usuarios
+        -ObservableCollection~MensajeVM~ _mensajes
+        -SemaphoreSlim _cargaImagen$
+        -CargarUsuarios()$
+        -AplicarFiltro(texto)$
+        -CargarHistorial()$
+        -CargarHistorialRemoto()$
+        -BtnAnteriores_Click(sender, e)$
+        -Fachada_OnMensajeRecibido(m)$
+        -Fachada_OnPresencia(m)$
+        -Fachada_OnCierre(aviso)$
+        -Fachada_OnDesconectado()
+        -AbrirImagenGrande(m)$
+        -BtnAdjuntar_Click(sender, e)$
+        -ZonaEnvio_Drop(sender, e)$
+        -Descargar(m)$
+        -BtnSalir_Click(sender, e)$
+        +RutaArchivo
+    }
+    class MensajeVM {
+        <<INotifyPropertyChanged>>
+        -Imagen$
+        -EstadoImagen$
+        -Cargando$
+        -Solicitada$
+        +MostrarReintentar$
+        +OnPropertyChanged(prop)$
+    }
+    class UsuarioVM {
+        <<POCO, SIN notificar>>
+        -Etiqueta
+        -Codigo
+        -Presencia
+    }
+
+    %% ---------- fachada ----------
+    class IFachadaCliente {
+        <<interface>>
+        +CodigoActual$
+        +Conectado$
+        +Pendientes$
+        +LoginAsync(codigo, clave)$
+        +Desconectar()
+        +EnviarTextoAsync(dest, texto)$
+        +EnviarImagenAsync(dest, ruta)$
+        +EnviarArchivoAsync(dest, ruta)$
+        +DifundirAsync(contenido)$
+        +CargarUsuariosAsync()
+        +CargarHistorialAsync(otro, pag)$
+        +DescargarImagenAsync(id)$
+        +MarcarLeidosAsync(otro)$
+        +ExpulsarOtrasSesionesAsync()$
+        +Logout()
+        +event OnMensajeRecibido$
+        +event OnCierre$
+        +event OnPresencia$
+        +event OnDesconectado$
+        +event OnProgreso$
+    }
+    class FachadaCliente {
+        -IFachadaCliente components
+        -IHistorialLocal _historial$
+        -ICacheUsuarios _cache$
+        -IConexionRed _conexion$
+        -IAutenticacion _auth$
+        -LocalStore _store$
+        -ClienteProperties _props$
+        -CargarPropiedades()$
+        -LogonAsync(codigo, clave)$
+        -ReintentarPendientes()$
+    }
+
+    %% ---------- componentes ----------
+    class IConexionRed {
+        <<interface>>
+        +enviar(m)$
+        +enviar_async(m)$
+        +recibir()$
+        +conectar(host, puerto)$
+        +event OnMensajeRecibido$
+        +event OnCierre$
+        +event OnDesconectado$
+        -ValidarCertificado$
+    }
+    class ConexionRed {
+        -SslStream _ssl$
+        -TcpClient _tcp$
+        +enviar(m)$
+        +recibir()$
+        -EscucharAsync(token)$
+    }
+    class IHistorialLocal {
+        <<interface>>
+        +guardar(m)$
+        +conversacion(yo, otro, pag)$
+        +contar(yo, otro)$
+        +marcar_leidos(yo, otro)$
+        +pendientes()$
+        +borrar_pendiente(id)$
+    }
+    class HistorialLocal {
+        -LocalStore _store$
+        +guardar(m)$
+        +conversacion(yo, otro, pag)$
+        -upsert(m)$
+    }
+    class ICacheUsuarios {
+        <<interface>>
+        +listar()$
+        +upsert(u)$
+        +conectados(codigos)$
+    }
+    class CacheUsuarios {
+        -LocalStore _store$
+    }
+    class IAutenticacion {
+        <<interface>>
+        +validar(codigo, clave)$
+    }
+    class Autenticacion {
+        +validar(codigo, clave)$
+    }
+    class LocalStore {
+        -SqliteConnection _cn$
+        +DbPath$
+        -Inicializar()$
+        -MigrarLegadoACuenta(cta)$
+        -AsegurarColumnas()$
+        -fallbackSchema$
+    }
+    class TramaCodec {
+        <<static>>
+        +Escribir(stream, m)$
+        +Leer(stream)$
+    }
+    class TipoMensaje {
+        <<const>>
+        LOGIN
+        LOGIN_RESPUESTA
+        MENSAJE_TEXTO
+        MENSAJE_IMAGEN
+        ARCHIVO_INICIO
+        ARCHIVO_PARTE
+        ARCHIVO_FIN
+        HISTORIAL
+        DESCARGAR_ARCHIVO
+        MENSAJE_LEIDO
+        MENSAJE_ENTREGADO
+        PRESENCIA
+        ERROR
+        ACK
+    }
+
+    %% ---------- relaciones ----------
+    App --> Tema
+    App --> FachadaCliente : construye el grafo
+    App --> LoginWindow
+
+    ChatWindow o-- MensajeVM : ObservableCollection
+    ChatWindow o-- UsuarioVM : ObservableCollection
+    ChatWindow --> FachadaCliente : IFachadaCliente
+
+    FachadaCliente ..|> IFachadaCliente
+    FachadaCliente --> IConexionRed
+    FachadaCliente --> IHistorialLocal
+    FachadaCliente --> ICacheUsuarios
+    FachadaCliente --> IAutenticacion
+
+    ConexionRed ..|> IConexionRed
+    HistorialLocal ..|> IHistorialLocal
+    CacheUsuarios ..|> ICacheUsuarios
+    Autenticacion ..|> IAutenticacion
+
+    ConexionRed --> TramaCodec
+    HistorialLocal --> LocalStore
+    CacheUsuarios --> LocalStore
+    Autenticacion --> LocalStore
+
+    class Themes.TemaOscuro {
+        <<ResourceDictionary>>
+    }
+    class Themes.TemaClaro {
+        <<ResourceDictionary>>
+    }
+    Tema ..> Themes.TemaOscuro : ThemeIndex
+    Tema ..> Themes.TemaClaro : ThemeIndex
+
+    note for MensajeVM
+        UNICO ViewModel real de los 3
+        clientes: notifica cambios.
+    end note
+
+    note for UsuarioVM
+        POCO SIN INotifyPropertyChanged.
+        Por eso el filtro hace Clear() y
+        re-Add() en cada tecla.
+        Arreglo previsto: UIX-02 / PAT-VM.
+    end note
+
+    note for FachadaCliente
+        Dos constructores: sin args
+        (el que usa App) y con inyeccion
+        (el que solo usan los tests).
+        El grafo se arma DENTRO de
+        ConectarAsync. Arreglo: PAT-01.
+    end note
+
+    note for LocalStore
+        fallbackSchema (3a copia del DDL)
+        es inalcanzable: el .sql se copia
+        por el csproj. Ademas hay dos
+        migradores para lo mismo.
+    end note
+
+    note for IConexionRed
+        OnDesconectado existe y se
+        invoca, pero NINGUNA vista se
+        suscribe: la perdida de conexion
+        es invisible. Arreglo: UIX-00a.
+    end note
+
+    note for TipoMensaje
+        REGISTRO, REGISTRO_RESPUESTA y
+        LISTAR_USUARIOS_RESPUESTA son
+        constantes muertas (MUERT-29).
+    end note

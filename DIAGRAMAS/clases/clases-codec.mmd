@@ -1,0 +1,53 @@
+---
+title: "Módulo codec — serialización de tramas sobre Gson"
+---
+classDiagram
+    direction LR
+
+    class TramaCodec {
+        <<final · clase de utilidad>>
+        -static final int TAMANO_MAXIMO_TRAMA
+        +static final int TAMANO_MAXIMO_TRAMA = 16777216
+        -static final Gson GSON
+        -TramaCodec() «constructor privado»
+        +codificar(Mensaje) byte[]
+        +decodificar(byte[]) Mensaje
+        +escribir(OutputStream, Mensaje) void
+        +leer(InputStream) Mensaje
+        +aJson(Mensaje) String
+        -aMensaje(String) Mensaje
+    }
+
+    class CodecException {
+        <<exception>>
+        +CodecException(String mensaje)
+        +CodecException(String mensaje, Throwable causa)
+    }
+
+    class Mensaje {
+        <<record · 29 componentes>>
+        +TipoMensaje tipo
+        +String id
+        +String contenido
+        ...
+    }
+
+    class TipoMensaje {
+        <<enumeration · 30 valores>>
+        LOGIN
+        MENSAJE_TEXTO
+        ARCHIVO_INICIO
+        ERROR
+        ...
+    }
+
+    class DataInputStream
+    class DataOutputStream
+
+    TramaCodec ..> Mensaje : «serializa con Gson»
+    TramaCodec ..> TipoMensaje : «incluido en el record»
+    TramaCodec ..> DataOutputStream : «writeInt + writeUTF»
+    TramaCodec ..> DataInputStream : «readInt + readUTF»
+    CodecException --|> RuntimeException
+
+    note for TramaCodec "TAMANO_MAXIMO_TRAMA = 16 MiB. Both operations throw CodecException when the frame exceeds it."

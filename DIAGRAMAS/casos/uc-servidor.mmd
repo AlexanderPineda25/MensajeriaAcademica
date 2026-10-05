@@ -1,0 +1,92 @@
+---
+title: "Casos de uso — SERVIDOR (actor Administrador)"
+---
+%% Diagrama de casos de uso del lado servidor. El actor principal NO es el
+%% usuario final: es el ADMINISTRADOR, que opera la consola y la vista de
+%% escritorio. El usuario final solo aparece como actor secundario.
+%% Origen de los casos: REQUERIMIENTOS.md 3.1/3.2/3.6/3.7/3.8 (RF-S01..RF-S49).
+%% Correspondencia: VistaConsola.java / VistaEscritorio.java / Fabrica.java.
+usecaseDiagram
+    actor A as Administrador
+    actor U as Usuario conectado
+
+    rectangle "Servidor — arranque" {
+        usecase (US-01) Arrancar el sistema y abrir el puerto TCP
+        usecase (US-02) Montar el grafo de componentes y el pool
+        usecase (US-03) Cargar el archivo plano de usuarios
+        usecase (US-04) Ejecutar migraciones del esquema
+    }
+
+    rectangle "Servidor — operación" {
+        usecase (US-10) Transmitir un mensaje entre usuarios
+        usecase (US-11) Difundir un mensaje a toda la comunidad
+        usecase (US-12) Cerrar las conexiones de un usuario
+        usecase (US-13) Expulsar las otras sesiones del usuario
+        usecase (US-14) Procesar texto: hash, caracteres, palabras
+        usecase (US-15) Procesar imagen: hash y 5 filtros encadenados
+        usecase (US-16) Perseguir un mensaje por destino
+        usecase (US-17) Registrar auditoría de cada evento
+    }
+
+    rectangle "Servidor — informes" {
+        usecase (US-20) Informe de usuarios registrados
+        usecase (US-21) Informe de accesos y sesiones vivas
+        usecase (US-22) Informe de mensajes enviados con detalle
+        usecase (US-23) Informe de logs generados
+        usecase (US-24) Exportar informe a CSV
+    }
+
+    rectangle "Servidor — supervisión" {
+        usecase (US-30) Ver el estado del pool de trabajadores
+        usecase (US-31) Ver la consola de eventos en vivo
+        usecase (US-32) Cerrar una sesión por inactividad
+        usecase (US-33) Rechazar por saturación del pool
+        usecase (US-34) Rotar los secretos de producción
+    }
+
+    A -- (US-01)
+    US-01 ..> US-02
+    US-01 ..> US-03
+    US-01 ..> US-04
+    US-02 ..> US-30 : el pool se expone en la vista
+
+    A -- (US-11)
+    US-11 ..> US-17 : cada entrega genera su auditoría
+    A -- (US-12)
+    US-12 ..> US-13 : "cerrar todas = cerrar las otras sesiones"
+
+    A -- (US-20)
+    A -- (US-21)
+    A -- (US-22)
+    A -- (US-23)
+    US-24 ..> US-22 : exporta el informe visible
+    US-24 ..> US-21
+    US-24 ..> US-20
+
+    A -- (US-30)
+    A -- (US-31)
+    A -- (US-34)
+
+    U -- (US-10)
+    US-10 ..> US-14 : "texto"
+    US-10 ..> US-15 : "imagen"
+    US-10 ..> US-16 : "notifica a todas sus sesiones"
+    US-10 ..> US-17
+
+    US-14 ..> US-17
+    US-15 ..> US-17
+    US-16 ..> US-21 : alimenta el informe de conexiones
+
+    note "Ver NOTA 1 al pie" as N1
+        El administrador es el UNICO
+        actor que difunde a todos.
+        Los clientes no tienen caso
+        de difusión (PROD por decidir).
+    end note
+
+    note "Ver NOTA 2 al pie" as N2
+        U nunca accede a la base de
+        datos: solo al puerto TCP.
+        El alta de usuarios no existe
+        por red (RF-S27).
+    end note

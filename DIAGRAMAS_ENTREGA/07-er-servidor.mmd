@@ -1,0 +1,101 @@
+---
+title: "Modelo relacional del servidor — 7 tablas"
+---
+erDiagram
+    USUARIOS {
+        Entero id PK
+        Texto codigo UK
+        Texto nombres
+        Texto apellidos
+        Texto password_hash
+        Texto programa_academico
+        Texto estado
+        Verdad conectado
+        Fecha fecha_ultima_conexion
+        Fecha fecha_registro
+        Verdad activo
+    }
+    SESIONES_ACTIVAS {
+        Entero id PK
+        Entero usuario_id FK
+        Texto token UK
+        Texto ip
+        Fecha inicio
+        Fecha ultima_actividad
+        Verdad activa
+        Texto aplicacion
+        Texto version_app
+    }
+    CONEXIONES {
+        Entero id PK
+        Entero usuario_id FK
+        Texto direccion_ip
+        Fecha hora_conexion
+        Fecha hora_desconexion
+        Entero mensajes_sesion
+        Verdad activa
+        Texto sistema_operativo
+        Texto dispositivo
+        Entero sesion_id FK
+    }
+    ARCHIVOS {
+        Entero id PK
+        Texto nombre
+        Texto ruta UK
+        Entero tamano
+        Texto tipo
+        Texto mime
+        Texto hash_sha256
+        Entero propietario_id FK
+        Fecha fecha_subida
+    }
+    MENSAJES {
+        Entero id PK
+        Entero remitente_id FK
+        Entero destinatario_id FK
+        Texto tipo
+        Texto contenido
+        Texto hash_sha256
+        Entero num_caracteres
+        Entero num_palabras
+        Texto etapas_filtrado
+        Fecha fecha_envio
+        Texto ip_remitente
+        Texto ip_destinatario
+        Entero archivo_id FK
+    }
+    REGISTRO_ACCIONES {
+        Entero id PK
+        Texto tipo
+        Entero usuario_id FK
+        Texto descripcion
+        Fecha fecha
+        Texto ip
+        Texto detalles
+    }
+    CONFIGURACION_LIMITES {
+        Entero id PK
+        Entero max_conexiones_usuario
+        Entero max_conexiones_totales
+        Entero max_archivos_usuario
+        Entero max_tamano_archivo
+        Entero max_archivos_dia
+        Verdad activa UK
+        Fecha fecha_actualizacion
+    }
+
+    USUARIOS ||--o{ SESIONES_ACTIVAS : "abre sesion"
+    USUARIOS ||--o{ CONEXIONES : "se conecta"
+    USUARIOS ||--o{ ARCHIVOS : "propietario"
+    USUARIOS ||--o{ MENSAJES : "remite"
+    USUARIOS ||--o{ MENSAJES : "recibe"
+    USUARIOS ||--o{ REGISTRO_ACCIONES : "audita"
+    ARCHIVOS ||--o{ MENSAJES : "adjunto"
+    SESIONES_ACTIVAS ||--o{ CONEXIONES : "origen"
+
+    %% Mismo modelo logico en MySQL, Oracle y Postgres (el DDL cambia
+    %% por motor: NUMBER/VARCHAR2/CLOB en Oracle, BIGINT/BOOLEAN/TEXT
+    %% en Postgres, BIGINT/BOOLEAN/TEXT/DATETIME en MySQL).
+    %% Oracle NO crea: idx_sesion_activa, idx_conexion_activa,
+    %% idx_archivo_propietario, idx_mensaje_dest, idx_accion_tipo.
+    %% V2 sube max_tamano_archivo a 52428800 (50 MB).

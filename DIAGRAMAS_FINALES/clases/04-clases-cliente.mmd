@@ -1,0 +1,47 @@
+---
+title: "Componentes del cliente — misma forma en Java, .NET y Python"
+---
+flowchart LR
+
+    subgraph JAVA["Java"]
+        direction TB
+        JUI["Presentación\nLogin + Chat JavaFX"]
+        JFAC["FachadaCliente"]
+        JIF["Puertos\nConexionRed · Autenticacion\nHistorialLocal · CacheUsuarios"]
+        JIMPL["ConexionCliente\nAutenticacion\nHistorialLocal · CacheUsuarios"]
+        JST["LocalStore (H2)"]
+        JUI --> JFAC
+        JFAC --> JIF
+        JIF -.->|"implementa"| JIMPL
+        JIMPL --> JST
+    end
+
+    subgraph NET[".NET"]
+        direction TB
+        NUI["Views\nLoginWindow + ChatWindow"]
+        NFAC["FachadaCliente"]
+        NIF["I ConexionRed · I Autenticacion\nI HistorialLocal · I CacheUsuarios"]
+        NIMPL["ConexionRed · Autenticacion\nHistorialLocal · CacheUsuarios"]
+        NST["LocalStore (SQLite)"]
+        NUI --> NFAC
+        NFAC --> NIF
+        NIF -.->|"implementa"| NIMPL
+        NIMPL --> NST
+    end
+
+    subgraph PY["Python"]
+        direction TB
+        PUI["ui\nlogin_window + chat_window"]
+        PFAC["fachada_cliente"]
+        PCOMP["autenticacion\nconexion_red · historial_local"]
+        PST["store (SQLite)"]
+        PUI --> PFAC
+        PFAC --> PCOMP
+        PCOMP --> PST
+    end
+
+    DTO["Contrato común\nMensaje + TipoMensaje\n(TramaCodec / codec / protocolo)"]
+
+    JIMPL -.-> DTO
+    NIMPL -.-> DTO
+    PCOMP -.-> DTO

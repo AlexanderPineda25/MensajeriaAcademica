@@ -1,0 +1,50 @@
+---
+title: "Servidor por componentes — qué hace cada uno"
+---
+classDiagram
+    direction TB
+
+    class Protocolo {
+        <<int + comp>>
+        +iniciar / detener
+        +enviar(sesion, mensaje)
+    }
+
+    class Despachador {
+        <<comp>>
+        +procesar(mensaje, sesion)
+        +15 Command por tipo
+    }
+
+    class Fachada {
+        <<servidor-app>>
+        +orquesta casos de uso
+        +difusión con pool acotado
+    }
+
+    class Usuarios {
+        +validar / registrar
+        +listar / buscar
+    }
+
+    class Servicios {
+        +límites y validaciones
+        +arma los 4 informes
+    }
+
+    class Colas {
+        +encolar / buscar
+        +conversación paginada
+    }
+
+    class Filtros {
+        +tubería texto/imagen/archivo
+        +hash + conteos + visuales
+    }
+
+    Protocolo --> Despachador : entrega tramas
+    Despachador --> Fachada : invoca salidas
+    Fachada --> Usuarios
+    Fachada --> Servicios
+    Fachada --> Colas
+    Fachada --> Filtros : vía Mensajes
