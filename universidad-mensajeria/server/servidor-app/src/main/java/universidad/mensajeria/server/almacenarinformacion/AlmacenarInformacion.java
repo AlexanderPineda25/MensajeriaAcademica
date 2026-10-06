@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import universidad.mensajeria.common.interno.ArchivoDTO;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.ArchivoGuardarDTO;
 import universidad.mensajeria.common.interno.AuditoriaInformeDTO;
 import universidad.mensajeria.common.interno.FechasUsuarioDTO;
@@ -48,8 +49,8 @@ public class AlmacenarInformacion implements InterfazAlmacenarInformacion {
 
     public AlmacenarInformacion(PersistenciaPort persistencia, Path trabajoBase, Path uploadDir) {
         this.persistencia = persistencia;
-        this.trabajoBase = trabajoBase;
-        this.uploadDir = uploadDir;
+        this.trabajoBase = trabajoBase.toAbsolutePath().normalize();
+        this.uploadDir = uploadDir.toAbsolutePath().normalize();
     }
 
     // ---- usuarios ----
@@ -91,9 +92,25 @@ public class AlmacenarInformacion implements InterfazAlmacenarInformacion {
     @Override
     public long guardarMensajeTexto(String remitente, String destinatario, String contenido,
                                     String hash, int caracteres, int palabras, String ip) {
+        return guardarMensajeTexto(remitente, destinatario, contenido, hash, caracteres,
+                palabras, ip, null);
+    }
+
+    @Override
+    public long guardarMensajeTexto(String remitente, String destinatario, String contenido,
+                                    String hash, int caracteres, int palabras, String ip,
+                                    String idCliente) {
+        return guardarMensajeTexto(remitente, destinatario, contenido, hash, caracteres,
+                palabras, ip, null, idCliente);
+    }
+
+    @Override
+    public long guardarMensajeTexto(String remitente, String destinatario, String contenido,
+                                    String hash, int caracteres, int palabras, String ip,
+                                    String ipDestinatario, String idCliente) {
         MensajeResumenDTO guardado = persistencia.guardarMensaje(new MensajeGuardarDTO(
                 remitente, destinatario, "TEXTO", contenido, hash, caracteres, palabras,
-                null, null, ip));
+                null, null, ip, ipDestinatario, idCliente));
         return guardado.id();
     }
 
@@ -101,11 +118,28 @@ public class AlmacenarInformacion implements InterfazAlmacenarInformacion {
     public long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
                                      String rutaRelativa, long tamano, String tipo, String mime,
                                      String hash, String etapasJson, String ip) {
+        return guardarMensajeImagen(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, etapasJson, ip, null);
+    }
+
+    @Override
+    public long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
+                                     String rutaRelativa, long tamano, String tipo, String mime,
+                                     String hash, String etapasJson, String ip, String idCliente) {
+        return guardarMensajeImagen(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, etapasJson, ip, null, idCliente);
+    }
+
+    @Override
+    public long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
+                                     String rutaRelativa, long tamano, String tipo, String mime,
+                                     String hash, String etapasJson, String ip,
+                                     String ipDestinatario, String idCliente) {
         ArchivoDTO archivo = registrarImagen(nombreArchivo, rutaRelativa, tamano, mime,
                 hash, remitente);
         MensajeResumenDTO guardado = persistencia.guardarMensaje(new MensajeGuardarDTO(
                 remitente, destinatario, "IMAGEN", null, hash, null, null,
-                archivo.id(), etapasJson, ip));
+                archivo.id(), etapasJson, ip, ipDestinatario, idCliente));
         return guardado.id();
     }
 
@@ -113,11 +147,28 @@ public class AlmacenarInformacion implements InterfazAlmacenarInformacion {
     public long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
                                       String rutaRelativa, long tamano, String tipo, String mime,
                                       String hash, String ip) {
+        return guardarMensajeArchivo(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, ip, null);
+    }
+
+    @Override
+    public long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
+                                      String rutaRelativa, long tamano, String tipo, String mime,
+                                      String hash, String ip, String idCliente) {
+        return guardarMensajeArchivo(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, ip, null, idCliente);
+    }
+
+    @Override
+    public long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
+                                      String rutaRelativa, long tamano, String tipo, String mime,
+                                      String hash, String ip,
+                                      String ipDestinatario, String idCliente) {
         ArchivoDTO archivo = registrarArchivo(nombreArchivo, rutaRelativa, tamano, tipo, mime,
                 hash, remitente);
         MensajeResumenDTO guardado = persistencia.guardarMensaje(new MensajeGuardarDTO(
                 remitente, destinatario, "ARCHIVO", null, hash, null, null,
-                archivo.id(), null, ip));
+                archivo.id(), null, ip, ipDestinatario, idCliente));
         return guardado.id();
     }
 
@@ -210,6 +261,17 @@ public class AlmacenarInformacion implements InterfazAlmacenarInformacion {
     @Override
     public List<MensajeResumenDTO> historicoMensajes(InformeFiltroDTO filtro) {
         return persistencia.historicoMensajes(filtro);
+    }
+
+    @Override
+    public PaginaDTO<MensajeResumenDTO> paginaMensajesDeUsuario(String codigo,
+            boolean soloArchivos, int pagina, int tamano) {
+        return persistencia.paginaMensajesDeUsuario(codigo, soloArchivos, pagina, tamano);
+    }
+
+    @Override
+    public ActividadUsuarioDTO actividadUsuario(String codigo) {
+        return persistencia.actividadUsuario(codigo);
     }
 
     @Override

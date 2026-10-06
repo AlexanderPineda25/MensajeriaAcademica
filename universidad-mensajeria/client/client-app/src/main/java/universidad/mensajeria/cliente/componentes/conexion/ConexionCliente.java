@@ -3,6 +3,8 @@ package universidad.mensajeria.cliente.componentes.conexion;
 import universidad.mensajeria.common.codec.TramaCodec;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
+import universidad.mensajeria.cliente.transversal.records.TipoMensajeCliente;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -39,6 +41,15 @@ public final class ConexionCliente implements InterfazConexionRed {
     private volatile Socket socket;
     private volatile ReceptorMensajes receptor;
     private volatile Thread lector;
+    /**
+     * PAT-03: generación de la conexión. El hilo lector solo avisa de una caída
+     * si sigue siendo el dueño del socket: si reconectamos mientras el lector
+     * viejo terminates su `finally`, su aviso dejaría el estado en SIN_RED con la
+     * red ya en pie (banner parpadeando). `desconectar()` incrementa la
+     * generación, así que un cierre voluntario tampoco se reporta como caída.
+     */
+    private final java.util.concurrent.atomic.AtomicLong generacion =
+            new java.util.concurrent.atomic.AtomicLong();
 
     public ConexionCliente(String host, int puerto) {
         this(host, puerto, false, 5001, "");
@@ -61,7 +72,8 @@ public final class ConexionCliente implements InterfazConexionRed {
         }
         socket = tlsHabilitado ? socketTls() : new Socket(host, puerto);
         socket.setTcpNoDelay(true);
-        lector = new Thread(this::bucleLectura, "cliente-lector");
+        long mia = generacion.incrementAndGet();
+        lector = new Thread(() -> bucleLectura(mia), "cliente-lector");
         lector.setDaemon(true);
         lector.start();
     }
@@ -100,6 +112,8 @@ public final class ConexionCliente implements InterfazConexionRed {
 
     @Override
     public synchronized void desconectar() {
+        // Invalida al lector vivo: su `finally` ya no debe reportar una caída.
+        generacion.incrementAndGet();
         pendientes.forEach((id, futuro) ->
                 futuro.completeExceptionally(new EOFException("conexion cerrada")));
         pendientes.clear();
@@ -125,98 +139,98 @@ public final class ConexionCliente implements InterfazConexionRed {
     }
 
     @Override
-    public Mensaje login(String codigo, String contrasena) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.LOGIN)
-                .codigo(codigo).contrasena(contrasena).build());
+    public RespuestaRed login(String codigo, String contrasena) throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.LOGIN)
+                .codigo(codigo).contrasena(contrasena).build()));
     }
 
     @Override
-    public Mensaje enviarTexto(String remitente, String destinatario, String contenido)
+    public RespuestaRed enviarTexto(String remitente, String destinatario, String contenido)
             throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO)
-                .remitente(remitente).destinatario(destinatario).contenido(contenido).build());
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO)
+                .remitente(remitente).destinatario(destinatario).contenido(contenido).build()));
     }
 
     @Override
-    public Mensaje enviarTexto(String id, String remitente, String destinatario, String contenido)
+    public RespuestaRed enviarTexto(String id, String remitente, String destinatario, String contenido)
             throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id(id)
-                .remitente(remitente).destinatario(destinatario).contenido(contenido).build());
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id(id)
+                .remitente(remitente).destinatario(destinatario).contenido(contenido).build()));
     }
 
     @Override
-    public Mensaje enviarImagen(String remitente, String destinatario, String nombreArchivo,
+    public RespuestaRed enviarImagen(String remitente, String destinatario, String nombreArchivo,
                                 String mime, String contenidoBase64) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_IMAGEN)
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_IMAGEN)
                 .remitente(remitente).destinatario(destinatario).nombreArchivo(nombreArchivo)
-                .mime(mime).contenidoImagen(contenidoBase64).build());
+                .mime(mime).contenidoImagen(contenidoBase64).build()));
     }
 
     @Override
-    public Mensaje enviarImagen(String id, String remitente, String destinatario,
+    public RespuestaRed enviarImagen(String id, String remitente, String destinatario,
                                 String nombreArchivo, String mime, String contenidoBase64)
             throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_IMAGEN).id(id)
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_IMAGEN).id(id)
                 .remitente(remitente).destinatario(destinatario).nombreArchivo(nombreArchivo)
-                .mime(mime).contenidoImagen(contenidoBase64).build());
+                .mime(mime).contenidoImagen(contenidoBase64).build()));
     }
 
     @Override
-    public Mensaje enviarArchivo(String remitente, String destinatario, String nombreArchivo,
+    public RespuestaRed enviarArchivo(String remitente, String destinatario, String nombreArchivo,
                                  String mime, String contenidoBase64) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_ARCHIVO)
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_ARCHIVO)
                 .remitente(remitente).destinatario(destinatario).nombreArchivo(nombreArchivo)
-                .mime(mime).contenidoImagen(contenidoBase64).build());
+                .mime(mime).contenidoImagen(contenidoBase64).build()));
     }
 
     @Override
-    public Mensaje enviarArchivo(String id, String remitente, String destinatario,
+    public RespuestaRed enviarArchivo(String id, String remitente, String destinatario,
                                  String nombreArchivo, String mime, String contenidoBase64)
             throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_ARCHIVO).id(id)
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_ARCHIVO).id(id)
                 .remitente(remitente).destinatario(destinatario).nombreArchivo(nombreArchivo)
-                .mime(mime).contenidoImagen(contenidoBase64).build());
+                .mime(mime).contenidoImagen(contenidoBase64).build()));
     }
 
     @Override
-    public Mensaje difundir(String remitente, String contenido) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.BROADCAST)
-                .remitente(remitente).contenido(contenido).build());
+    public RespuestaRed difundir(String remitente, String contenido) throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.BROADCAST)
+                .remitente(remitente).contenido(contenido).build()));
     }
 
     @Override
-    public Mensaje difundir(String id, String remitente, String contenido) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.BROADCAST).id(id)
-                .remitente(remitente).contenido(contenido).build());
+    public RespuestaRed difundir(String id, String remitente, String contenido) throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.BROADCAST).id(id)
+                .remitente(remitente).contenido(contenido).build()));
     }
 
     @Override
-    public Mensaje listarConectados() throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.LISTAR_CONECTADOS).build());
+    public RespuestaRed listarConectados() throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.LISTAR_CONECTADOS).build()));
     }
 
     @Override
-    public Mensaje expulsar(String codigo) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.KICK).codigo(codigo).build());
+    public RespuestaRed expulsar(String codigo) throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.KICK).codigo(codigo).build()));
     }
 
     // FASE 6
 
     @Override
-    public Mensaje solicitarHistorial(String remitente, String destinatario, int pagina)
+    public RespuestaRed solicitarHistorial(String remitente, String destinatario, int pagina)
             throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.HISTORIAL_REQ)
-                .remitente(remitente).destinatario(destinatario).pagina(pagina).build());
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.HISTORIAL_REQ)
+                .remitente(remitente).destinatario(destinatario).pagina(pagina).build()));
     }
 
     @Override
-    public Mensaje descargarArchivo(String archivoId) throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.DESCARGAR_ARCHIVO)
-                .archivoId(archivoId).build());
+    public RespuestaRed descargarArchivo(String archivoId) throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.DESCARGAR_ARCHIVO)
+                .archivoId(archivoId).build()));
     }
 
     @Override
-    public Mensaje enviarLectura(String lector, String autor, String idOriginal) throws IOException {
+    public RespuestaRed enviarLectura(String lector, String autor, String idOriginal) throws IOException {
         Socket actual = socket;
         if (actual == null || actual.isClosed()) {
             throw new EOFException("sin conexion con el servidor");
@@ -228,12 +242,12 @@ public final class ConexionCliente implements InterfazConexionRed {
         synchronized (candadoSalida) {
             TramaCodec.escribir(actual.getOutputStream(), aviso);
         }
-        return Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build();
+        return adaptar(Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build());
     }
 
     @Override
-    public Mensaje listarUsuarios() throws IOException {
-        return pedir(Mensaje.builder().tipo(TipoMensaje.LISTAR_USUARIOS).build());
+    public RespuestaRed listarUsuarios() throws IOException {
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.LISTAR_USUARIOS).build()));
     }
 
     @Override
@@ -256,6 +270,7 @@ public final class ConexionCliente implements InterfazConexionRed {
         if (actual == null || actual.isClosed()) {
             throw new EOFException("sin conexion con el servidor");
         }
+
         String id = solicitud.id() != null ? solicitud.id() : UUID.randomUUID().toString();
         Mensaje conId = clonarConId(solicitud, id);
         CompletableFuture<Mensaje> futuro = new CompletableFuture<>();
@@ -277,7 +292,19 @@ public final class ConexionCliente implements InterfazConexionRed {
         }
     }
 
-    private void bucleLectura() {
+    private static RespuestaRed adaptar(Mensaje mensaje) {
+        return new RespuestaRed(TipoMensajeCliente.valueOf(mensaje.tipo().name()),
+                mensaje.id(), mensaje.fechaHora(), mensaje.codigo(), mensaje.nombres(),
+                mensaje.apellidos(), mensaje.programa(), mensaje.remitente(),
+                mensaje.destinatario(), mensaje.contenido(), mensaje.hashSha256(),
+                mensaje.numCaracteres(), mensaje.numPalabras(), mensaje.etapasFiltrado(),
+                mensaje.nombreArchivo(), mensaje.tamanoArchivo(), mensaje.archivoId(),
+                mensaje.mime(), mensaje.contenidoImagen(), mensaje.pagina(),
+                mensaje.totalPaginas(), mensaje.exito(), mensaje.mensajeError(),
+                mensaje.usuariosConectados(), mensaje.tipoOriginal());
+    }
+
+    private void bucleLectura(long mia) {
         Socket actual = socket;
         try {
             while (actual != null && !actual.isClosed()) {
@@ -287,6 +314,11 @@ public final class ConexionCliente implements InterfazConexionRed {
         } catch (IOException fin) {
             // corte de red o cierre: fallar pendientes y avisar una vez
         } finally {
+            // PAT-03: solo el lector vigente reporta. Si reconectamos o
+            // cerramos a proposito mientras este terminaba, su aviso es obsoleto.
+            if (mia != generacion.get()) {
+                return;
+            }
             pendientes.forEach((id, futuro) ->
                     futuro.completeExceptionally(new EOFException("conexion cerrada")));
             pendientes.clear();
@@ -301,7 +333,7 @@ public final class ConexionCliente implements InterfazConexionRed {
         if (trama.tipo() == TipoMensaje.CLOSE_NOTICE) {
             ReceptorMensajes obs = receptor;
             if (obs != null) {
-                obs.alCierre(trama);
+                obs.alCierre(adaptar(trama));
             }
             return;
         }
@@ -321,7 +353,8 @@ public final class ConexionCliente implements InterfazConexionRed {
                  IMAGE_FILTERED_RESULT, HISTORIAL_PAGE,
                  DESCARGAR_ARCHIVO_RESPUESTA, MENSAJE_ENTREGADO,
                  MENSAJE_LEIDO, PRESENCIA,
-                 LISTAR_USUARIOS_RESPUESTA, LISTAR_CONECTADOS_RESPUESTA -> obs.alRecibir(trama);
+                 LISTAR_USUARIOS_RESPUESTA, LISTAR_CONECTADOS_RESPUESTA ->
+                       obs.alRecibir(adaptar(trama));
             case ERROR -> obs.alError(trama.mensajeError());
             default -> obs.alError("trama inesperada: " + trama.tipo());
         }

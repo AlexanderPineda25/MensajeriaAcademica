@@ -36,7 +36,8 @@ public record Mensaje(
         String ipDestinatario,
         List<String> usuariosConectados,
         Integer totalPartes,
-        Integer indiceParte
+        Integer indiceParte,
+        String tipoOriginal
 ) {
 
     public static Builder builder() {
@@ -78,6 +79,7 @@ public record Mensaje(
         private List<String> usuariosConectados;
         private Integer totalPartes;
         private Integer indiceParte;
+        private String tipoOriginal;
 
         public Builder tipo(TipoMensaje v) { this.tipo = v; return this; }
         public Builder id(String v) { this.id = v; return this; }
@@ -108,13 +110,14 @@ public record Mensaje(
         public Builder usuariosConectados(List<String> v) { this.usuariosConectados = v; return this; }
         public Builder totalPartes(Integer v) { this.totalPartes = v; return this; }
         public Builder indiceParte(Integer v) { this.indiceParte = v; return this; }
+        public Builder tipoOriginal(String v) { this.tipoOriginal = v; return this; }
 
         public Mensaje build() {
             return new Mensaje(tipo, id, fechaHora, codigo, contrasena, nombres, apellidos,
                     programa, remitente, destinatario, contenido, hashSha256, numCaracteres,
                     numPalabras, etapasFiltrado, nombreArchivo, tamanoArchivo, archivoId, mime,
                     contenidoImagen, pagina, totalPaginas, exito, mensajeError, ipRemitente,
-                    ipDestinatario, usuariosConectados, totalPartes, indiceParte);
+                    ipDestinatario, usuariosConectados, totalPartes, indiceParte, tipoOriginal);
         }
     }
 }

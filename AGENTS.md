@@ -20,17 +20,20 @@ big-endian con la longitud del contenido, seguido de JSON UTF-8**.
 ClienteServidor-main/
 ├── AGENTS.md                 ← estás aquí
 ├── INSTALACION.md            ← qué instalar (JDK 21+, Maven, Docker, Python, .NET)
+├── AUTOMATIZACION_ENTORNO.md ← preparar JDK/Maven de usuario en Windows sin elevar permisos
 ├── REQUERIMIENTOS.md         ← QUÉ debe hacer (RF-*, RNF-*, PD-*)
 ├── PLAN.md                   ← CÓMO está construido y por qué
-├── ESTADO_ROADMAP.md         ← qué falta (manda hacia adelante)
+├── ESTADO_ROADMAP.md         ← estado y pendientes vigentes
+├── REVISION_DOCUMENTAL.md    ← propuestas de conservación/fusión/retiro; no borra archivos
 ├── ANALISIS_TECNICO.md       ← auditoría con evidencia archivo:línea
 ├── PLAN_PATRONES_UI.md       ← plan de refactor de clientes
+├── PLAN_ARQUITECTURA_CLIENTE_JAVA.md ← estado y pendientes de arquitectura JavaFX
 ├── GUIA_ACEPTACION.md        ← cómo se comprueba
 ├── DESPLIEGUE.md             ← operar / instalar / respaldar
 │
-├── DIAGRAMAS/                ← 18 .mmd de clases/ER + 4 .mmd nuevos + mockups
-├── DIAGRAMAS_ENTREGA/        ← ⚠ duplicados, plan de consolidación pendiente
-├── DIAGRAMAS_FINALES/        ← ⚠ duplicados, contiene material único por migrar
+├── DIAGRAMAS/                ← fuentes/renderes canónicos de diagramas y mockups
+├── DIAGRAMAS_ENTREGA/        ← legado aún conservado; revisar antes de retirar
+├── DIAGRAMAS_FINALES/        ← legado aún conservado; revisar antes de retirar
 │
 └── universidad-mensajeria/   ← EL MONOREPOS (solo aquí se compila)
     ├── pom.xml               ← reactor Maven padre, java.version=21
@@ -48,7 +51,7 @@ ClienteServidor-main/
     │   └── servidor-app/     ←   ÚNICO módulo con Spring. Despliegable.
     │
     ├── client/               ← CLIENTE JAVA (el "principal")
-    │   ├── client-interfaces/←   4 puertos + records
+    │   ├── client-interfaces/←   puertos de login/chat, adjuntos, eventos y mapeo + records; fachada agregada conservada
     │   └── client-app/       ←   adaptadores + FachadaCliente + JavaFX (FXML+CSS)
     │
     ├── client-python/        ← CLIENTE ESPEJO (PySide6 + qfluentwidgets, SQLite)
@@ -65,8 +68,8 @@ no usar nadie.
 
 | Proceso | Entry point | UI | BD local |
 |---|---|---|---|
-| **Servidor** | `server/servidor-app/src/main/java/.../ServerApplication.java` | JLine (consola) + JavaFX (escritorio admin) | — (MySQL/Postgres/Oracle) |
-| **Cliente JavaFX** | `client/client-app/.../ClienteMain.java` | JavaFX 25 + AtlantaFX (FXML + CSS) | H2 por cuenta |
+| **Servidor** | `server/servidor-app/src/main/java/.../ServerApplication.java` | JLine + JavaFX (consola y escritorio admin) | MySQL/Postgres/Oracle |
+| **Cliente JavaFX** | `client/client-app/.../ClienteMain.java` | JavaFX 22.0.2 + AtlantaFX 2.1.0 (FXML + CSS) | H2 por cuenta |
 | **Cliente Python** | `client-python/main.py` | PySide6 + PySide6-Fluent-Widgets | SQLite por cuenta |
 | **Cliente WPF** | `client-dotnet/App.xaml.cs` | WPF .NET 8 + WPF-UI | SQLite por cuenta |
 
@@ -105,8 +108,12 @@ dotnet test client-dotnet.Tests\Mensajeria.Tests.csproj    # requiere SDK 10
 dotnet build client-dotnet/Mensajera.csproj -c Release
 ```
 
-Volumen verificado el 2026-10-05: servidor **90** tests, JavaFX **58**, Python **60** (+5 omitidas),
-.NET **35**.
+Evidencia consultada el 2026-10-06 (sin ejecutar suites durante esta revisión documental): los
+reportes Surefire existentes registran 94 casos de `servidor-app` (2 fallos de umbrales de
+rendimiento en `CargaMixtaTest`), 79 JavaFX, 48 adaptadores, 11 utilerías y 7 de protocolo. El
+último resultado registrado en el trabajo UIX-15 fue .NET 71/71 y build Release sin warnings ni
+errores. El último total Python anotado en el roadmap es 100; ejecutar de nuevo antes de una
+entrega. WPF apunta a `net8.0-windows`; sus pruebas a `net10.0`.
 
 ### Generar las 4 distribuciones (esto es lo que se instala en cada PC)
 
@@ -162,23 +169,24 @@ toolkit. Está desarrollado en `PLAN_PATRONES_UI.md` §2.1 (reglas B1–B6).
 
 Lista exacta con conteo de referencias en `ANALISIS_TECNICO.md` §2. Ejemplos: `sesionesInfo()`,
 `solicitarHistorialServidor()`, `ipDestinatario` (columna siempre NULL), `_guardar_propio()`,
-`bannerOffline` (XAML muerto), 9 pinceles `Telegram*Brush`, `ui/registro_window.py` (stub de 3
-líneas).
+9 pinceles `Telegram*Brush`, `ui/registro_window.py` (stub de 3 líneas). Es una fotografía de la
+auditoría 2026-10-05: revisar cierres y excepciones posteriores antes de tratar un símbolo como
+pendiente o muerto.
 
-### 6.3 Bug abierto que hay que conocer
+### 6.3 Hallazgo cerrado que hay que conocer
 
-**`SEC-05` — `LISTAR_USUARIOS` responde SIN autenticación.** Los comandos 13–15 de 15 no aplican
-`Comandos.exigirAutenticacion(...)` y el despachador no filtra por sesión. Una sesión anónima
-recibe el directorio completo (código, nombres, apellidos, programa). Detalle y cadena de llamadas
-en `ANALISIS_TECNICO.md` §1. **Bloquea producción.**
+**`SEC-05`/`SEC-06` están cerrados.** La autenticación es obligatoria por defecto para los comandos
+del SPI; solo `LOGIN` queda público. Guardas y pruebas parametrizadas/E2E cubren el contrato. La
+auditoría conserva la cadena histórica en `ANALISIS_TECNICO.md` §1; el estado de seguridad vigente
+está en `ESTADO_ROADMAP.md` §9.
 
 ### 6.4 Diferencias entre los 3 clientes (no son espejos exactos)
 
 | | JavaFX | Python | .NET |
 |---|---|---|---|
-| ViewModel | ninguno | ninguno | parcial (`MensajeVM` solo) |
-| Frontera de vista | localizador **estático** | **parchea** la fachada con `setattr` | `IFachadaCliente` inyectada |
-| Archivo mayor | `ChatController.java` 774 líneas | `chat_window.py` **1 322** | `ChatWindow.xaml.cs` 790 |
+| ViewModel | parcial (`ChatViewModel` posee estado conversacional; coordinación JavaFX pendiente) | ninguno | parcial (`MensajeVM` solo) |
+| Frontera de vista | inyección por constructor desde `FabricaControladores`, con puertos por responsabilidad | **parchea** la fachada con `setattr` | `IFachadaCliente` inyectada |
+| Archivo mayor | `ChatController.java` 910 líneas (`ChatViewModel` y `GestorAdjuntosChat` separan responsabilidades) | `chat_window.py` **1 322** | `ChatWindow.xaml.cs` 790 |
 | Validación TLS fail-fast | ❌ | ✅ (`transversal/tls.py`) | ❌ |
 | Historial con interfaz | ✅ | ❌ **no tiene** | ✅ |
 
@@ -213,6 +221,7 @@ hay que acordarse de los 3 sitios o un cliente discrepa de otro. La referencia c
 | Añadir una trama TCP | `PROTOCOLO.md` + `commands/Comandos.java` | **Regla 3 de §5**: nada de `comp-*` en `servidor-app` |
 | Tocar un cliente | `DIAGRAMAS/clases/clases-client-{java,dotnet,python}.mmd` | §6.4: **replicar en los 3** |
 | Cambiar la UI | `DIAGRAMAS/textos-ui.md` (literales exactos) + los mockups | `PLAN_PATRONES_UI.md` antes de añadir |
+| Arquitectura del cliente Java | `PLAN_ARQUITECTURA_CLIENTE_JAVA.md` (estado parcial; no declarar Clean Architecture completa) | `ESTADO_ROADMAP.md` §6 para hitos vigentes |
 | Cambiar el esquema | `db/migration/{mysql,postgres,oracle}/` (**los 3**) | `DIAGRAMAS/modelo-relacional/er-modelo-servidor.mmd` |
 | Añadir un filtro | `server/utilerias/` + `TuberiaFactory` | Regla 6 de §5: secuencial, cada uno genera imagen |
 | Documentar | `DIAGRAMAS/README.md` (regla de 3 pasos) | Un `.mmd` sin PNG **no cuenta** |
@@ -238,12 +247,14 @@ hay que acordarse de los 3 sitios o un cliente discrepa de otro. La referencia c
 | Qué debe hacer el sistema | [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md) |
 | Por qué está así | [`PLAN.md`](PLAN.md) |
 | Qué falta y en qué orden | [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md) |
+| Qué documentos conviene conservar, fusionar o retirar después de validar | [`REVISION_DOCUMENTAL.md`](REVISION_DOCUMENTAL.md) |
 | Dónde está cada clase | `DIAGRAMAS/` (`README.md` es el índice) |
 | Formato exacto de la trama | [`universidad-mensajeria/common-protocol/PROTOCOLO.md`](universidad-mensajeria/common-protocol/PROTOCOLO.md) |
 | Esquema local de los clientes | [`universidad-mensajeria/common-protocol/HISTORIAL_LOCAL.md`](universidad-mensajeria/common-protocol/HISTORIAL_LOCAL.md) |
 | Textos literales de la UI | [`DIAGRAMAS/textos-ui.md`](DIAGRAMAS/textos-ui.md) |
 | Problemas ya encontrados | [`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md) |
-| Cómo instalar un PC | [`INSTALACION.md`](INSTALACION.md), [`DESPLIEGUE.md`](DESPLIEGUE.md) |
+| Cómo preparar un PC | [`INSTALACION.md`](INSTALACION.md), [`AUTOMATIZACION_ENTORNO.md`](AUTOMATIZACION_ENTORNO.md) |
+| Cómo operar y desplegar | [`DESPLIEGUE.md`](DESPLIEGUE.md) |
 | Cómo comprobar que funciona | [`GUIA_ACEPTACION.md`](GUIA_ACEPTACION.md) |
 
 ### Mapa de unclick a un archivo
@@ -258,11 +269,14 @@ hay que acordarse de los 3 sitios o un cliente discrepa de otro. La referencia c
 | Los 15 comandos TCP | `DIAGRAMAS/clases/comandos-servidor.mmd` |
 | Las 7 tablas del servidor | `DIAGRAMAS/modelo-relacional/er-modelo-servidor.mmd` |
 
-## 10. Estado del repo al momento de escribir esto
+## 10. Estado del repo al 2026-10-06
 
-- Suites en verde (2026-10-05). Docker, distribución y rendimiento medidos y documentados.
-- **1 bloqueante de seguridad abierto** (`SEC-05`, §6.3).
-- 38 items de código muerto inventariados, **ninguno borrado todavía**.
-- 6 bugs de interfaz que son funciones rotas, pendientes.
-- `DIAGRAMAS_ENTREGA/` y `DIAGRAMAS_FINALES/` son duplicados con material único por migrar;
-  el plan está en `DIAGRAMAS/README.md` §3.
+- `SEC-05`/`SEC-06` cerrados. No describir el directorio como accesible sin autenticación.
+- Los defectos `UIX-00a..00f` y varios lotes de interfaz están implementados. En WPF, UIX-15
+  migra avisos/errores recuperables a un banner inline y mantiene las tres confirmaciones modales.
+- La vista administrativa JavaFX tiene las pestañas Estado, Conectados, Usuarios, Mensajes,
+  Informes, Logs, Pool y Difundir, además de una ficha de usuario. JLine conserva sus comandos.
+- `DIAGRAMAS/` es la ubicación canónica de fuentes y renders. Las carpetas legadas todavía existen;
+  revisar `REVISION_DOCUMENTAL.md` y `DIAGRAMAS/README.md` §3 antes de retirar nada.
+- Los reportes de pruebas tienen fechas y dos fallos de umbral de rendimiento; consultar
+  `ESTADO_ROADMAP.md` §1. Esta guía no afirma una ejecución fresca de las suites.

@@ -5,7 +5,6 @@ import universidad.mensajeria.clienteservidor.SalidaClienteServidor.SalidaRespue
 import universidad.mensajeria.clienteservidor.impl.CommandHandler;
 import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.tipos.Mensaje;
-import universidad.mensajeria.common.tipos.TipoMensaje;
 
 /** MENSAJE_LEIDO: el lector avisa al autor; se reenvía sin cola. */
 public final class LeidoCommand implements CommandHandler {

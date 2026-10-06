@@ -1,6 +1,9 @@
 package universidad.mensajeria.server.persistencia;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.UsuarioDTO;
 import universidad.mensajeria.server.persistencia.entidades.Usuario;
 import universidad.mensajeria.server.persistencia.repositorio.ArchivoRepository;
@@ -60,10 +63,64 @@ class JpaPersistenciaAdapterTest {
         org.mockito.Mockito.verifyNoInteractions(usuarios);
     }
 
+    @Test
+    void actividadUsuarioIncluyeTotalesYContactoPrincipal() {
+        MensajeRepository mensajes = mock(MensajeRepository.class);
+        when(mensajes.contarMensajesDeUsuario("A001")).thenReturn(12L);
+        when(mensajes.contarArchivosDeUsuario("A001")).thenReturn(4L);
+        when(mensajes.contarMensajesPorContacto("A001"))
+                .thenReturn(List.<Object[]>of(new Object[] {"B002", 7L}));
+
+        ActividadUsuarioDTO actividad = adapter(mock(UsuarioRepository.class), mensajes)
+                .actividadUsuario(" A001 ");
+
+        assertEquals(12L, actividad.totalMensajes());
+        assertEquals(4L, actividad.totalArchivos());
+        assertEquals("B002", actividad.contactoPrincipal());
+        assertEquals(7L, actividad.mensajesCompartidos());
+    }
+
+    @Test
+    void actividadUsuarioSinContactosDejaContactoVacio() {
+        MensajeRepository mensajes = mock(MensajeRepository.class);
+        when(mensajes.contarMensajesDeUsuario("A001")).thenReturn(2L);
+        when(mensajes.contarArchivosDeUsuario("A001")).thenReturn(0L);
+        when(mensajes.contarMensajesPorContacto("A001")).thenReturn(List.of());
+
+        ActividadUsuarioDTO actividad = adapter(mock(UsuarioRepository.class), mensajes)
+                .actividadUsuario("A001");
+
+        assertEquals(2L, actividad.totalMensajes());
+        assertEquals(0L, actividad.totalArchivos());
+        assertEquals(null, actividad.contactoPrincipal());
+        assertEquals(0L, actividad.mensajesCompartidos());
+    }
+
+    @Test
+    void paginaUsuarioUsaParametrosAcotadosYNormalizaElCodigo() {
+        MensajeRepository mensajes = mock(MensajeRepository.class);
+        when(mensajes.paginaHistorialUsuario("A001", true, PageRequest.of(1, 50)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 50), 62));
+
+        var pagina = adapter(mock(UsuarioRepository.class), mensajes)
+                .paginaMensajesDeUsuario(" A001 ", true, 1, 50);
+
+        assertEquals(1, pagina.pagina());
+        assertEquals(2, pagina.totalPaginas());
+        assertTrue(pagina.contenido().isEmpty());
+        verify(mensajes).paginaHistorialUsuario("A001", true, PageRequest.of(1, 50));
+    }
+
     private static JpaPersistenciaAdapter adapter(UsuarioRepository usuarios) {
         return new JpaPersistenciaAdapter(usuarios, mock(MensajeRepository.class),
                 mock(ArchivoRepository.class), mock(RegistroAccionRepository.class),
                 mock(ConfiguracionLimitesRepository.class));
+    }
+
+    private static JpaPersistenciaAdapter adapter(UsuarioRepository usuarios,
+                                                   MensajeRepository mensajes) {
+        return new JpaPersistenciaAdapter(usuarios, mensajes, mock(ArchivoRepository.class),
+                mock(RegistroAccionRepository.class), mock(ConfiguracionLimitesRepository.class));
     }
 
     private static Usuario usuario(String codigo, String nombres) {

@@ -25,4 +25,24 @@
     <Compile Include="..\client-dotnet\Fachada\IFachadaCliente.cs" />
   </ItemGroup>
 
+  <!-- El DDL local tiene UNA sola copia, la de client-dotnet (MUERTE-5/PAT-06).
+       Antes LocalStore llevaba una copia incrustada del schema que era la que
+       ejecutaban estos tests: la app de verdad usaba el .sql y los tests usaban
+       el otro, asi que podian divergir en silencio. Al enlazar el mismo
+       fichero, los tests validan el esquema que se distribuye. -->
+  <ItemGroup>
+    <None Include="..\client-dotnet\Store\schema-local.sql" Link="Store\schema-local.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Fixture canonico de client.properties: lo leen los tests de los TRES
+       clientes para demostrar que el mismo fichero da los mismos valores. -->
+  <ItemGroup>
+    <None Include="..\common-protocol\test-fixtures\client-properties-fixture.properties"
+          Link="client-properties-fixture.properties">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

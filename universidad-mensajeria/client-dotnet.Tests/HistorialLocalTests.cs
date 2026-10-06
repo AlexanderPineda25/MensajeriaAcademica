@@ -115,5 +115,27 @@ namespace Mensajeria.Tests
             Assert.NotNull(_cache.PorCodigo("A"));
             Assert.Null(_cache.PorCodigo("ZZZ"));
         }
+
+        [Fact]
+        public void ContarNoLeidosPorContactoAgrupaPorOrigen()
+        {
+            // UIX-02: m2 (B→A) está sin leer; m1 (A→B) no cuenta para A.
+            var conteo = _h.ContarNoLeidosPorContacto("A");
+            Assert.Equal(1, conteo["B"]);
+            Assert.False(conteo.ContainsKey("C"));
+
+            _h.MarcarLeidos("A", "B");
+            Assert.Empty(_h.ContarNoLeidosPorContacto("A"));
+        }
+
+        [Fact]
+        public void BuscarEnConversacionEncuentraPorTexto()
+        {
+            // UIX-06: mismo contrato que buscar (Java) y buscar_en_conversacion (Python).
+            // m1 "hola" casa con "HOLA" (insensible); m2 "que tal", no.
+            Assert.Equal(new[] { "m1" }, _h.BuscarEnConversacion("A", "B", "HOLA", 50));
+            Assert.Empty(_h.BuscarEnConversacion("A", "C", "hola", 50));
+            Assert.Empty(_h.BuscarEnConversacion("A", "B", "  ", 50));
+        }
     }
 }

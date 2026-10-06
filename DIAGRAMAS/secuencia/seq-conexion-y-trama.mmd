@@ -56,16 +56,13 @@ sequenceDiagram
                 alt exito
                     F -->> H: IdSesion AUTENTICADA(codigo)
                 end
-            else comando autenticado (12 de 15)
+            else comando protegido (todos salvo LOGIN)
                 D ->> D: exigirAutenticacion(sesion)
                 alt sesion no autenticada
                     D -->> H: ERROR "autenticate primero con LOGIN"
                 else ok
                     D ->> F: ejecuta el caso de uso
                 end
-            else comando SIN guarda (3 de 15)
-                Note over D: LOGOUT / LISTAR_CONECTADOS /<br/>LISTAR_USUARIOS no validan sesion.<br/>Ver SEC-05 en ANALISIS_TECNICO.md.
-                D ->> F: ejecuta el caso de uso sin comprobar
             end
 
             H ->> CO: escribir(respuesta)

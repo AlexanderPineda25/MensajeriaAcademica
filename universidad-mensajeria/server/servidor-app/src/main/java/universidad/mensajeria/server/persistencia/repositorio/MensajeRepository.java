@@ -73,4 +73,47 @@ public interface MensajeRepository extends JpaRepository<Mensaje, Long> {
     List<Mensaje> historico(@Param("desde") LocalDateTime desde,
                             @Param("hasta") LocalDateTime hasta,
                             @Param("codigo") String codigo);
+
+    /** Ficha administrativa: historial completo de una cuenta, sin cargarlo de una vez. */
+    @Query(value = """
+            SELECT m FROM Mensaje m
+            LEFT JOIN FETCH m.remitente
+            LEFT JOIN FETCH m.destinatario
+            LEFT JOIN FETCH m.archivo
+            WHERE (m.remitente.codigo = :codigo OR m.destinatario.codigo = :codigo)
+              AND (:soloArchivos = false OR m.archivo IS NOT NULL)
+            ORDER BY m.fechaEnvio DESC, m.id DESC""",
+            countQuery = """
+            SELECT COUNT(m) FROM Mensaje m
+            WHERE (m.remitente.codigo = :codigo OR m.destinatario.codigo = :codigo)
+              AND (:soloArchivos = false OR m.archivo IS NOT NULL)""")
+    Page<Mensaje> paginaHistorialUsuario(@Param("codigo") String codigo,
+                                         @Param("soloArchivos") boolean soloArchivos,
+                                         Pageable paginacion);
+
+    @Query("""
+            SELECT COUNT(m) FROM Mensaje m
+            WHERE m.remitente.codigo = :codigo OR m.destinatario.codigo = :codigo""")
+    long contarMensajesDeUsuario(@Param("codigo") String codigo);
+
+    @Query("""
+            SELECT COUNT(m) FROM Mensaje m
+            WHERE (m.remitente.codigo = :codigo OR m.destinatario.codigo = :codigo)
+              AND m.archivo IS NOT NULL""")
+    long contarArchivosDeUsuario(@Param("codigo") String codigo);
+
+    @Query("""
+            SELECT CASE WHEN m.remitente.codigo = :codigo
+                        THEN m.destinatario.codigo ELSE m.remitente.codigo END,
+                   COUNT(m)
+            FROM Mensaje m
+            WHERE (m.remitente.codigo = :codigo OR m.destinatario.codigo = :codigo)
+              AND (CASE WHEN m.remitente.codigo = :codigo
+                        THEN m.destinatario.codigo ELSE m.remitente.codigo END) <> 'SERVIDOR'
+            GROUP BY CASE WHEN m.remitente.codigo = :codigo
+                          THEN m.destinatario.codigo ELSE m.remitente.codigo END
+            ORDER BY COUNT(m) DESC,
+                     CASE WHEN m.remitente.codigo = :codigo
+                          THEN m.destinatario.codigo ELSE m.remitente.codigo END ASC""")
+    List<Object[]> contarMensajesPorContacto(@Param("codigo") String codigo);
 }

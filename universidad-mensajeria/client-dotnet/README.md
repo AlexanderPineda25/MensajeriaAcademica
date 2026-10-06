@@ -77,6 +77,9 @@ conservar archivos locales.
 - Se puede adjuntar con los botones o arrastrando imágenes y archivos
   (hasta 50 MB) sobre la redacción o la lista de mensajes.
 - Si no hay conexión, prueba `Test-NetConnection IP_SERVIDOR -Port 5000` antes de reinstalar.
+- Los avisos/errores recuperables se muestran en un banner inline que se puede cerrar; el cierre
+  remoto aparece en el banner del login. Se conservan tres confirmaciones modales: salir del login,
+  cerrar la sesión del chat y cerrar las demás sesiones.
 - Actualiza el directorio publicado conservando `client.properties`, SQLite del perfil e imágenes.
 - Enviar texto, imagen o ambos no implica que la otra persona ya lo recibió: confirma los estados
   de entrega/lectura en la conversación.

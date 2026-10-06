@@ -149,9 +149,34 @@
     -fx-text-fill: #C4B5FD;
 }
 
+/* UIX-13: estados vacíos en vez de rectángulos en blanco. */
+.empty-placeholder {
+    -fx-font-size: 12px;
+    -fx-text-fill: #A8B8C1;
+    -fx-alignment: center;
+    -fx-text-alignment: center;
+}
+
+/* UIX-04: cabecera de día entre mensajes de días distintos. */
+.day-separator {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #A8B8C1;
+    -fx-alignment: center;
+    -fx-padding: 8px 0 4px 0;
+}
+
 .message-text {
     -fx-text-fill: #E8EEF2;
+    -fx-fill: #E8EEF2;
     -fx-font-size: 13px;
+}
+
+/* UIX-06: coincidencia de búsqueda dentro del mensaje. */
+.message-highlight {
+    -fx-fill: #C4B5FD;
+    -fx-font-weight: bold;
+    -fx-underline: true;
 }
 
 .message-out .message-text {
@@ -292,17 +317,4 @@
     -fx-text-fill: #B45309;
     -fx-font-weight: 700;
     -fx-padding: 9px 12px;
-}
-
-.broadcast-pill {
-    -fx-background-color: #DCE8FF;
-    -fx-background-radius: 12px;
-    -fx-text-fill: #2456A6;
-    -fx-font-size: 10px;
-    -fx-font-weight: 700;
-    -fx-padding: 3px 8px;
-}
-
-.sidebar-title {
-    -fx-text-fill: #E8EEF2;
 }

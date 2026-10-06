@@ -4,6 +4,28 @@ Guía para construir el servidor en el equipo de desarrollo y ejecutarlo en un e
 separado. El proceso desplegado necesita Java 21 y una base de datos MySQL; los clientes solo se
 conectan al puerto TCP de mensajería.
 
+## Advertencia de JavaFX y `sun.misc.Unsafe`
+
+El módulo `servidor-app` fija JavaFX Graphics **21.0.6**. Con JDK recientes, el renderizador
+`com.sun.marlin.OffHeapArray` de ese JAR puede emitir `WARNING: A terminally deprecated method in
+sun.misc.Unsafe has been called` al usar `Unsafe.allocateMemory`. El nombre del llamador en la
+traza confirma que la llamada viene de JavaFX Marlin y no de las clases de mensajería. La
+advertencia no es por sí misma una excepción ni indica que el servicio haya dejado de funcionar.
+
+Opciones:
+
+- Para conservar la configuración y ver la advertencia, no hay que cambiar nada.
+- En JDK que reconozca la opción de runtime, se puede ocultar el aviso con
+  `java --sun-misc-unsafe-memory-access=allow -jar servidor.jar ...`. Esto **solo silencia** el
+  aviso; no reemplaza la llamada de JavaFX. Comprueba `java --help`/`java --help-extra` en el JDK
+  instalado antes de agregar la opción al launcher.
+- OpenJFX 25 ya no requiere esa opción; JavaFX 25 requiere JDK 23 o posterior. Adoptarlo en el
+  servidor cambia el mínimo de runtime documentado de Java 21 y exige actualizar Maven, distribución
+  y validar la vista de escritorio. No se cambia esa línea base automáticamente aquí.
+
+Referencias primarias: [JEP 471 de OpenJDK](https://openjdk.org/jeps/471),
+[notas de OpenJFX 25](https://docs.oracle.com/en/java/java-components/javafx/25/release-notes/).
+
 ## Topología y puertos
 
 | Conexión | Puerto predeterminado | Quién lo necesita |
@@ -162,10 +184,24 @@ que los usuarios le envían y firma la difusión administrativa.
 
 La difusión administrativa (`Difundir` en consola o vista de escritorio) llega a todos los
 usuarios registrados, no solo a los conectados: persiste una copia por usuario y entrega en
-vivo a las sesiones activas; quien estaba desconectado la recibe al reconectar. La vista de
-escritorio ofrece las pestañas Estado (con indicadores), Conectados, Usuarios, Mensajes
-(detalle con contenido, imagen y previsualización de filtros), Informes (con exportar CSV),
-Logs en vivo, Pool y Difundir.
+vivo a las sesiones activas; quien estaba desconectado la recibe al reconectar.
+
+La vista de escritorio ofrece las pestañas Estado, Conectados, Usuarios, Mensajes, Informes, Logs,
+Pool y Difundir. Estado distribuye sus indicadores verticalmente. Conectados ofrece
+«Desconectar usuario» con un selector de códigos de sesiones activas y un estado vacío explícito.
+Usuarios abre con doble clic una ficha reutilizable con resumen, conexiones, páginas de mensajes y
+archivos de 50 registros, sesiones activas y contacto principal (mensajes enviados + recibidos,
+sin `SERVIDOR`).
+
+Mensajes permite filtrar escribiendo o eligiendo un código; separa caracteres/palabras y muestra
+la IP histórica del remitente. Para el destinatario solo muestra las IP de sus sesiones activas;
+sin una sesión activa indica «No disponible» (no existe historial de IP destinataria). El panel
+de detalle de texto/imagen se presenta solo para el informe de mensajes. Logs ocupa el espacio
+disponible, Pool separa sus métricas y el botón se llama «Enviar difusión».
+
+Al cerrar con X, la vista pregunta si debe cerrarse la consola administrativa; cerrar esa ventana
+no detiene el listener TCP ni JLine. La consola JLine conserva los comandos existentes y organiza
+visualmente títulos, tablas y eventos.
 
 ## Inspección con DBeaver
 

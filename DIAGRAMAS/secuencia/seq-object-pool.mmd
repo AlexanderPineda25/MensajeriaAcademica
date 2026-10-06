@@ -61,9 +61,4 @@ sequenceDiagram
     P ->> POOL: cerrar()
     Note over POOL: Al detener el servidor se cierra<br/>ordenadamente, no se abandona.
 
-    note over P,Q
-        No se crea un hilo por conexion.
-        El tamano del pool se alinea con el limite
-        maximo de usuarios conectados (RF-S45) y
-        ambos son configurables (RNF-06).
-    end note
+    Note over P,Q: No se crea un hilo por conexion.<br/>El tamano del pool se alinea con el limite<br/>maximo de usuarios conectados (RF-S45) y<br/>ambos son configurables (RNF-06).

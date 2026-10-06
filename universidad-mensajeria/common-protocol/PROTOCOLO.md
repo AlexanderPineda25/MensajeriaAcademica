@@ -42,6 +42,7 @@ iguales en los 3 lenguajes.
 | `nombreArchivo`, `mime` | string | archivos |
 | `tamanoArchivo` | long (bytes) | archivos |
 | `archivoId` | string | id para `DESCARGAR_ARCHIVO` |
+| `tipoOriginal` | string | tipo de contenido en `SYNC_LOGIN` (`MENSAJE_TEXTO`, `MENSAJE_IMAGEN` o `MENSAJE_ARCHIVO`) |
 | `contenidoImagen` | string base64 | imágenes ≤ 10 MiB y bloques de archivo ≤1 MiB crudos (o usar descarga) |
 | `pagina`, `totalPaginas` | int | `HISTORIAL_PAGE` |
 | `exito` | boolean | respuestas |
@@ -56,7 +57,7 @@ iguales en los 3 lenguajes.
 | `LOGIN` | C→S | `{codigo, contrasena}` | `LOGIN_RESPUESTA` + `SYNC_LOGIN` |
 | `LOGIN_RESPUESTA` | S→C | `{exito, mensajeError, ipRemitente}` | — |
 | `REGISTRO` | — | **Eliminado**: el alta es solo por archivo plano CSV. Si llega por red responde `ERROR {mensajeError:"tipo no soportado: REGISTRO"}` | — |
-| `REGISTRO_RESPUESTA` | — | Reservado histórico (ya no se emite) | — |
+| `REGISTRO_RESPUESTA` | — | **Eliminado del catálogo**: el servidor nunca la emitía (el alta por red se quitó en Fase 10.2). No aparece en `TipoMensaje` ni en las constantes de los clientes | — |
 | `LOGOUT` | C→S | cierra únicamente el socket/sesión solicitante; la presencia queda online mientras haya otra sesión activa del mismo código | `CLOSE_NOTICE` solo al socket solicitante |
 | `KICK` | C→S | `{codigo}` cierra las demás sesiones del propio código | `CLOSE_NOTICE` a las expulsadas + `ACK` al solicitante |
 | `MENSAJE_TEXTO` | C→S | `{remitente, destinatario, contenido}` (remitente debe ser el código logueado) | `ACK` + entrega destinatario |
@@ -74,7 +75,7 @@ iguales en los 3 lenguajes.
 | `HISTORIAL_PAGE` | S→C | `{pagina, totalPaginas}` + mensajes **sin bytes** | — |
 | `DESCARGAR_ARCHIVO` | C→S | `{archivoId}` | `DESCARGAR_ARCHIVO_RESPUESTA` |
 | `DESCARGAR_ARCHIVO_RESPUESTA` | S→C | `{nombreArchivo, mime, contenidoImagen}` | — |
-| `SYNC_LOGIN` | S→C | mensajes pendientes desde la última conexión | — |
+| `SYNC_LOGIN` | S→C | mensajes pendientes desde la última conexión; mantiene el `id` que generó el cliente y señala el tipo real en `tipoOriginal` para conservar adjuntos y acuses de lectura | — |
 | `MENSAJE_ENTREGADO` | S→C | `{remitente: destino original, destinatario: autor, contenido: id original}` avisa que el mensaje llegó al menos a una sesión del destinatario (o quedó guardado offline) | — |
 | `MENSAJE_LEIDO` | C→S→C | `{remitente: lector, destinatario: autor, contenido: id original}` el lector abrió el chat; el servidor lo reenvía al autor | — |
 | `PRESENCIA` | S→C | `{codigo, contenido: "conectado"/"desconectado", usuariosConectados: [...]}` broadcast ante login/logout/cierre | — |

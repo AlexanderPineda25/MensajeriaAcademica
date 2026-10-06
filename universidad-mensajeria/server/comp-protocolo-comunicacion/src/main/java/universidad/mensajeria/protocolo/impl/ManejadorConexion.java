@@ -3,7 +3,6 @@ package universidad.mensajeria.protocolo.impl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import universidad.mensajeria.common.codec.CodecException;
-import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 import universidad.mensajeria.protocolo.ReceptorDeTramas;

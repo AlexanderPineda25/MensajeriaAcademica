@@ -145,9 +145,12 @@ public final class AutenticarCaso {
             for (var m : pendientes) {
                 Mensaje.Builder sync = Mensaje.builder()
                         .tipo(TipoMensaje.SYNC_LOGIN)
+                        .tipoOriginal(tipoWire(m.tipo()).name())
+                        .id(m.idCliente() == null ? Long.toString(m.id()) : m.idCliente())
                         .fechaHora(m.fechaEnvio())
                         .remitente(m.remitente())
                         .destinatario(codigo)
+                        .mime(m.mime())
                         .hashSha256(m.hashSha256())
                         .numCaracteres(m.numCaracteres())
                         .numPalabras(m.numPalabras());
@@ -168,5 +171,15 @@ public final class AutenticarCaso {
         } catch (Exception e) {
             LOG.warn("Error en SYNC_LOGIN para {}: {}", codigo, e.getMessage());
         }
+    }
+
+    private static TipoMensaje tipoWire(String tipo) {
+        if (tipo == null) return TipoMensaje.SYNC_LOGIN;
+        return switch (tipo.toUpperCase(java.util.Locale.ROOT)) {
+            case "TEXTO" -> TipoMensaje.MENSAJE_TEXTO;
+            case "IMAGEN" -> TipoMensaje.MENSAJE_IMAGEN;
+            case "ARCHIVO" -> TipoMensaje.MENSAJE_ARCHIVO;
+            default -> TipoMensaje.SYNC_LOGIN;
+        };
     }
 }

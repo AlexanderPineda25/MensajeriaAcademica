@@ -1,19 +1,44 @@
 # Plan de patrones de diseño y mejora de UI — los 3 clientes
 
-Actualizado: **2026-10-05**. Plan **ejecutable** derivado de
-[`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md). Cada tarea de aquí tiene su fila en
-[`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md). **Nada de este plan está aplicado todavía.**
+Actualizado: **2026-10-06**. Este archivo conserva el **plan y sus decisiones de implementación**
+derivados de [`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md). Varios lotes ya están aplicados; el
+estado actual de cada tarea se mantiene en [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md). Las mediciones,
+líneas de código y colores en tablas posteriores pueden ser el estado previo a cada lote, no la
+lectura actual del código.
 
-> **Alcance.** Solo la capa de cliente (`client/`, `client-python/`, `client-dotnet/`). El
-> servidor no entra: su arquitectura ya cumple lo que el enunciado pedía
-> (`REQUERIMIENTOS.md` §7, `PLAN.md` §9) y el único hallazgo suyo grave es `SEC-05`, que se
-> cierra en el roadmap, no aquí.
+> **Alcance original.** Las fases de este plan cubren sobre todo los tres clientes
+> (`client/`, `client-python/`, `client-dotnet/`). La consola administrativa del servidor tuvo una
+> ronda posterior propia: sus cambios y verificaciones se describen en `ESTADO_ROADMAP.md`,
+> `GUIA_ACEPTACION.md` y `server/servidor-app/README.md`. El hallazgo de seguridad `SEC-05` también
+> está cerrado; véase el roadmap.
+>
+> **Ronda de arquitectura 2026-10-06:** se ejecutó `PAT-01` solo en el cliente Java. Se añadieron
+> inversión de dependencias, inyección por constructor, una fábrica de controladores FXML y una
+> fábrica de composición. Python y .NET no se modificaron; sus tareas continúan en el roadmap.
+>
+> **Refuerzo SOLID/arquitectura por capas 2026-10-06 (solo Java):** se segregaron los puertos del
+> login y de adjuntos/historial; `LoginController` y `ChatController` reciben el ejecutor de
+> fondo desde la composición; `ChatController` recibe `EventoCliente` en vez del DTO de red; la
+> traducción del JSON del servidor vive en `MapeadorDatosServidor` tras su interfaz; la gestión de
+> descargas e imágenes se extrajo a `GestorAdjuntosChat`.
+> Se conserva la fachada agregada y el protocolo. Esto fortalece las fronteras sin completar
+> todavía `PAT-VM`: `ChatController` mantiene estado de pantalla, selección y paginación, por lo
+> que su separación completa a MVVM sigue pendiente.
+>
+> **Continuación del 2026-10-06:** `ChatViewModel` ya centraliza estado de conversación (adjunto,
+> respuesta, offset, directorio y recientes) y `ChatController` delega en él las operaciones; el
+> controlador todavía coordina selección, eventos, paginación y ciclo de vida JavaFX (968 líneas).
+> El contrato de transporte y su receptor ahora están en `client-interfaces`, con `RespuestaRed`
+> neutral, y la traducción de DTO se realiza en `ConexionCliente`. Una ejecución limpia pasa 127
+> pruebas (0 fallos/errores), ambos FXML cargan mediante la fábrica real y la compilación conjunta
+> cliente/servidor pasa. Sigue pendiente el smoke visual conectado; no se declara completado
+> `PAT-VM` ni Clean Architecture.
 
 ## 0. Por qué ahora y por qué en este orden
 
 Tres razones, en orden de peso:
 
-1. **Hay 6 bugs de UI que son funciones rotas**, no납 estilo. Un botón de reintentar que no
+1. **La auditoría detectó 6 bugs de UI que eran funciones rotas**, no de estilo. Un botón de reintentar que no
    reintenta y un aviso de "sin conexión" que nunca aparece son deuda de la misma categoría
    que un error de compilación: el usuario pidió una función y no la tiene.
 2. **Nada nuevo se puede añadir sin antes partir los archivos grandes.** `chat_window.py` son
@@ -21,7 +46,7 @@ Tres razones, en orden de peso:
    caché y red. Agregar búsqueda en el historial (UIX-06) sobre esa base produce un archivo de
    1 600 líneas que nadie va a mantener.
 3. **El código muerto se limpia antes de los patrones.** `MUERT-19` (`_tareas_imagen` creciendo
-   sin límite) y `MUERT-37` (`bannerOffline` muerto) están **dentro** de los archivos que se
+   sin límite) y `MUERT-37` (`bannerOffline`, luego cableado a UIX-00a) están **dentro** de los archivos que se
    van a partir. Partir primero y limpiar después significa tocar dos veces lo mismo.
 
 **Orden derivado:** bugs → limpieza → cimientos (composition root + estado de conexión) →
@@ -88,24 +113,47 @@ Tres cambios de los que dependen casi todos los demás. Por eso van **antes** de
 
 ### 3.1 PAT-01 — Composition root real (eliminar el localizador de servicio)
 
-**El problema.** Java construye el grafo bien (`ClienteMain.java:20-45`) y acto seguido lo
-tira: `ClienteApp.java:20` guarda la fachada en un `static`, `:29-34` la expone, y
-`ChatController.java:107` y `LoginController.java:89` la leen. Resultado: **`ChatController` no se
-puede construir en un test**. Python es peor (`main.py:23` sin argumentos, 6 colaboradores
-cableados con defaults `or` en `fachada_cliente.py:35-56`, y el grafo **cambia de forma en
-runtime** en `:87-88`). .NET tiene el ctor con DI desde `:52-61` y **solo lo usan los tests**.
+**Hallazgo histórico.** Java construía el grafo en `ClienteMain` y después lo escondía en un
+localizador estático de `ClienteApp`; `LoginController` y `ChatController` lo recuperaban durante
+`initialize()`. Python construye colaboradores con defaults y .NET difiere parte de la composición
+al login. Esta ronda corrige únicamente el camino Java.
 
-**Qué hacer.**
+**Implementación Java (2026-10-06).**
 
-| Cliente | Cambio |
+| Principio / componente | Cambio |
 |---|---|
-| JavaFX | Las vistas reciben la fachada por constructor. `LoginController` y `ChatController` dejan de llamar a `ClienteApp.fachada()`. `ClienteApp` conserva el holder estático **solo** para las vistas creadas por FXML, que no admiten constructor; se elimina la lectura desde la lógica |
-| Python | `FachadaCliente(red=..., store=..., config=...)` con parámetros obligatorios. `main.iniciar` los pasa. Fuera los defaults `or` de `:35-56`. El grafo deja de mutar en `:87-88`: se resuelve `para_cuenta()` en la composición, no en el login |
-| .NET | `App.OnStartup` construye el grafo completo y lo pasa a las vistas. Fuera el layo de `ConectarAsync` (`:95-108`) y el truco de campos `readonly` (`:104,112-115`) |
+| Inversión de dependencias | Los puertos de consumidor (`InterfazInicioSesion`, `InterfazChatCliente`, adjuntos y eventos) viven en `client-interfaces`; `FachadaCliente` los implementa. `InterfazNavegacionCliente` separa la navegación del shell JavaFX |
+| Inyección de dependencias | `LoginController` recibe `InterfazInicioSesion`, ejecutor, configuración y navegación. `ChatController` recibe `InterfazChatCliente`, ejecutor y navegación. Ninguno consulta un servicio estático |
+| Fábrica de composición | `FabricaCliente` crea los adaptadores concretos y el `ClienteRuntime`, que posee y cierra los recursos |
+| Fábrica de controladores | `FabricaControladores` entrega los controladores a `FXMLLoader.setControllerFactory`, incluyendo sus dependencias explícitas |
+| Composition root | `ClienteApp.init()` crea el runtime y configura la fábrica FXML. `ClienteMain` solo delega en `Application.launch`; se eliminó el localizador global de fachada |
+| Contratos | `EstadoConexion` y `PaginaHistorialRemota` viven en `client-interfaces`, para que el puerto no dependa de tipos definidos por `client-app` |
 
-**Aceptación.** `ChatController`, `ChatWindow` y `LoginWindow` se instancian en un test con
-dobles, sin ninguna clase `Application` ni `QApplication` viva. Criterio medible: el nuevo test
-de vista no referencia `Application.launch`, `ClientApp`, ni crea una `QApplication`.
+Python y .NET quedan fuera de esta ronda y no se modificaron. En la ronda posterior del 2026-10-06,
+`GestorAdjuntosChat` pasó a depender de `InterfazArchivosConversacion`, la fachada recibió
+`InterfazMapeadorDatosServidor` y la UI pasó a observar `EventoCliente`; los detalles están en
+`ESTADO_ROADMAP.md` §6.3.
+
+En la continuación arquitectónica del 2026-10-06, el ciclo de sesión/reconexión se extrajo a
+`GestorReconexionSesion`: conserva credenciales solo en memoria, aplica backoff, reautentica y
+solicita restaurar el estado tras reconectar. La fachada delega ese ciclo; la extracción pasó la
+suite limpia del cliente (127 pruebas, 0 fallos/errores) y la compilación conjunta de servidor y
+cliente. El smoke visual conectado sigue pendiente; esta extracción no completa PAT-ARQ-JAVA.
+
+En el cierre de esta ronda, `ChatController` dejó de recibir `InterfazFachadaCliente`: ahora recibe
+`InterfazChatCliente`, un puerto consumidor que agrupa solo los casos de uso de esa pantalla. La
+fábrica recibe los puertos de login y chat por separado; `FachadaCliente` sigue implementando ambos
+y `InterfazFachadaCliente` conserva el contrato agregado para componentes existentes.
+
+**Verificación de aquella ronda.** Los 17 módulos compilaron con
+`mvn -pl server/servidor-app,client/client-app -am -DskipTests compile`, incluidos
+`servidor-app`, `client-interfaces` y `client-app`. Después se ejecutaron 83 pruebas del cliente
+Java, todas en verde. El chequeo de fuente confirmó que los controladores ya no invocan
+`ClienteApp.fachada()`. La suite actual de 127 pruebas y el smoke visual pendiente se registran
+arriba; la carga automatizada FXML ya está cubierta.
+
+**Pendiente fuera del alcance Java:** aplicar el mismo corte de composición a Python y .NET, y
+agregar cobertura automatizada para la fábrica FXML y la construcción de controladores.
 
 **Por qué antes de MVVM:** el ViewModel se inyecta. Si el canal de inyección es un estático,
 se arrastra el problema.
@@ -164,7 +212,7 @@ No es un cliente, pero es la misma categoría de deuda que `PAT-*` y ya está ab
 
 | Cliente | Estado actual | Objetivo |
 |---|---|---|
-| JavaFX | `ChatController.java` **774 líneas**: 19 nodos `@FXML`, 19 campos de estado, envío, adjuntos, drag&drop, refresco, paginación, carga diferida de imagen, descarga, acuses, logout, banner y **tabla MIME** (`:752-773`) | `ChatViewModel` con `ObservableList<MensajeVM>`, `BooleanProperty` (`puedeEnviar`, `sinRed`, `cargando`), `StringProperty` (`estado`, `error`). El controlador baja a **≈250 líneas** de cableado FXML |
+| JavaFX | `ChatController.java` **968 líneas** en la continuación 2026-10-06: sigue manejando selección, eventos, envío, paginación, búsqueda y ciclo de vida | Completar `ChatViewModel` para coordinación del chat; el controlador baja a **≈250 líneas** de cableado FXML |
 | Python | `chat_window.py` **1 322 líneas**: 20 atributos mutables, `_construir_ui` (`:243-440`), y `_procesar_tarea` (`:536-661`), un `if/elif` de **100 líneas por 8 tipos de tarea** que *es* un presenter sin tipar | `ChatViewModel(QObject)` con `Property` + `Signal`. La ventana baja a **≈500 líneas** |
 | .NET | `MensajeVM` ya es un VM real (`:33-90`); `UsuarioVM` (`:21-31`) **no notifica**; la ventana guarda 10 campos de estado (`:98-105`); 8 handlers `async void` | `ChatViewModel : INotifyPropertyChanged`. `UsuarioVM` pasa a notificar y el filtro se vuelve observable (mata el `Clear()`+re-`Add()` de `:195-196,202`) |
 
@@ -172,7 +220,7 @@ No es un cliente, pero es la misma categoría de deuda que `PAT-*` y ya está ab
 
 | Métrica | Antes | Objetivo |
 |---|---|---|
-| `ChatController.java` / `chat_window.py` / `ChatWindow.xaml.cs` | 774 / 1 322 / 790 | **≤ 350** / **≤ 550** / **≤ 400** |
+| `ChatController.java` / `chat_window.py` / `ChatWindow.xaml.cs` | 968 actual (774 previo) / 1 322 / 790 | **≤ 350** / **≤ 550** / **≤ 400** |
 | Métodos privados que los tests tienen que llamar | 3 (`test_ui.py:136,152,163,171`) | **0** |
 | `bind()` reales en el cliente Java | 1 (`:147-150`) | **≥ 8** (los `BooleanProperty` del ViewModel) |
 
@@ -220,6 +268,11 @@ de una línea imperativa. Las 3 implementaciones de "puedo enviar" quedan en **1
 
 ## 7. Fase G — Mejoras de UI por pantalla (P1/P2)
 
+Las filas siguientes conservan la especificación y el diagnóstico originales. No usar sus frases
+«hoy no existe» como afirmación vigente cuando ya tienen lote de cierre: `UIX-01..16`, `UIX-17`,
+`UIX-18`, parte de `UIX-19`, `UIX-24` y `UIX-29` tienen implementación posterior. El estado y los
+casos pendientes están en `ESTADO_ROADMAP.md` §5.
+
 ### 7.1 Login
 
 | ID | Tarea | Clientes | Nota |
@@ -235,13 +288,13 @@ de una línea imperativa. Las 3 implementaciones de "puedo enviar" quedan en **1
 
 | ID | Tarea | Prioridad | Nota |
 |---|---|---|---|
-| UIX-01 | **Virtualizar** la lista de mensajes | **P1 Python** | `QListWidget` + un widget por fila, con `setUniformItemSizes(False)` explícito. Con 1 000+ mensajes se congela |
+| UIX-01 | **Virtualizar** la lista de mensajes | **P1 Python** | Implementado en Lote E: `QListView` + `MensajeListModel`/`MensajeDelegate`; la descripción anterior del `QListWidget` es línea base histórica. |
 | UIX-13 | Estados vacíos en las 3 pantallas (conversación vacía, búsqueda sin resultados, sin contactos) | P1 | hoy un usuario nuevo ve un rectángulo negro y no sabe si la app está rota |
 | UIX-05 | Agrupar mensajes consecutivos (ocultar remitente en una racha) | P1 | como Telegram. Los 3 lo pintan siempre |
 | UIX-04 | Separadores de día | P1 | hoy la fecha de los mensajes de ayer **desaparece** en Java (`substring(11,16)`) |
 | UIX-03 | Formato de fecha unificado y relativo | P1 | hoy: `HH:mm` (Java, pierde la fecha), crudo (Python), `yyyy-MM-dd HH:mm` (.NET) |
 | UIX-02 | Distintivo de no leídos en los 3 + filtro "No leídos" | P1 | Java lo tiene; Python usa un truco de texto con regex; .NET no tiene nada |
-| UIX-15 | Quitar los `MessageBox` modales de .NET | P1 | **10 modales, incluido "sin red"**. Java usa estado inline: copiar eso |
+| UIX-15 | Mostrar avisos y errores recuperables inline en .NET | P1 | **Hecho (Lote F):** se migran los 9 avisos/errores modales a un banner accesible con nivel y cierre manual; se conservan las 3 confirmaciones existentes |
 | UIX-14 | Indicador de carga del historial | P2 | hoy solo texto de estado en Java |
 | UIX-16 | Anclaje de scroll al cargar anteriores | P2 | el `setValue(anterior + 50)` de Python está codificado a mano |
 | — | Agrupar mensajes propios consecutivos | P2 | |
@@ -258,7 +311,7 @@ de una línea imperativa. Las 3 implementaciones de "puedo enviar" quedan en **1
 
 | ID | Tarea | Prioridad | Nota |
 |---|---|---|---|
-| UIX-06 | **Buscar dentro del historial** con `Ctrl+F` | P1 | **no existe en ninguno de los 3**: no hay `LIKE` en ningún DAO (`HistorialLocal.java:91-101`, `historial_local.py`, `HistorialLocal.cs:72-81`) |
+| UIX-06 | **Buscar dentro del historial** con `Ctrl+F` | P1 | Implementado en Lote B en los tres clientes; la evidencia de ausencia de DAO pertenece al diagnóstico original. |
 | UIX-07 | Debounce en la búsqueda | P1 | hoy se filtra en cada tecla |
 | UIX-17 | Corregir los contrastes que fallan WCAG AA | P1 | ver abajo |
 | UIX-18 | Diferenciar visualmente "Enviado" y "Entregado" en .NET | P1 | comparten color; solo se distinguen por el glifo |
@@ -279,7 +332,7 @@ de una línea imperativa. Las 3 implementaciones de "puedo enviar" quedan en **1
 
 | ID | Tarea | Nota |
 |---|---|---|
-| UIX-25..29 | Arreglar los 5 bugs de tematización | §3.4 del análisis |
+| UIX-25..29 | Cerrar los defectos de tematización pendientes; `UIX-25` y `UIX-29` ya están resueltos | §3.4 del análisis y estado actual en el roadmap |
 | **VIS-01** | **Fijar una única paleta por tema, no 3** | el tema oscuro coincide en los 3 clientes (11 colores idénticos). **El claro no coincide en ninguno**: burbuja propia `#E4F3EC` / `#E1F5FE` / `#D9FDD3` y acento `#2456A6` / `#147D73` / defecto de WPF-UI. La fuente de verdad pasa a ser el mismo sitio que ya usa cada toolkit: `chat.css`, `tema.py`, `Tema*.xaml` |
 | **VIS-02** | **Centralizar los 73 literales compartidos** | §5.1 del análisis. El caso grave es la **máquina de estados de mensaje**, escrita como `CASE` SQL 3 veces con la misma precedencia: si se añade un estado y se olvida una pista, el historial de un cliente discrepa del de otro. Ojo: `Respuesta a {identidad}: "…"` es **visible en el protocolo** y no se puede cambiar sin tocar los 3 clientes a la vez |
 

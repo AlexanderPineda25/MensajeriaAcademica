@@ -61,8 +61,11 @@ public class Mensaje {
     @Column(name = "ip_remitente", length = 45)
     private String ipRemitente;
 
-    @Column(name = "ip_destinatario", length = 45)
+    @Column(name = "ip_destinatario", columnDefinition = "TEXT")
     private String ipDestinatario;
+
+    @Column(name = "id_cliente", length = 64)
+    private String idCliente;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "archivo_id")
@@ -79,7 +82,7 @@ public class Mensaje {
 
     public static Mensaje deTexto(Usuario remitente, Usuario destinatario, String contenido,
                                   String hashSha256, int numCaracteres, int numPalabras,
-                                  String ipRemitente) {
+                                  String ipRemitente, String ipDestinatario) {
         Mensaje mensaje = new Mensaje(remitente, destinatario);
         mensaje.tipo = TipoContenido.TEXTO;
         mensaje.contenido = contenido;
@@ -87,29 +90,51 @@ public class Mensaje {
         mensaje.numCaracteres = numCaracteres;
         mensaje.numPalabras = numPalabras;
         mensaje.ipRemitente = ipRemitente;
+        mensaje.ipDestinatario = ipDestinatario;
         return mensaje;
+    }
+
+    public static Mensaje deTexto(Usuario remitente, Usuario destinatario, String contenido,
+                                  String hashSha256, int numCaracteres, int numPalabras,
+                                  String ipRemitente) {
+        return deTexto(remitente, destinatario, contenido, hashSha256, numCaracteres,
+                numPalabras, ipRemitente, null);
     }
 
     public static Mensaje deImagen(Usuario remitente, Usuario destinatario, Archivo archivo,
                                    String hashSha256, String etapasFiltradoJson,
-                                   String ipRemitente) {
+                                   String ipRemitente, String ipDestinatario) {
         Mensaje mensaje = new Mensaje(remitente, destinatario);
         mensaje.tipo = TipoContenido.IMAGEN;
         mensaje.archivo = archivo;
         mensaje.hashSha256 = hashSha256;
         mensaje.etapasFiltrado = etapasFiltradoJson;
         mensaje.ipRemitente = ipRemitente;
+        mensaje.ipDestinatario = ipDestinatario;
         return mensaje;
     }
 
+    public static Mensaje deImagen(Usuario remitente, Usuario destinatario, Archivo archivo,
+                                   String hashSha256, String etapasFiltradoJson,
+                                   String ipRemitente) {
+        return deImagen(remitente, destinatario, archivo, hashSha256, etapasFiltradoJson,
+                ipRemitente, null);
+    }
+
     public static Mensaje deArchivo(Usuario remitente, Usuario destinatario, Archivo archivo,
-                                    String hashSha256, String ipRemitente) {
+                                    String hashSha256, String ipRemitente, String ipDestinatario) {
         Mensaje mensaje = new Mensaje(remitente, destinatario);
         mensaje.tipo = TipoContenido.ARCHIVO;
         mensaje.archivo = archivo;
         mensaje.hashSha256 = hashSha256;
         mensaje.ipRemitente = ipRemitente;
+        mensaje.ipDestinatario = ipDestinatario;
         return mensaje;
+    }
+
+    public static Mensaje deArchivo(Usuario remitente, Usuario destinatario, Archivo archivo,
+                                    String hashSha256, String ipRemitente) {
+        return deArchivo(remitente, destinatario, archivo, hashSha256, ipRemitente, null);
     }
 
     @PrePersist
@@ -130,5 +155,9 @@ public class Mensaje {
     public String getEtapasFiltrado() { return etapasFiltrado; }
     public LocalDateTime getFechaEnvio() { return fechaEnvio; }
     public String getIpRemitente() { return ipRemitente; }
+    public String getIpDestinatario() { return ipDestinatario; }
+    public void setIpDestinatario(String ipDestinatario) { this.ipDestinatario = ipDestinatario; }
+    public String getIdCliente() { return idCliente; }
+    public void setIdCliente(String idCliente) { this.idCliente = idCliente; }
     public Archivo getArchivo() { return archivo; }
 }

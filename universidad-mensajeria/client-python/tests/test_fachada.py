@@ -3,7 +3,6 @@ import os
 import tempfile
 import unittest
 
-from componentes.historial_local import HistorialLocal
 from fachada.fachada_cliente import FachadaCliente, DESTINO_BROADCAST
 from store.database import Database
 

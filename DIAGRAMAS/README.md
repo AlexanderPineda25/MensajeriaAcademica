@@ -4,25 +4,24 @@ Diagramas del proyecto cliente-servidor, derivados del código y de los `.sql` r
 diagrama viene en dos formatos: **source editable** (lo que se revisa y se regenera) y **render**
 (PNG/SVG/PDF, lo que se lee en el informe).
 
-Actualizado: **2026-10-05** — se reescribió el índice, se añadieron 16 diagramas que faltaban
-(casos de uso, secuencia, actividad, estados, despliegue, clases de Python y .NET) y se documentó
-el plan de consolidación de las carpetas `DIAGRAMAS_ENTREGA` y `DIAGRAMAS_FINALES`.
+Actualizado: **2026-10-06** — estado posterior a DIAG-07/08: el índice y renders canónicos están en `DIAGRAMAS/`; las carpetas legadas se conservan hasta revisar los candidatos de §3.
+Los 16 diagramas agregados en la auditoría inicial incluyen casos de uso, secuencia, actividad,
+estados, despliegue y clases de Python/.NET.
 
 ## 0. Estado de los renders de esta ronda
 
-> ⚠️ **Los 16 `.mmd` nuevos están SIN render.** En este entorno **no hay `mmdc`, ni `plantuml`,
-> ni `node` instalados**, así que no se pudo generar ningún PNG/SVG.
+> ~~Los diagramas Mermaid nuevos están SIN render.~~ **Resuelto 2026-10-06 (DIAG-07/08,
+> Lote G):** `mmdc` 12 + `node` disponibles; los 45 `.mmd` de `DIAGRAMAS/`
+> renderizan a PNG+SVG con **0 FALLO** (`.\render.ps1 -Solo mermaid`, exit 0)
+> y cada PNG nuevo/migrado se revisó visualmente. Notas:
 >
-> Para completarlos hace falta:
->
-> ```powershell
-> npm i -g @mermaid-js/mermaid-cli
-> cd DIAGRAMAS
-> .\render.ps1 -Solo mermaid
-> ```
->
-> Y después **alguien tiene que mirar cada PNG** (§1, regla de los 3 pasos). Un diagrama sin
-> render revisado no cuenta como terminado.
+> - `usecaseDiagram` no existe en mermaid: los 3 `uc-*` se reescribieron como
+>   `flowchart TB` con el mismo contenido.
+> - Esta build de mermaid no acepta notas multilínea (`note ... end note`):
+>   las 13 afectadas se pasaron a una línea con `<br/>`; `note "x" as N1` no
+>   vale en `classDiagram-v2` (se fusionó en `note for`).
+> - En `flowchart`, las etiquetas `[...]` con `"`, `(...)`, `;` o `<` sin
+>   entrecomillar rompen el parse: se entrecomillaron (comillas internas a `'`).
 
 <a id="regenerar"></a>
 
@@ -49,11 +48,11 @@ propia carpeta**. Recorre con `Get-ChildItem -Recurse`, así que cualquier subca
 
 | Limitación | Detalle | Qué hacer |
 |---|---|---|
-| Ancho por **nombre de archivo** | El mapa `$anchos` solo tiene `er-modelo-servidor` (3400), `er-modelo-local` (2200), `arq-vista-general` (2600). Todo lo demás sale a **2000 px** | Si un diagrama nuevo sale ilegible, añadir su `BaseName` al mapa |
+| Ancho por **nombre de archivo** | `$anchos` fija 12 nombres de archivo (incluye ER, arquitectura y fuentes migradas); el resto sale a **2000 px** | Si un diagrama nuevo sale ilegible, añadir su `BaseName` al mapa |
 | El PDF depende del **nombre**, no del tipo | El gate es `BaseName -like 'er-modelo-*'`. Si un ER se renombra, **pierde el PDF** en silencio | Mantener el prefijo `er-modelo-` en los ER |
-| El script **siempre sale con código 0** | Termina con "Listo..." aunque hayan fallado N renders | En CI, contar los `FALLO` aparte |
+| Código de salida | **DIAG-08 corregido:** el contador `$script:fallos` termina con `exit 1` si algún render falla y `exit 0` si no hubo fallos | Usar el exit code; comprobar también visualmente el PNG |
 | `Test-Herramienta` **no aborta** | Si falta una herramienta, avisa y salta esa sección; las demás siguen | Normal, pero no confíes en el exit code |
-| Rama `.puml` **muerta hoy** | No hay ningún `.puml` en el repo; `-Solo plantuml` no hace nada | Dejar o borrar la rama |
+| Rama `.puml` sin uso actual | No hay ningún `.puml` en el repo; `-Solo plantuml` no hace nada | Mantenerla mientras no se adopte PlantUML; revisar por separado si cambia la herramienta |
 | Rama de Excalidraw puede tragarse un fallo real | `try{}catch{}` + `2>$null` neutraliza el error, y luego el éxito se juzga por `$LASTEXITCODE`, que puede venir de una llamada anterior | Contexto al leer un "OK" sospechoso |
 
 ## 2. Índice completo
@@ -66,11 +65,18 @@ propia carpeta**. Recorre con `Get-ChildItem -Recurse`, así que cualquier subca
 | `casos/uc-servidor.mmd` | 20 casos del **actor Administrador** + usuario conectado como actor secundario, agrupados en arranque / operación / informes / supervisión | `REQUERIMIENTOS.md` §3.1–3.8 |
 | `casos/uc-sistema.mmd` | Los 2 actores sobre el mismo sistema, con el cruce que importa: qué acciones del usuario alimentan qué informe | vista de conjunto |
 
+> **Formato.** mermaid no tiene `usecaseDiagram`: los 3 están escritos como
+> `flowchart TB` (actores = elipses, casos = rectángulos por subgrafo,
+> inclusiones = flechas punteadas). Mismo contenido, sintaxis renderizable
+> con `mmdc` 12 (verificado 2026-10-06).
+
 ### 2.2 Secuencia — **NUEVO** (antes solo había 3, en `DIAGRAMAS_ENTREGA`)
 
 | Archivo | Contenido |
 |---|---|
-| `secuencia/seq-conexion-y-trama.mmd` | Apertura TCP/TLS,Pool acquire, framed JSON (4 bytes big-endian + JSON UTF-8), despacho, y los **3 comandos sin guarda** de `SEC-05` marcados en la propia figura |
+| `secuencia/seq-conexion-y-trama.mmd` | Apertura TCP/TLS, adquisición del pool, JSON enmarcado (4 bytes big-endian + JSON UTF-8), despacho, LOGIN público y validación de sesión para los comandos protegidos; `SEC-05` está cerrado |
+| `secuencia/seq-login.mmd` — migrado de `ENTREGA/02` | Login simple Usuario→Login→Fachada→Servidor (OK/error). Vista de secuencia; la de decisión es `flujos/act-login.mmd` |
+| `secuencia/seq-envio-mensaje.mmd` — migrado de `ENTREGA/03` | Envío con acuses PENDIENTE→ENVIADO→ENTREGADO→LEIDO y rama sin red. Vista de secuencia; la de decisión es `flujos/act-envio-mensaje.mmd` |
 | `secuencia/seq-observador-vistas.mmd` | El patrón Observer (RF-S42): `suscribirEventos`, un evento de mensaje y uno de desconexión, y cómo decide la vista |
 | `secuencia/seq-object-pool.mmd` | `adquirir` → usar → `devolver`, con los 3 caminos de salida (cliente se va, corte de red, error del manejador) |
 | `secuencia/seq-tuberia-filtros.mmd` | Las **3 tuberías** (texto, imagen, archivo) en un solo diagrama, con la generación de la imagen derivada en cada filtro |
@@ -84,6 +90,7 @@ propia carpeta**. Recorre con `Get-ChildItem -Recurse`, así que cualquier subca
 | `flujos/act-archivo-fragmentado.mmd` | `ARCHIVO_INICIO → N×ARCHIVO_PARTE → ARCHIVO_FIN`, verificación de bytes, y la trampa del `Files.move` concurrente ya resuelta |
 | `flujos/act-descarga.mmd` | Descarga con y sin filtro, nombre de destino, y los 4 fallos de identificación de imagen |
 | `flujos/act-reconexion-cola.mmd` | Los **dos caminos distintos** que se confunden al implementarlo: la cola de envíos y los acuses pendientes |
+| `flujos/act-difusion.mmd` — migrado de `ENTREGA/04` | Difusión administrativa: BROADCAST → pool de entrega acotado → progreso N/total → resumen |
 
 ### 2.4 Estados — **NUEVO** (no existía ningún `stateDiagram` en el repo)
 
@@ -107,6 +114,7 @@ puertos, `comp-*` son adaptadores.
 | Archivo | Componente | Contenido |
 |---|---|---|
 | `clases/arq-vista-general.mmd` | — | Vista global: puertos, adaptadores, SPI, `servidor-app`, los 3 clientes |
+| `clases/arq-flujo-datos.mmd` — migrado de `ENTREGA/01` | — | La otra vista de arquitectura: flujo de datos TCP→despachador→fachada→persistencia (no puertos) |
 | `clases/clases-dto-contrato.mmd` | `common-protocol/dto` | `Mensaje` (29 componentes), `Mensaje.Builder`, `TipoMensaje` |
 | `clases/clases-dto-consultas.mmd` | `common-protocol/dto` | Informes, archivos, `ResultadoMensajeDTO`, `PaginaDTO<T>` |
 | `clases/clases-dto-sesion.mmd` | `common-protocol/dto` | `IdSesion`, `EstadoServidor`, usuarios, `TipoAccion`, excepciones |
@@ -124,6 +132,11 @@ puertos, `comp-*` son adaptadores.
 | `clases/clases-client-app.mmd` | `client/client-app` | Adaptadores, `FachadaCliente` y presentación JavaFX |
 | `clases/clases-client-python.mmd` — **NUEVO** | `client-python` | PySide6 completo, con anotado lo que está acoplado: la ventana parchea la fachada con `setattr` y la interroga con `getattr`; `HistorialLocal` **no tiene interfaz**; el grafo cambia de forma en runtime |
 | `clases/clases-client-dotnet.mmd` — **NUEVO** | `client-dotnet` | WPF completo. Se ve que `MensajeVM` sí notifica y `UsuarioVM` **no**; y que `OnDesconectado` existe pero **nadie se suscribe** |
+| `clases/clases-servidor-app.mmd` — migrado de `FINALES/03` | `servidor-app` | Fachada, núcleo y vistas: qué hace cada uno (sin atributos) |
+| `clases/clases-inicio-vistas.mmd` — migrado de `FINALES/05` | `servidor-app` | Arranque (`InicioServidor`+`Fabrica`) y UI del servidor (consola+escritorio). Cubre el hueco de §3.4 |
+| `clases/clases-fachada-casos.mmd` — migrado de `FINALES/06` | `servidor-app` | `FachadaDeServicios` + los 12 casos de uso como clases |
+| `clases/clases-nucleo.mmd` — migrado de `FINALES/07` | `servidor-app` | Núcleo: mensajes, eventos, conexiones y almacén (puertos + adaptadores) |
+| `clases/clases-persistencia.mmd` — migrado de `FINALES/08` | `servidor-app` | Persistencia JPA: adaptador, repositorios y entidades (único diagrama JPA) |
 
 ### 2.7 Mockups
 
@@ -138,6 +151,13 @@ Fuente `.excalidraw` (canvas vivo, editable en excalidraw.com) + PNG.
 | `mockups/mockup-estados.excalidraw` | Estados de entrega de la burbuja | `_MessageRow.actualizar_estado`, `MensajeCell`, `EstadoMensaje` |
 | `mockups/mockup-servidor-consola.excalidraw` | Consola administrativa | `VistaConsola.java`, `TablaAscii.java` |
 | `mockups/mockup-servidor-escritorio.excalidraw` | Vista escritorio (compuesta: usuarios, pool, difundir) | `VistaEscritorio.java`, `estilos/escritorio.css` |
+| `mockups/mockup-serv-usuarios.excalidraw` — migrado de `FINALES` | Pestaña Usuarios del servidor | `VistaEscritorio.java` |
+| `mockups/mockup-serv-conectados.excalidraw` — migrado de `FINALES` | Pestaña Conectados | `VistaEscritorio.java` |
+| `mockups/mockup-serv-mensajes.excalidraw` — migrado de `FINALES` | Pestaña Mensajes | `VistaEscritorio.java` |
+| `mockups/mockup-serv-informes.excalidraw` — migrado de `FINALES` | Pestaña Informes | `VistaEscritorio.java` |
+| `mockups/mockup-serv-logs.excalidraw` — migrado de `FINALES` | Pestaña Logs | `VistaEscritorio.java` |
+| `mockups/mockup-serv-pool.excalidraw` — migrado de `FINALES` | Estado del pool | `VistaEscritorio.java` |
+| `mockups/mockup-serv-difundir.excalidraw` — migrado de `FINALES` | Difundir a todos | `VistaEscritorio.java` |
 | `mockups/mockup-chat.excalidraw` | Chat, tema claro (**anterior a los 3 Telegram**) | — |
 
 > **Los 3 `mockup-chat-telegram-*` son el diseño vigente** y este índice es la primera vez que se
@@ -170,45 +190,50 @@ marca esas relaciones como *lógicas*, porque afirmar integridad referencial ah�
 
 ## 3. Plan de consolidación (DIAGRAMAS vs ENTREGA vs FINALES)
 
-**Estado: planificado, no ejecutado.** No se ha movido ni borrado nada.
+**Estado: migración ejecutada 2026-10-06 (DIAG-07, Lote G).** Pasos 1–4 de §3.3
+hechos: 5 clases de FINALES + 4 de ENTREGA + 7 mockups del servidor copiados
+a `DIAGRAMAS/` con los nombres de §3.2 (ENTREGA 02/03 como
+`secuencia/seq-login.mmd` y `secuencia/seq-envio-mensaje.mmd`), `$anchos`
+ampliado, todo renderizado con 0 FALLO y revisado, índice §2 actualizado.
+Paso 5 pendiente: las carpetas viejas **no están vacías** (quedan los archivos
+con veredicto Retirar/Fusionar de §3.2) y **no se borraron**.
 
-### 3.1 Qué hay hoy
+### 3.1 Inventario actual y línea base anterior a DIAG-07
 
-37 `.mmd` en 3 carpetas, con solapamiento pesado. Los 37 archivos tienen la **misma fecha de
-modificación** (artefacto de checkout), así que la antigüedad hay que deducirla del contenido:
+Inventario físico consultado el 2026-10-06: `DIAGRAMAS/` contiene **45 `.mmd`**, con 45 PNG y
+45 SVG renderizados, más 15 fuentes `.excalidraw` y sus 15 PNG. Los legados conservan 4 `.mmd` +
+4 PNG en `DIAGRAMAS_ENTREGA/` y 6 `.mmd` + 6 PNG + 5 `.excalidraw` + 5 PNG en
+`DIAGRAMAS_FINALES/`. Los números «37 en 3 carpetas» de la auditoría eran la línea base anterior
+a DIAG-07, no el inventario de hoy.
 
-- `DIAGRAMAS/` **gana en todo lo duplicado**: sus 18 `.mmd` derivan del código y los `.sql` reales,
+- `DIAGRAMAS/` es el catálogo canónico: sus fuentes derivan del código y los `.sql` reales,
   llevan atributos, `notes`, las clases `Proveedor` SPI, el inventario de los 13 índices del ER, y
   cubren MySQL + Oracle + Postgres.
-- `DIAGRAMAS_FINALES/` **pierde en lo duplicado** pero tiene **6 `.mmd` únicos** y **7 mockups
-  únicos**.
-- `DIAGRAMAS_ENTREGA/` tiene **4 diagramas únicos** y el resto son subconjuntos.
+- La tabla §3.2 registra la propuesta de conciliación anterior. Los originales se dejan en sitio;
+  cada candidato se puede conservar, fusionar o retirar solo después de verificar que la versión
+  canónica cubre sus relaciones y detalles.
 
-### 3.2 Veredicto por archivo
+### 3.2 Archivos legados que aún están presentes y opciones de conciliación
 
-| Archivo de las carpetas viejas | ¿Cubierto por `DIAGRAMAS/`? | Acción propuesta |
+| Archivo que permanece físicamente | Equivalente/destino posible | Recomendación para revisión futura |
 |---|---|---|
-| `FINALES/clases/02-clases-puertos-adaptadores` | Sí, por 7 archivos | **Retirar** |
-| `FINALES/clases/09-clases-base` | Sí, por 3 archivos | **Retirar** |
-| `FINALES/clases/01-componentes-servidor` | Parcial (~50 %) | **Fusionar** lo único (`InicioServidor`, las 2 vistas, `Base`) dentro de `arq-vista-general` |
-| `FINALES/clases/04-clases-cliente` | Solo el subgrafo Java | **Conservar como `clases/clientes-3-toolkits.mmd`**: es el único que muestra `.NET` y `Python` |
-| `FINALES/clases/03-clases-fachada-nucleo` | **No** | **Migrar** como `clases/clases-servidor-app.mmd` |
-| `FINALES/clases/05-clases-inicio-vistas` | **No** | **Migrar** como `clases/clases-inicio-vistas.mmd` |
-| `FINALES/clases/06-clases-fachada-casos` | **No** | **Migrar** como `clases/clases-fachada-casos.mmd` (los 12 casos de uso como clases) |
-| `FINALES/clases/07-clases-nucleo` | **No** | **Migrar** como `clases/clases-nucleo.mmd` |
-| `FINALES/clases/08-clases-persistencia` | **No** | **Migrar** como `clases/clases-persistencia.mmd` (único diagrama JPA) |
-| `FINALES/modelo-relacional/er-mysql` | Sí, y es **menos** completo | **Retirar** (pierde Oracle/Postgres y todos los índices) |
-| `FINALES/modelo-relacional/er-sqlite` | Sí | **Retirar** |
-| `FINALES/mockups/*` (12) | 5 con versión mejor en `DIAGRAMAS/` | **Migrar los 7 de servidor** (`-usuarios`, `-conectados`, `-mensajes`, `-informes`, `-logs`, `-pool`, `-difundir`) y **retirar los 5 duplicados** |
-| `ENTREGA/01-arquitectura` | No (otra pregunta: flujo de datos, no puertos) | **Migrar** como `clases/arq-flujo-datos.mmd` |
-| `ENTREGA/02-flujo-login` | **Parcial**: ahora `secuencia/seq-conexion-y-trama.mmd` + `flujos/act-login.mmd` | **Retirar** (queda cubierto y mejor) |
-| `ENTREGA/03-flujo-mensaje` | **Parcial**: ahora `flujos/act-envio-mensaje.mmd` | **Retirar** |
-| `ENTREGA/04-flujo-difusion` | **No** | **Migrar** como `flujos/act-difusion.mmd` |
-| `ENTREGA/05`, `06` | Sí | **Retirar** |
-| `ENTREGA/07-er-servidor`, `08-er-local` | Sí | **Retirar** |
+| `DIAGRAMAS_ENTREGA/05-clases-servidor.mmd` + `.png` | `clases/clases-servidor-app.mmd`, `clases-inicio-vistas.mmd`, `clases-fachada-casos.mmd`, `clases-nucleo.mmd`, `clases-persistencia.mmd` | Comparar clases y relaciones exclusivas; retirar el legado solo si el conjunto canónico lo cubre. |
+| `DIAGRAMAS_ENTREGA/06-clases-cliente.mmd` + `.png` | `clases/clases-client-interfaces.mmd`, `clases-client-app.mmd`, `clases-client-python.mmd`, `clases-client-dotnet.mmd` | Fusionar la vista cruzada de toolkits si aporta relaciones únicas; después cotejar antes de retirar. |
+| `DIAGRAMAS_ENTREGA/07-er-servidor.mmd` + `.png` | `modelo-relacional/er-modelo-servidor.mmd` | Candidato a retiro tras comparar entidades, columnas y restricciones. |
+| `DIAGRAMAS_ENTREGA/08-er-local.mmd` + `.png` | `modelo-relacional/er-modelo-local.mmd` | Candidato a retiro tras comparar columnas y restricciones. |
+| `DIAGRAMAS_FINALES/clases/01-componentes-servidor.mmd` + `.png` | `clases/arq-vista-general.mmd`, `clases-servidor-app.mmd`, `clases-inicio-vistas.mmd` | Fusionar los detalles únicos; retirar solo si el contenido queda cubierto. |
+| `DIAGRAMAS_FINALES/clases/02-clases-puertos-adaptadores.mmd` + `.png` | Diagramas `clases-int-*`, `clases-componentes-*` y `clases-comp-*` | Candidato a retiro después de cotejar puertos, implementaciones y relaciones. |
+| `DIAGRAMAS_FINALES/clases/04-clases-cliente.mmd` + `.png` | Diagramas por toolkit y `clases/arq-flujo-datos.mmd` | Conservar hasta documentar sus relaciones cruzadas o fusionarlas en la vista de conjunto. |
+| `DIAGRAMAS_FINALES/clases/09-clases-base.mmd` + `.png` | Diagramas canónicos por módulo | Candidato a retiro si no contiene clases o relaciones únicas. |
+| `DIAGRAMAS_FINALES/modelo-relacional/er-mysql.mmd` + `.png` | `modelo-relacional/er-modelo-servidor.mmd` | Candidato a retiro tras cotejo; conservar si se necesita como versión histórica específica. |
+| `DIAGRAMAS_FINALES/modelo-relacional/er-sqlite.mmd` + `.png` | `modelo-relacional/er-modelo-local.mmd` | Candidato a retiro tras cotejar columnas y restricciones. |
+| `DIAGRAMAS_FINALES/mockups/mockup-login.*`, `mockup-chat.*`, `mockup-estados.*` | Fuentes/renderes homónimos de `DIAGRAMAS/mockups/` | Los nombres coinciden, pero los hashes son distintos. Comparar visual y semánticamente; elegir qué versión conservar o marcar como histórica. |
+| `DIAGRAMAS_FINALES/mockups/mockup-servidor-consola.*`, `mockup-servidor-escritorio.*` | Mockups homónimos de `DIAGRAMAS/mockups/` | Mantener hasta compararlos con las vistas actuales; actualizar los canónicos antes de retirar diseños previos. |
 
-**Resultado esperado:** `DIAGRAMAS_ENTREGA` y `DIAGRAMAS_FINALES` **vacías y borradas**, todo el
-contenido único migrado a `DIAGRAMAS/`, y una sola carpeta que `render.ps1` sí regenera.
+`.*` representa la fuente editable y su PNG. Las diferencias de hash no determinan cuál versión es
+válida. El historial de fuentes migradas se conserva en el texto de §3 y en `PLAN_MEJORAS.md`; la
+tabla anterior lista únicamente lo que permanece en las carpetas legadas a la fecha del inventario.
+No se retiró ningún archivo en esta revisión.
 
 ### 3.3 Cómo se ejecuta la consolidación
 
@@ -218,16 +243,19 @@ En este orden, para que no haya ningún momento sin diagrama:
 2. **Actualizar `$anchos`** de `render.ps1` si alguno de los copiados necesita ancho propio.
 3. **Renderizar** y **mirar** los nuevos PNG.
 4. Actualizar este índice (§2) con los nombres definitivos.
-5. Solo entonces, **borrar** `DIAGRAMAS_ENTREGA` y `DIAGRAMAS_FINALES`.
+5. Presentar el inventario al responsable y decidir si se conserva, se comprime como archivo
+   histórico o se retira. Comparar referencias, fuentes y renders, y actualizar los índices antes
+   de cualquier limpieza posterior.
 
 ### 3.4 Qué falta después de consolidar
 
 | Diagrama | Por qué |
 |---|---|
-| Diagramas de clases de las **vistas del servidor** (`VistaConsola` + `VistaEscritorio`) | Solo existe un eco en `FINALES/05`, sin campos y sin JavaFX. Se resuelve con la migración de §3.2 |
+| Fidelidad de los diagramas de clases de las **vistas del servidor** (`VistaConsola` + `VistaEscritorio`) | `clases/clases-inicio-vistas.mmd` ya existe tras migración; falta cotejar campos/relaciones con el código actual |
 | **Dependencias de paquetes/módulos** como matriz | `arq-vista-general` lo hace de forma informal con etiquetas en prosa; no es una matriz de dependencias |
-| Mockups de los **estados de conexión** (conectando / conectado / sin red / sesión cerrada) | Son los 4 estados de `PAT-03` y **ningún cliente los muestra todavía** (`UIX-00a`). Se dibujarán cuando exista la feature |
-| Mockups de los **estados vacíos** y de los **diálogos de error** | `UIX-13`, `UIX-15` |
+| Mockups de los **estados de conexión** (conectando / conectado / sin red / sesión cerrada) | Los 4 estados ya están implementados (`PAT-03` / `UIX-00a`); falta crear y renderizar los mockups |
+| Mockups de los **estados vacíos** y de los **avisos inline de error** | Las features `UIX-13` y `UIX-15` ya están implementadas; falta crear y renderizar los mockups |
+| Mockups de la **vista administrativa posterior a los cambios** | Los mockups de servidor migrados son diseños previos; reconciliar pestañas/ficha con `VistaEscritorio` antes de presentarlos como estado actual |
 
 ## 4. Hechos de fidelidad
 
@@ -235,10 +263,10 @@ Cosas que se han verificado en el código y que conviene no contradecir:
 
 - `ProtocoloComunicacion.enviar` declara `throws IOException` mientras la interfaz declara
   `throws Exception`. Es un *narrowing* legítimo.
-- **`LogoutCommand`, `ListarCommand` y `ListarUsuariosCommand` reciben `respuestas` en el
-  constructor pero no lo guardan en ningún campo** — y por eso tampoco aplican la guarda de
-  autenticación que sí aplican los otros 12. Es el hallazgo `SEC-05` de
-  [`ANALISIS_TECNICO.md`](../ANALISIS_TECNICO.md) §1, y está dibujado en
+- **Historial de `SEC-05`:** antes del arreglo, `LogoutCommand`, `ListarCommand` y
+  `ListarUsuariosCommand` no aplicaban la guarda. El hallazgo está cerrado por el SPI fail-closed,
+  guardas y pruebas; no usar el diagrama histórico como evidencia de un fallo vigente. Está
+  documentado en [`ANALISIS_TECNICO.md`](../ANALISIS_TECNICO.md) §1 y señalado en
   `secuencia/seq-conexion-y-trama.mmd`.
 - `FabricaDelDespachador.NULA` se asigna pero **recibe 0 llamadas**: `Proveedor` sobreescribe
   `crear(FachadaSalida)`, así que la ruta sin salida nunca se toma.
@@ -253,8 +281,9 @@ Cosas que se han verificado en el código y que conviene no contradecir:
   confundía con los 6 de imagen.
 - La tabla `mensajes` tiene la columna **`ip_destinatario` que nunca se escribe ni se lee**
   (`MUERT-12`). La `ipDestinatario` del DTO de red sí está viva: no confundir.
-- Sin Python instalado en esta máquina, así que el verificador `check_scene.py` de `x9-diagrams`
-  no se ejecuta; los mockups se validan con el render headless del propio Excalidraw.
+- En la ronda DIAG-07 no se ejecutó el validador `check_scene.py` de `x9-diagrams`; los mockups se
+  renderizaron y revisaron mediante el flujo headless de Excalidraw. Repetir esa validación si se
+  adopta ese validador como requisito.
 
 ## 5. Referencias
 

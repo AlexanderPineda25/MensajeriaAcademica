@@ -15,10 +15,4 @@
     <name>Client Interfaces</name>
     <description>Modulo «Interfaces» del cliente: Autenticacion/ConexionRed/HistorialLocal/CacheUsuarios + records (PLAN2 §11)</description>
 
-    <dependencies>
-        <dependency>
-            <groupId>universidad.mensajeria</groupId>
-            <artifactId>dto</artifactId>
-        </dependency>
-    </dependencies>
 </project>

@@ -17,8 +17,10 @@ def iniciar():
         fuente = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "segoeui.ttf")
         if os.path.exists(fuente) and QFontDatabase.addApplicationFont(fuente) >= 0:
             app.setFont(QFont("Segoe UI", 10))
-    setTheme(Theme.LIGHT)
-    setThemeColor(QColor("#147D73"))
+    # UIX-29: el canonico es oscuro (tema.py: normalizar/modo_guardado
+    # devuelven MODO_OSCURO por defecto). Antes arrancaba en claro.
+    setTheme(Theme.DARK)
+    setThemeColor(QColor("#7B61B8"))
 
     fachada = FachadaCliente()
     login = LoginWindow(fachada)

@@ -53,17 +53,14 @@
     -fx-background-radius: 5px;
     -fx-border-color: transparent;
     -fx-text-fill: #25343b;
-    -fx-prompt-text-fill: #8b979c;
+    /* UIX-17: #8b979c daba 2.71:1 sobre #f1f4f5; #5A686E da 5.22:1 (AA). */
+    -fx-prompt-text-fill: #5A686E;
 }
 
 .search-field:focused, .message-input:focused {
     -fx-background-color: #ffffff;
     -fx-border-color: #78b9d0;
     -fx-border-radius: 5px;
-}
-
-.filter-select {
-    -fx-text-fill: #25343b;
 }
 
 .chat-list, .message-list {
@@ -98,7 +95,8 @@
 }
 
 .chat-list-preview {
-    -fx-text-fill: #78858b;
+    /* UIX-17: #78858B daba 3.80:1 sobre #ffffff; #57676E da 5.88:1 (AA). */
+    -fx-text-fill: #57676E;
     -fx-font-size: 11px;
 }
 
@@ -149,9 +147,34 @@
     -fx-text-fill: #267d75;
 }
 
+/* UIX-13: estados vacíos en vez de rectángulos en blanco. */
+.empty-placeholder {
+    -fx-font-size: 12px;
+    -fx-text-fill: #75838a;
+    -fx-alignment: center;
+    -fx-text-alignment: center;
+}
+
+/* UIX-04: cabecera de día entre mensajes de días distintos. */
+.day-separator {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #75838a;
+    -fx-alignment: center;
+    -fx-padding: 8px 0 4px 0;
+}
+
 .message-text {
     -fx-text-fill: #27363d;
+    -fx-fill: #27363d;
     -fx-font-size: 13px;
+}
+
+/* UIX-06: coincidencia de búsqueda dentro del mensaje. */
+.message-highlight {
+    -fx-fill: #17635B;
+    -fx-font-weight: bold;
+    -fx-underline: true;
 }
 
 .message-quote {
@@ -280,17 +303,4 @@
     -fx-text-fill: #B45309;
     -fx-font-weight: 700;
     -fx-padding: 9px 12px;
-}
-
-.broadcast-pill {
-    -fx-background-color: #DCE8FF;
-    -fx-background-radius: 12px;
-    -fx-text-fill: #2456A6;
-    -fx-font-size: 10px;
-    -fx-font-weight: 700;
-    -fx-padding: 3px 8px;
-}
-
-.sidebar-title {
-    -fx-text-fill: #1F3A5F;
 }

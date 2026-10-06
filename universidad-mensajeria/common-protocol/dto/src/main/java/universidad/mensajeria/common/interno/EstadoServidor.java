@@ -12,10 +12,4 @@ public record EstadoServidor(
         int trabajadoresDisponibles,
         int trabajadoresTotal,
         long mensajesProcesados) {
-
-    public EstadoServidor(boolean activo, int puerto, int usuariosConectados,
-                          int sesionesActivas, int maxConexiones, int mensajesEnCola) {
-        this(activo, puerto, usuariosConectados, sesionesActivas, maxConexiones,
-                mensajesEnCola, 0, 0, 0, 0);
-    }
 }

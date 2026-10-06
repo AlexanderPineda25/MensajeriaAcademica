@@ -1,8 +1,8 @@
 package universidad.mensajeria.cliente.componentes.autenticacion;
 
 import universidad.mensajeria.cliente.componentes.conexion.InterfazConexionRed;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
 import universidad.mensajeria.cliente.transversal.utilerias.ValidacionCliente;
-import universidad.mensajeria.common.tipos.Mensaje;
 
 /** Autenticación contra el servidor vía la conexión (sin sockets aquí). */
 public final class Autenticacion implements InterfazAutenticacion {
@@ -20,13 +20,15 @@ public final class Autenticacion implements InterfazAutenticacion {
         if (contrasena == null || contrasena.isBlank()) {
             throw new IllegalArgumentException("la contrasena es obligatoria");
         }
-        Mensaje respuesta = red.login(codigo, contrasena);
+        RespuestaRed respuesta = red.login(codigo, contrasena);
         if (Boolean.TRUE.equals(respuesta.exito())) {
             codigoActual = codigo;
             return true;
         }
-        throw new IllegalStateException(respuesta.mensajeError() != null
-                ? respuesta.mensajeError() : "login rechazado");
+        // El protocolo responde con un rechazo genérico. La vista también
+        // muestra un mensaje genérico y no revela si el código existe.
+        codigoActual = null;
+        return false;
     }
 
     @Override

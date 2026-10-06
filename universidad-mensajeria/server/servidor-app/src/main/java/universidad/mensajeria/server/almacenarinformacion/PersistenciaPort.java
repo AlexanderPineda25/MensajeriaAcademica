@@ -2,6 +2,7 @@ package universidad.mensajeria.server.almacenarinformacion;
 
 import universidad.mensajeria.common.interno.ArchivoDTO;
 import universidad.mensajeria.common.interno.ArchivoGuardarDTO;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.AuditoriaInformeDTO;
 import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
@@ -65,6 +66,11 @@ public interface PersistenciaPort {
     List<LoginConteoDTO> conteoConexiones(InformeFiltroDTO filtro);
 
     List<MensajeResumenDTO> historicoMensajes(InformeFiltroDTO filtro);
+
+    PaginaDTO<MensajeResumenDTO> paginaMensajesDeUsuario(String codigo, boolean soloArchivos,
+                                                          int pagina, int tamano);
+
+    ActividadUsuarioDTO actividadUsuario(String codigo);
 
     List<FechasUsuarioDTO> fechasUsuarios();
 }

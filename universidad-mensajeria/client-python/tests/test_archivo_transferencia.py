@@ -1,16 +1,14 @@
 """Pruebas unitarias para transferencia fragmentada de archivos y borrado de registro (Fase 7 - Pista 2)."""
 import base64
 import hashlib
+import importlib.util
 import os
 import tempfile
 import unittest
-from pathlib import Path
 
 from componentes.autenticacion import Autenticacion
-from componentes.historial_local import HistorialLocal
 from fachada.fachada_cliente import FachadaCliente, _PARTE_MAX_BYTES, _ARCHIVO_MAX_BYTES
 from store.database import Database
-import ui.registro_window
 
 
 class RedFalsaArchivos:
@@ -68,10 +66,16 @@ class TestArchivoTransferencia(unittest.TestCase):
         self.f.login("A001", "clave")
 
     def test_registro_eliminado(self):
-        """Paso F: El alta pública y métodos de registro fueron removidos."""
+        """Paso F: El alta pública y métodos de registro fueron removidos.
+
+        El módulo ui.registro_window ya no debe existir (RF-S27: el alta es solo
+        CSV). Antes el test miraba un stub vacío, así que afirmaba lo que ya
+        decía el propio stub; ahora comprueba que no se puede ni importar.
+        """
         self.assertFalse(hasattr(self.f, "registro"), "FachadaCliente no debe tener método registro")
         self.assertFalse(hasattr(self.f.autenticacion, "registro"), "Autenticacion no debe tener método registro")
-        self.assertFalse(hasattr(ui.registro_window, "RegistroWindow"), "RegistroWindow debe estar eliminada")
+        self.assertIsNone(importlib.util.find_spec("ui.registro_window"),
+                          "el modulo ui.registro_window debe estar borrado, no ser un stub")
 
     def test_enviar_archivo_fragmentado_exito(self):
         """Paso A: Envía archivo en partes ≤ 1 MiB con ARCHIVO_INICIO/PARTE/FIN."""

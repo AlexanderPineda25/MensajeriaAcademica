@@ -1,12 +1,16 @@
+import threading
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import LineEdit, PasswordLineEdit, PrimaryPushButton
 
 from ui.tema import (
     MODO_OSCURO,
-    MODOS,
     estilo_cabecera,
     estilo_tarjeta,
+    guardar_modo,
+    modo_guardado,
+    modo_por_indice,
     normalizar,
     tokens,
 )
@@ -133,26 +137,13 @@ class LoginWindow(QWidget):
         self._actualizar_boton()
 
     def _leer_modo(self):
-        try:
-            config = getattr(self.fachada, "config", None)
-            if config is not None:
-                return normalizar(config.get("tema", MODO_OSCURO))
-        except Exception:
-            pass
-        return MODO_OSCURO
+        return modo_guardado(self.fachada)
 
     def _guardar_modo(self):
-        try:
-            config = getattr(self.fachada, "config", None)
-            if config is not None and hasattr(config, "set"):
-                config.set("tema", self.modo)
-                if hasattr(config, "save"):
-                    config.save()
-        except Exception:
-            pass
+        guardar_modo(self.fachada, self.modo)
 
     def _cambiar_tema(self, indice):
-        self.modo = MODOS[indice] if 0 <= indice < len(MODOS) else MODO_OSCURO
+        self.modo = modo_por_indice(indice)
         self.aplicar_tema(self.modo)
         self._guardar_modo()
 
@@ -180,12 +171,14 @@ class LoginWindow(QWidget):
         self.combo_tema.setCurrentIndex(0 if self.modo == MODO_OSCURO else 1)
 
     def _actualizar_boton(self):
+        # UIX-00e: con el login en vuelo el boton sigue deshabilitado. Antes no
+        # hacia falta porque el hilo de la GUI estaba bloqueado y no habia forma
+        # de pulsarlo dos veces; en segundo plano si.
+        if getattr(self, "_login_en_curso", False):
+            self.btn_login.setEnabled(False)
+            return
         self.btn_login.setEnabled(bool(self.entry_codigo.text().strip()
                                         and self.entry_password.text()))
-
-    def mostrar_aviso(self, texto):
-        self.lbl_aviso.setText(f"⏳ {texto}")
-        self.lbl_aviso.setVisible(True)
 
     def login(self):
         codigo = self.entry_codigo.text().strip()
@@ -194,24 +187,44 @@ class LoginWindow(QWidget):
             self.lbl_error.setText("✖ Ingresa el código y la contraseña.")
             self.lbl_error.setVisible(True)
             return
+        if getattr(self, "_login_en_curso", False):
+            return
 
         self.btn_login.setEnabled(False)
         self.btn_login.setText("Conectando…")
         self.lbl_error.setVisible(False)
-        try:
-            # Servidor/puerto solo visibles: vienen de client.properties
-            # y no se modifican desde el login.
-            respuesta = self.fachada.login(codigo, contrasena)
-            if respuesta.get("exito"):
-                self.login_succeeded.emit(codigo)
-            else:
-                self.lbl_error.setText("✖ Usuario no registrado o datos incorrectos.")
-                self.lbl_error.setVisible(True)
-        except Exception as error:
+
+        # UIX-00e: login() se llamaba en el hilo de la GUI y puede bloquear hasta
+        # 15 s (timeout de la fachada), dejando la ventana congelada. Ahora va en
+        # un hilo de fondo y el resultado vuelve al hilo de la GUI, igual que
+        # LoginController en Java. La excepcion se transporta en un atributo:
+        # PySide no la propaga entre hilos.
+        self._login_en_curso = True
+
+        def conectar():
+            try:
+                exito = bool(self.fachada.login(codigo, contrasena).get("exito"))
+                fallo = None
+            except Exception as error:  # noqa: BLE001 - se muestra al usuario
+                exito, fallo = False, error
+            self._terminar_login(exito, fallo)
+
+        threading.Thread(target=conectar, name="login-fondo", daemon=True).start()
+
+    def _terminar_login(self, exito, fallo):
+        """Vuelve al hilo de la GUI: solo aqui se toca Qt."""
+        self._login_en_curso = False
+        self.btn_login.setEnabled(True)
+        self.btn_login.setText("Iniciar sesión →")
+        self._actualizar_boton()
+
+        if fallo is not None:
             self.lbl_error.setText(
-                f"✖ No se pudo conectar ({type(error).__name__}): {error}")
+                f"✖ No se pudo conectar ({type(fallo).__name__}): {fallo}")
             self.lbl_error.setVisible(True)
-        finally:
-            self.btn_login.setEnabled(True)
-            self.btn_login.setText("Iniciar sesión →")
-            self._actualizar_boton()
+            return
+        if exito:
+            self.login_succeeded.emit(self.entry_codigo.text().strip())
+        else:
+            self.lbl_error.setText("✖ Usuario no registrado o datos incorrectos.")
+            self.lbl_error.setVisible(True)

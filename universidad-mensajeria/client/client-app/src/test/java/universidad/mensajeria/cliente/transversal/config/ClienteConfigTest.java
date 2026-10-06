@@ -9,6 +9,7 @@ import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** client.properties: mismo formato que Python y C# (§5.2). */
 class ClienteConfigTest {
@@ -83,5 +84,38 @@ class ClienteConfigTest {
         props.setProperty("db.url", "jdbc:h2:file:C:/temp/chat;AUTO_SERVER=FALSE");
         assertEquals("jdbc:h2:file:C:/temp/chat_A001;AUTO_SERVER=TRUE",
                 ClienteConfig.desde(props).dbUrlParaCuenta("A001"));
+    }
+
+    /**
+     * MUERTE-5: el MISMO fichero que leen los tests de Python y .NET. Los tres
+     * deben resolver estos valores; si un analizador se aparta del formato
+     * compartido (§5.2), falla aqui.
+     */
+    @Test
+    void fixtureCanonicoCoincideConLosOtherClientes() throws Exception {
+        Properties props = new Properties();
+        try (var in = Files.newInputStream(rutaFixture())) {
+            props.load(in);
+        }
+        ClienteConfig cfg = ClienteConfig.desde(props);
+
+        assertEquals("10.0.0.25", cfg.host());
+        assertEquals(5012, cfg.puerto());
+        assertEquals("jdbc:h2:mem:prueba;OPTIONS=x=y", cfg.dbUrl());
+        assertEquals(true, cfg.tlsHabilitado());
+        assertEquals(5443, cfg.tlsPuerto());
+        assertEquals("C:/confianza/prueba.jks", cfg.tlsConfianza());
+        assertEquals("es", cfg.idioma());
+        // clave repetida: gana la ultima linea
+        assertEquals("oscuro", props.getProperty("tema"));
+    }
+
+    /** Surefire corre con user.dir en el modulo (client/client-app). */
+    static Path rutaFixture() {
+        Path fixture = Path.of(System.getProperty("user.dir"))
+                .resolve("../../common-protocol/test-fixtures/client-properties-fixture.properties")
+                .normalize();
+        assertTrue(Files.isRegularFile(fixture), "falta el fixture canonico: " + fixture);
+        return fixture;
     }
 }

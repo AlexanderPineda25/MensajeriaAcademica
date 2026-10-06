@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -18,7 +19,7 @@ using Mensajeria.Transversal;
 
 namespace Mensajeria.Views
 {
-    public class UsuarioVM
+    public class UsuarioVM : INotifyPropertyChanged
     {
         public string Codigo { get; init; } = "";
         public string Nombres { get; init; } = "";
@@ -28,6 +29,20 @@ namespace Mensajeria.Views
             ? Codigo : $"{Nombres} {Apellidos} [{Codigo}]";
         public string Presencia => Conectado ? "en línea" : "desconectado";
         public Brush ColorPresencia => Conectado ? Brushes.SeaGreen : Brushes.LightGray;
+
+        private int _noLeidos;
+        /// <summary>UIX-02: distintivo de no leídos (lo único que notifica).</summary>
+        public int NoLeidos
+        {
+            get => _noLeidos;
+            set { _noLeidos = value; OnPropertyChanged(); OnPropertyChanged(nameof(TextoInsignia)); OnPropertyChanged(nameof(MostrarInsignia)); }
+        }
+        public string TextoInsignia => NoLeidos > 0 ? $"({NoLeidos})" : "";
+        public Visibility MostrarInsignia => NoLeidos > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnPropertyChanged([CallerMemberName] string? name = null) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
     public class MensajeVM : INotifyPropertyChanged
@@ -38,9 +53,27 @@ namespace Mensajeria.Views
         private bool _solicitada;
 
         public string Id { get; init; } = "";
-        public string Encabezado { get; init; } = "";
+        private string _encabezado = "";
+        /// <summary>UIX-05: vacío en rachas del mismo autor (se recalcula).</summary>
+        public string Encabezado
+        {
+            get => _encabezado;
+            set { _encabezado = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarEncabezado)); }
+        }
+        public bool MostrarEncabezado => !EsCabeceraDia && !string.IsNullOrEmpty(Encabezado);
         public string Autor { get; init; } = "";
+        /// <summary>UIX-05: código del remitente (agrupar por código, no por
+        /// nombre visible, que puede cambiar entre páginas).</summary>
+        public string AutorCrudo { get; init; } = "";
         public string Fecha { get; init; } = "";
+        /// <summary>UIX-04/UIX-05: fecha cruda para agrupar (la visible ya va formateada).</summary>
+        public string FechaCruda { get; init; } = "";
+        /// <summary>UIX-04: true en filas de cabecera de día (sin burbuja).</summary>
+        public bool EsCabeceraDia { get; init; }
+        public string TextoCabecera { get; init; } = "";
+        public Visibility MostrarCabecera => EsCabeceraDia ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility MostrarBurbuja => BurbujaChat.DebeMostrar(EsCabeceraDia)
+            ? Visibility.Visible : Visibility.Collapsed;
         public string Contenido { get; init; } = "";
         public string Estado { get; init; } = "";
         public string ArchivoId { get; init; } = "";
@@ -48,11 +81,19 @@ namespace Mensajeria.Views
         public string NombreArchivo { get; init; } = "";
         public bool EsImagen { get; init; }
         public bool EsArchivo { get; init; }
+        private string _patronResaltado = "";
+        /// <summary>UIX-06: consulta activa para resaltar (vacía = sin marcas).</summary>
+        public string PatronResaltado
+        {
+            get => _patronResaltado;
+            set { _patronResaltado = value; OnPropertyChanged(); }
+        }
         public Visibility MostrarDescarga => EsArchivo ? Visibility.Visible : Visibility.Collapsed;
         /// <summary>True si el remitente es la sesión activa: burbuja a la derecha.</summary>
         public bool EsPropio { get; init; }
         public bool EsLeido { get; init; }
-        public HorizontalAlignment Alineacion => EsPropio ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        public HorizontalAlignment Alineacion => BurbujaChat.Alineacion(EsPropio)
+            == LadoBurbuja.Derecha ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         public Brush Fondo => Pincel(EsPropio ? "BubbleOwnBrush" : "BubbleInBrush");
         public Brush ColorEstado => Pincel(EsLeido ? "VistoLeidoBrush" : "VistoOtroBrush");
         public Brush ColorContenido => Pincel(EsPropio ? "BubbleOwnFgBrush" : "BubbleInFgBrush");
@@ -78,11 +119,14 @@ namespace Mensajeria.Views
         };
         public BitmapImage? Imagen { get => _imagen; set { _imagen = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); } }
         public string EstadoImagen { get => _estadoImagen; set { _estadoImagen = value; OnPropertyChanged(); } }
-        public bool Cargando { get => _cargando; set { _cargando = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); } }
+        public bool Cargando { get => _cargando; set { _cargando = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); OnPropertyChanged(nameof(MostrarCancelar)); } }
         public bool Solicitada { get => _solicitada; set { _solicitada = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); } }
         public Visibility MostrarTexto => string.IsNullOrEmpty(Contenido) ? Visibility.Collapsed : Visibility.Visible;
         public Visibility MostrarImagen => EsImagen ? Visibility.Visible : Visibility.Collapsed;
         public Visibility MostrarReintento => EsImagen && !Cargando && Imagen == null && Solicitada
+            ? Visibility.Visible : Visibility.Collapsed;
+        /// <summary>UIX-09: cancelar la carga en vuelo de esta imagen.</summary>
+        public Visibility MostrarCancelar => EsImagen && Cargando && !EsCabeceraDia
             ? Visibility.Visible : Visibility.Collapsed;
         public event PropertyChangedEventHandler? PropertyChanged;
         private void OnPropertyChanged([CallerMemberName] string? name = null) =>
@@ -92,17 +136,36 @@ namespace Mensajeria.Views
     public partial class ChatWindow : Window
     {
         private readonly IFachadaCliente _fachada;
+        private readonly EstadoAvisoInline _estadoAvisoInline = new();
         private readonly ObservableCollection<UsuarioVM> _usuarios = new();
         private readonly ObservableCollection<MensajeVM> _mensajes = new();
         private List<UsuarioVM> _directorio = new();
+        private IReadOnlyDictionary<string, DateTimeOffset> _ultimosMensajes =
+            new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
         private string? _usuarioDestino;
+        private int _versionCargaHistorial;
+        private bool _cargandoHistorial;
+        private bool _errorCargaHistorial;
         private string? _imagenPendiente;
         private string? _archivoPendiente;
         private bool _cerrando;
         private int _offsetActual;
+        // UIX-06/UIX-07: búsqueda en el historial con debounce.
+        private readonly List<string> _idsBusqueda = new();
+        private int _indiceBusqueda = -1;
+        private string _patronBusqueda = "";
+        private string? _saltoPendiente;
+        private int _intentosSalto;
+        // UIX-16: anclaje y aviso de nuevos sin perder lectura.
+        private bool _seguirAbajoAntesDeCargar = true;
+        private int _nuevosPendientes;
+        private readonly System.Windows.Threading.DispatcherTimer _timerBuscar = new();
+        private readonly System.Windows.Threading.DispatcherTimer _timerFiltro = new();
         private readonly Dictionary<string, int> _paginaRemota = new();
         private readonly Dictionary<string, int> _totalPaginasRemotas = new();
         private readonly SemaphoreSlim _limiteImagenes = new(3, 3);
+        /// <summary>UIX-09: cargas de imagen en vuelo por id, cancelables.</summary>
+        private readonly Dictionary<string, CancellationTokenSource> _cargasImagen = new();
 
         public ChatWindow(IFachadaCliente fachada)
         {
@@ -114,10 +177,108 @@ namespace Mensajeria.Views
             _fachada.OnMensajeRecibido += Fachada_OnMensajeRecibido;
             _fachada.OnCierre += Fachada_OnCierre;
             _fachada.OnPresencia += Fachada_OnPresencia;
+            // PAT-03/UIX-00a: aquí faltaba la suscripción. El banner ámbar existía
+            // en el XAML pero ninguna vista lo cambiaba, así que la pérdida de
+            // conexión era invisible en .NET.
+            _fachada.OnEstadoConexion += Fachada_OnEstadoConexion;
+            PintarEstadoConexion(_fachada.EstadoConexion);
+            // UIX-06/UIX-07: debounce compartido para las dos búsquedas (300 ms).
+            _timerBuscar.Interval = TimeSpan.FromMilliseconds(300);
+            _timerBuscar.Tick += (_, _) => { _timerBuscar.Stop(); EjecutarBusqueda(); };
+            _timerFiltro.Interval = TimeSpan.FromMilliseconds(300);
+            _timerFiltro.Tick += (_, _) => { _timerFiltro.Stop(); AplicarFiltro(_usuarioDestino); };
+            // UIX-06: Ctrl+F abre la búsqueda; Esc la cierra si está abierta.
+            PreviewKeyDown += (s, e) =>
+            {
+                bool ctrlF = e.Key == System.Windows.Input.Key.F
+                    && System.Windows.Input.Keyboard.Modifiers
+                        .HasFlag(System.Windows.Input.ModifierKeys.Control);
+                if (ctrlF)
+                {
+                    MostrarBuscar();
+                    e.Handled = true;
+                }
+                else if (e.Key == System.Windows.Input.Key.Escape
+                    && barraBuscar.Visibility == Visibility.Visible)
+                {
+                    CerrarBuscar();
+                    e.Handled = true;
+                }
+            };
             cmbTema.SelectedIndex = Temas.Tema.Leer() == Temas.Tema.Claro ? 1 : 0;
+            // UIX-11: restaura el ancho del sidebar (250–360).
+            int anchoSide = Transversal.ClienteConfig.Entero("sidebar.ancho", 300, 250, 360);
+            colSidebar.Width = new GridLength(anchoSide);
+            // UIX-13: sin conversación, el panel no queda negro sin explicación.
+            ActualizarVacioChat();
             CargarUsuarios();
             ActualizarEstadoEnvio();
         }
+
+        /// <summary>UIX-11: persiste el ancho del sidebar al soltar el divisor.</summary>
+        private void Splitter_DragCompleted(object sender,
+            System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            Transversal.ClienteConfig.Guardar("sidebar.ancho",
+                ((int)colSidebar.ActualWidth).ToString());
+        }
+
+        /// <summary>PAT-03: pinta el estado que publica la fachada.</summary>
+        private void Fachada_OnEstadoConexion(EstadoConexion estado)
+        {
+            // Llega desde el hilo de red: el salto al hilo de UI es obligatorio.
+            Dispatcher.Invoke(() => PintarEstadoConexion(estado));
+        }
+
+        private void PintarEstadoConexion(EstadoConexion estado)
+        {
+            bool degrading = EstadoConexionTexto.MuestraBanner(estado);
+            bannerOffline.Visibility = degrading ? Visibility.Visible : Visibility.Collapsed;
+            if (degrading)
+            {
+                bannerOfflineText.Text = EstadoConexionTexto.Texto(estado);
+                txtEstado.Text = EstadoConexionTexto.Texto(estado);
+            }
+            else if (txtEstado.Text == EstadoConexionTexto.Texto(EstadoConexion.SinRed)
+                || txtEstado.Text == EstadoConexionTexto.Texto(EstadoConexion.SesionCerrada))
+            {
+                txtEstado.Text = _usuarios.FirstOrDefault(u => u.Codigo == _usuarioDestino)?.Presencia ?? "";
+            }
+        }
+
+        private void MostrarAvisoInline(string mensaje, TipoAvisoInline tipo)
+        {
+            _estadoAvisoInline.Mostrar(mensaje, tipo);
+            txtTituloAvisoInline.Text = _estadoAvisoInline.Tipo switch
+            {
+                TipoAvisoInline.Error => "Error",
+                TipoAvisoInline.Advertencia => "Atención",
+                TipoAvisoInline.Exito => "Listo",
+                _ => "Información"
+            };
+            txtAvisoInline.Text = _estadoAvisoInline.Mensaje;
+
+            (Color fondo, Color borde, Color texto) = _estadoAvisoInline.Tipo switch
+            {
+                TipoAvisoInline.Error => (Color.FromRgb(0xFD, 0xEC, 0xEA), Color.FromRgb(0xF1, 0xA9, 0xA5), Color.FromRgb(0xB9, 0x1C, 0x1C)),
+                TipoAvisoInline.Advertencia => (Color.FromRgb(0xFF, 0xFB, 0xEB), Color.FromRgb(0xF2, 0xCE, 0x84), Color.FromRgb(0xB4, 0x53, 0x09)),
+                TipoAvisoInline.Exito => (Color.FromRgb(0xEC, 0xFD, 0xF3), Color.FromRgb(0xA7, 0xF3, 0xD0), Color.FromRgb(0x04, 0x78, 0x57)),
+                _ => (Color.FromRgb(0xEF, 0xF6, 0xFF), Color.FromRgb(0xBF, 0xDB, 0xFE), Color.FromRgb(0x1D, 0x4E, 0xD8))
+            };
+            bordeAvisoInline.Background = new SolidColorBrush(fondo);
+            bordeAvisoInline.BorderBrush = new SolidColorBrush(borde);
+            txtTituloAvisoInline.Foreground = new SolidColorBrush(texto);
+            txtAvisoInline.Foreground = new SolidColorBrush(texto);
+            bordeAvisoInline.Visibility = _estadoAvisoInline.Visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void LimpiarAvisoInline()
+        {
+            _estadoAvisoInline.Limpiar();
+            bordeAvisoInline.Visibility = Visibility.Collapsed;
+        }
+
+        private void BtnCerrarAvisoInline_Click(object sender, RoutedEventArgs e) => LimpiarAvisoInline();
 
         protected override void OnClosing(CancelEventArgs e)
         {
@@ -134,24 +295,24 @@ namespace Mensajeria.Views
             base.OnClosing(e);
         }
 
-        private void VolverAlInicio()
+        private void VolverAlInicio(string aviso = "")
         {
             _cerrando = true;
+            CancelarTodasLasCargas();
             _fachada.OnMensajeRecibido -= Fachada_OnMensajeRecibido;
             _fachada.OnCierre -= Fachada_OnCierre;
             _fachada.OnPresencia -= Fachada_OnPresencia;
             _fachada.Desconectar();
-            new LoginWindow(_fachada).Show();
+            new LoginWindow(_fachada, aviso).Show();
         }
 
         private void Fachada_OnCierre(Dictionary<string, JsonElement> aviso)
         {
-            string motivo = GetString(aviso, "mensajeError") ?? "sesión cerrada por el servidor";
+            string motivo = MensajesUsuario.SesionCerrada;
             Dispatcher.BeginInvoke(() =>
             {
                 if (_cerrando) return;
-                MessageBox.Show(motivo, "Sesión cerrada");
-                VolverAlInicio();
+                VolverAlInicio(motivo);
                 Close();
             });
         }
@@ -161,6 +322,7 @@ namespace Mensajeria.Views
             List<Dictionary<string, object>> lista;
             try { lista = await _fachada.ListarUsuariosAsync(); }
             catch { lista = await Task.Run(() => _fachada.DirectorioLocal()); }
+            await ActualizarFechasRecientesAsync();
             string? seleccionado = (lstUsuarios.SelectedItem as UsuarioVM)?.Codigo;
             // Encabezado de sesión con nombre completo + código cuando está disponible.
             var propia = lista.FirstOrDefault(u => u.TryGetValue("codigo", out var c) && c is string s && s == _fachada.UsuarioActual);
@@ -178,20 +340,63 @@ namespace Mensajeria.Views
                     Codigo = Valor(u, "codigo"), Nombres = Valor(u, "nombres"),
                     Apellidos = Valor(u, "apellidos"), Conectado = EsConectado(u)
                 }).ToList();
+            // UIX-02: insignia de no leídos (una sola query para todos).
+            var noLeidos = _fachada.ContarNoLeidos();
+            foreach (var u in _directorio) u.NoLeidos = noLeidos.GetValueOrDefault(u.Codigo);
             AplicarFiltro(seleccionado);
+        }
+
+        private async Task ActualizarFechasRecientesAsync()
+        {
+            try
+            {
+                var fechas = await Task.Run(() => _fachada.UltimosMensajesPorContacto());
+                var ordenReciente = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+                foreach (var par in fechas)
+                {
+                    if (DateTimeOffset.TryParse(par.Value, CultureInfo.InvariantCulture,
+                            DateTimeStyles.AssumeLocal, out var fecha))
+                        ordenReciente[par.Key] = fecha.ToUniversalTime();
+                }
+                _ultimosMensajes = ordenReciente;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("No se pudieron ordenar las conversaciones por fecha: {0}", ex);
+                _ultimosMensajes = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private void MarcarConversacionReciente(string codigo)
+        {
+            if (string.IsNullOrWhiteSpace(codigo)) return;
+            var fechas = new Dictionary<string, DateTimeOffset>(
+                _ultimosMensajes, StringComparer.OrdinalIgnoreCase)
+            {
+                [codigo] = DateTimeOffset.UtcNow
+            };
+            _ultimosMensajes = fechas;
+            AplicarFiltro(_usuarioDestino);
         }
 
         private void AplicarFiltro(string? seleccionado = null)
         {
             if (txtBuscar == null || txtEstado == null || lstUsuarios == null) return;
             string filtro = (txtBuscar.Text ?? "").Trim();
-            bool soloConectados = (cmbFiltro.SelectedItem as System.Windows.Controls.ComboBoxItem)
-                ?.Content?.ToString() == "Conectados";
+            string? modo = (cmbFiltro.SelectedItem as System.Windows.Controls.ComboBoxItem)
+                ?.Content?.ToString();
+            bool soloConectados = modo == "Conectados";
+            // UIX-02: filtro "Con no leídos" (paridad con Java y Python).
+            bool soloNoLeidos = modo == "Con no leídos";
             var vista = _directorio.Where(u =>
                 (!soloConectados || u.Conectado)
+                && (!soloNoLeidos || u.NoLeidos > 0)
                 && (filtro.Length == 0 || u.Etiqueta.Contains(filtro, StringComparison.CurrentCultureIgnoreCase)
                 || u.Codigo.Contains(filtro, StringComparison.CurrentCultureIgnoreCase)))
-                .OrderByDescending(u => u.Conectado).ThenBy(u => u.Apellidos).ToList();
+                .OrderByDescending(u => _ultimosMensajes.GetValueOrDefault(
+                    u.Codigo, DateTimeOffset.MinValue))
+                .ThenByDescending(u => u.Conectado)
+                .ThenBy(u => u.Apellidos, StringComparer.CurrentCultureIgnoreCase).ToList();
             _usuarios.Clear();
             foreach (var usuario in vista) _usuarios.Add(usuario);
             if (seleccionado != null)
@@ -199,7 +404,12 @@ namespace Mensajeria.Views
             txtEstado.Text = $"{_directorio.Count(u => u.Conectado)} contactos en línea";
         }
 
-        private void TxtBuscar_TextChanged(object sender, TextChangedEventArgs e) => AplicarFiltro(_usuarioDestino);
+        private void TxtBuscar_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            // UIX-07: sin debounce cada tecla reconstruía la lista.
+            _timerFiltro.Stop();
+            _timerFiltro.Start();
+        }
 
         private void CmbFiltro_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
@@ -227,13 +437,21 @@ namespace Mensajeria.Views
             if (tipo != TipoMensaje.MENSAJE_TEXTO && tipo != TipoMensaje.MENSAJE_IMAGEN
                 && tipo != TipoMensaje.BROADCAST && tipo != TipoMensaje.SYNC_LOGIN) return;
             string remitente = GetString(msg, "remitente") ?? "desconocido";
-            if (_usuarioDestino != remitente && tipo != TipoMensaje.BROADCAST) return;
+            string destinatario = GetString(msg, "destinatario") ?? "";
+            string contacto = tipo == TipoMensaje.BROADCAST
+                ? remitente
+                : string.Equals(remitente, _fachada.UsuarioActual, StringComparison.OrdinalIgnoreCase)
+                    ? destinatario : remitente;
             Dispatcher.BeginInvoke(() =>
             {
-                if (_usuarioDestino != remitente && tipo != TipoMensaje.BROADCAST) return;
-                CargarHistorial(tipo == TipoMensaje.BROADCAST ? remitente : _usuarioDestino!);
-                lstMensajes.ScrollIntoView(_mensajes.LastOrDefault());
-                if (_usuarioDestino == remitente)
+                MarcarConversacionReciente(contacto);
+                if (_usuarioDestino != contacto) return;
+                // UIX-16: solo baja solo si ya se estaba abajo; si no, avisa.
+                bool avisar = !EstaAbajo();
+                CargarHistorial(contacto);
+                if (avisar) AvisarNuevo();
+                if (!string.Equals(remitente, _fachada.UsuarioActual, StringComparison.OrdinalIgnoreCase)
+                    && _usuarioDestino == remitente)
                     _ = Task.Run(() => _fachada.MarcarLeidosAsync(remitente));
             });
         }
@@ -252,9 +470,24 @@ namespace Mensajeria.Views
 
         private void LstUsuarios_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (lstUsuarios.SelectedItem is not UsuarioVM usuario) return;
+            if (lstUsuarios.SelectedItem is not UsuarioVM usuario
+                || string.Equals(_usuarioDestino, usuario.Codigo, StringComparison.OrdinalIgnoreCase)) return;
             _usuarioDestino = usuario.Codigo;
+            // UIX-02: la insignia se apaga al abrir (el marcado real viaja por
+            // MarcarLeidosAsync en segundo plano).
+            usuario.NoLeidos = 0;
+            // UIX-16: conversación nueva, aviso nuevo apagado.
+            _nuevosPendientes = 0;
+            btnNuevos.Visibility = Visibility.Collapsed;
+            // UIX-06: los resultados son por conversación; al cambiar, fuera.
+            if (barraBuscar.Visibility == Visibility.Visible) CerrarBuscar();
+            // UIX-09: las descargas del chat anterior ya no pintan aquí.
+            CancelarTodasLasCargas();
             _offsetActual = 0;
+            _mensajes.Clear();
+            _cargandoHistorial = true;
+            _errorCargaHistorial = false;
+            ActualizarVacioChat();
             LimpiarCita();
             txtTitulo.Text = usuario.Etiqueta;
             txtEstado.Text = usuario.Presencia;
@@ -267,19 +500,55 @@ namespace Mensajeria.Views
 
         private async void CargarHistorial(string codigo, int offset = 0, bool prepend = false)
         {
+            int version = Interlocked.Increment(ref _versionCargaHistorial);
             List<Dictionary<string, object>> historial;
             int totalLocal;
+            // UIX-14: la rueda gira mientras se trae historial.
+            barraProgreso.Visibility = Visibility.Visible;
+            // UIX-16: se captura ANTES de la carga, porque al terminar la lista cambió.
+            if (!prepend) _seguirAbajoAntesDeCargar = EstaAbajo();
             try
             {
                 (historial, totalLocal) = await Task.Run(() =>
                     (_fachada.CargarHistorial(codigo, offset), _fachada.ContarConversacion(codigo)));
             }
-            catch { return; }
-            if (_usuarioDestino != codigo) return;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("No se pudo cargar el historial de {0}: {1}", codigo, ex);
+                if (_usuarioDestino == codigo && version == _versionCargaHistorial)
+                {
+                    barraProgreso.Visibility = Visibility.Collapsed;
+                    _cargandoHistorial = false;
+                    _errorCargaHistorial = true;
+                    ActualizarVacioChat();
+                    MostrarAvisoInline("No se pudo cargar el historial de esta conversación. Intenta actualizar los contactos.",
+                        TipoAvisoInline.Error);
+                }
+                return;
+            }
+            if (_usuarioDestino != codigo || version != _versionCargaHistorial) return;
+            barraProgreso.Visibility = Visibility.Collapsed;
+            _cargandoHistorial = false;
+            _errorCargaHistorial = false;
             if (!prepend) _offsetActual = offset;
             if (!prepend) _mensajes.Clear();
-            var filas = prepend ? historial.AsEnumerable().Reverse() : historial;
-            foreach (var row in filas)
+            // Fachada ordena por instante real de más antiguo a más nuevo.
+            // La colección conserva ese orden para que lo reciente quede abajo.
+            var cronologicas = historial;
+            string? fechaPrev = null;
+            string? autorPrev = null;
+            MensajeVM? vecino = null;
+            if (prepend)
+            {
+                vecino = _mensajes.FirstOrDefault(m => !m.EsCabeceraDia);
+            }
+            else
+            {
+                var ultimo = _mensajes.LastOrDefault(m => !m.EsCabeceraDia);
+                if (ultimo != null) { fechaPrev = ultimo.FechaCruda; autorPrev = ultimo.AutorCrudo; }
+            }
+            var lote = new List<MensajeVM>();
+            foreach (var row in cronologicas)
             {
                 string tipo = Valor(row, "tipo");
                 string remitente = Valor(row, "origen");
@@ -288,12 +557,25 @@ namespace Mensajeria.Views
                 bool propio = remitente == _fachada.UsuarioActual;
                 string identidad = propio ? "Tú" : Identidad(remitente);
                 string estadoBruto = Valor(row, "estado");
-                _mensajes.Add(new MensajeVM
+                string fechaCruda = Valor(row, "fechaEnvio");
+                if (Transversal.FilasChat.CambiaElDia(fechaPrev, fechaCruda))
+                {
+                    lote.Add(new MensajeVM
+                    {
+                        EsCabeceraDia = true,
+                        TextoCabecera = Transversal.FormatoFecha.EtiquetaDia(fechaCruda)
+                    });
+                }
+                bool agrupado = Transversal.FilasChat.Agrupar(
+                    fechaPrev, autorPrev, fechaCruda, remitente);
+                lote.Add(new MensajeVM
                 {
                     Id = Valor(row, "id"),
-                    Encabezado = identidad,
+                    Encabezado = agrupado ? "" : identidad,
                     Autor = identidad,
-                    Fecha = FormatearFecha(Valor(row, "fechaEnvio")),
+                    AutorCrudo = remitente,
+                    Fecha = FormatearFecha(fechaCruda),
+                    FechaCruda = fechaCruda,
                     Contenido = esImagen ? "" : Valor(row, "contenido"),
                     Estado = propio ? EstadoVisible(estadoBruto) : "",
                     EsImagen = esImagen,
@@ -304,15 +586,56 @@ namespace Mensajeria.Views
                     NombreArchivo = Valor(row, "nombreArchivo"),
                     RutaArchivo = Valor(row, "rutaArchivo")
                 });
-                if (prepend)
+                fechaPrev = fechaCruda;
+                autorPrev = remitente;
+            }
+            if (prepend)
+            {
+                for (int i = 0; i < lote.Count; i++) _mensajes.Insert(i, lote[i]);
+                // Unión con el vecino de abajo: separador si cambia el día y
+                // encabezado recalculado (ya no va pegado al anterior).
+                if (vecino != null && lote.Count > 0)
                 {
-                    var nuevo = _mensajes[^1];
-                    _mensajes.RemoveAt(_mensajes.Count - 1);
-                    _mensajes.Insert(0, nuevo);
+                    var ultimoLote = lote[^1];
+                    if (!ultimoLote.EsCabeceraDia
+                        && Transversal.FilasChat.CambiaElDia(ultimoLote.FechaCruda, vecino.FechaCruda))
+                    {
+                        _mensajes.Insert(lote.Count, new MensajeVM
+                        {
+                            EsCabeceraDia = true,
+                            TextoCabecera = Transversal.FormatoFecha.EtiquetaDia(vecino.FechaCruda)
+                        });
+                    }
+                    if (!ultimoLote.EsCabeceraDia)
+                    {
+                        vecino.Encabezado = Transversal.FilasChat.Agrupar(
+                            ultimoLote.FechaCruda, ultimoLote.AutorCrudo,
+                            vecino.FechaCruda, vecino.AutorCrudo) ? "" : vecino.Autor;
+                    }
                 }
             }
+            else
+            {
+                foreach (var vm in lote) _mensajes.Add(vm);
+            }
             if (prepend) lstMensajes.ScrollIntoView(_mensajes.FirstOrDefault());
-            else lstMensajes.ScrollIntoView(_mensajes.LastOrDefault());
+            else if (_seguirAbajoAntesDeCargar)
+            {
+                lstMensajes.ScrollIntoView(_mensajes.LastOrDefault());
+                _nuevosPendientes = 0;
+                btnNuevos.Visibility = Visibility.Collapsed;
+            }
+            // UIX-13: si no hay mensajes, se dice en vez de dejar negro.
+            ActualizarVacioChat();
+            // UIX-06: si hay un salto pendiente (búsqueda), se reintenta ahora
+            // que hay más mensajes cargados.
+            if (_saltoPendiente != null)
+            {
+                string id = _saltoPendiente;
+                int intentos = _intentosSalto;
+                _saltoPendiente = null;
+                SaltarA(id, intentos);
+            }
             int paginasRemotas = _totalPaginasRemotas.GetValueOrDefault(codigo);
             btnAnteriores.Visibility = offset + 50 < totalLocal
                 || _paginaRemota.GetValueOrDefault(codigo) + 1 < paginasRemotas
@@ -326,13 +649,23 @@ namespace Mensajeria.Views
                 int total = await _fachada.TraerHistorialAsync(codigo, pagina);
                 _paginaRemota[codigo] = pagina;
                 _totalPaginasRemotas[codigo] = total;
+                if (pagina == 0)
+                {
+                    await ActualizarFechasRecientesAsync();
+                    if (_usuarioDestino != null) AplicarFiltro(_usuarioDestino);
+                }
                 if (_usuarioDestino == codigo)
                     CargarHistorial(codigo, olderPage ? _offsetActual : 0, olderPage);
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("No se pudo sincronizar el historial de {0}: {1}", codigo, ex);
                 if (_usuarioDestino == codigo && pagina == 0)
-                    txtEstado.Text = "Mostrando historial local";
+                {
+                    txtEstado.Text = "No se pudo sincronizar; mostrando el historial guardado en este equipo.";
+                    MostrarAvisoInline(MensajesUsuario.Accion(ex, "sincronizar el historial"),
+                        TipoAvisoInline.Error);
+                }
             }
         }
 
@@ -355,6 +688,179 @@ namespace Mensajeria.Views
             }
         }
 
+        /// <summary>UIX-16: True si ya se está al fondo (margen 60 px).</summary>
+        private bool EstaAbajo()
+        {
+            var scroll = EncontrarScroll(lstMensajes);
+            if (scroll == null) return true;
+            return scroll.VerticalOffset >= scroll.ScrollableHeight - 60;
+        }
+
+        private static System.Windows.Controls.ScrollViewer? EncontrarScroll(DependencyObject raiz)
+        {
+            if (raiz is System.Windows.Controls.ScrollViewer scroll) return scroll;
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(raiz); i++)
+            {
+                var hallado = EncontrarScroll(System.Windows.Media.VisualTreeHelper.GetChild(raiz, i));
+                if (hallado != null) return hallado;
+            }
+            return null;
+        }
+
+        private void BtnNuevos_Click(object sender, RoutedEventArgs e)
+        {
+            _nuevosPendientes = 0;
+            btnNuevos.Visibility = Visibility.Collapsed;
+            if (_usuarioDestino != null) CargarHistorial(_usuarioDestino);
+        }
+
+        private void AvisarNuevo()
+        {
+            _nuevosPendientes++;
+            btnNuevos.Content = $"↓ {_nuevosPendientes} nuevos";
+            btnNuevos.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>UIX-13: si no hay mensajes, se dice en vez de dejar negro.</summary>
+        private void ActualizarVacioChat()
+        {
+            bool hay = _mensajes.Any(m => !m.EsCabeceraDia);
+            txtVacioChat.Visibility = hay ? Visibility.Collapsed : Visibility.Visible;
+            if (!hay)
+            {
+                txtVacioChat.Text = _usuarioDestino == null
+                    ? "Elige un contacto para empezar a conversar."
+                    : _cargandoHistorial ? "Cargando conversación…"
+                    : _errorCargaHistorial ? "No se pudo cargar el historial. Revisa la conexión e inténtalo de nuevo."
+                    : "Sin mensajes aún. Escribe el primero.";
+            }
+        }
+
+        // ------------------------------------------------- UIX-06: buscar en el historial
+
+        private void MostrarBuscar()
+        {
+            if (_usuarioDestino == null)
+            {
+                txtEstado.Text = "Elige una conversación para buscar en su historial.";
+                return;
+            }
+            barraBuscar.Visibility = Visibility.Visible;
+            txtBuscarHistorial.Focus();
+            txtBuscarHistorial.SelectAll();
+        }
+
+        private void CerrarBuscar()
+        {
+            barraBuscar.Visibility = Visibility.Collapsed;
+            txtBuscarHistorial.Clear();
+            _patronBusqueda = "";
+            _idsBusqueda.Clear();
+            _indiceBusqueda = -1;
+            _saltoPendiente = null;
+            txtBuscarContador.Text = "";
+            foreach (var vm in _mensajes) vm.PatronResaltado = "";
+        }
+
+        private void BtnBuscarCerrar_Click(object sender, RoutedEventArgs e) => CerrarBuscar();
+
+        private void TxtBuscarHistorial_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            // UIX-07: la query a SQLite espera 300 ms tras la última tecla.
+            _timerBuscar.Stop();
+            _timerBuscar.Start();
+        }
+
+        private void TxtBuscarHistorial_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter)
+            {
+                if (e.KeyboardDevice.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift))
+                    BuscarAnterior();
+                else
+                    BuscarSiguiente();
+                e.Handled = true;
+            }
+            else if (e.Key == System.Windows.Input.Key.Escape)
+            {
+                CerrarBuscar();
+                e.Handled = true;
+            }
+        }
+
+        private void BtnBuscarSiguiente_Click(object sender, RoutedEventArgs e) => BuscarSiguiente();
+
+        private void BtnBuscarAnterior_Click(object sender, RoutedEventArgs e) => BuscarAnterior();
+
+        private void EjecutarBusqueda()
+        {
+            string? codigo = _usuarioDestino;
+            string patron = (txtBuscarHistorial.Text ?? "").Trim();
+            if (codigo == null || patron.Length == 0)
+            {
+                _patronBusqueda = "";
+                _idsBusqueda.Clear();
+                _indiceBusqueda = -1;
+                ActualizarContadorBusqueda();
+                foreach (var vm in _mensajes) vm.PatronResaltado = "";
+                return;
+            }
+            _patronBusqueda = patron;
+            _idsBusqueda.Clear();
+            _idsBusqueda.AddRange(_fachada.BuscarEnHistorial(codigo, patron));
+            _indiceBusqueda = _idsBusqueda.Count > 0 ? 0 : -1;
+            ActualizarContadorBusqueda();
+            foreach (var vm in _mensajes) vm.PatronResaltado = patron;
+            if (_idsBusqueda.Count > 0) SaltarA(_idsBusqueda[0], 5);
+        }
+
+        private void ActualizarContadorBusqueda()
+        {
+            txtBuscarContador.Text = _idsBusqueda.Count == 0
+                ? (_patronBusqueda.Length == 0 ? "" : "Sin resultados")
+                : $"{_indiceBusqueda + 1}/{_idsBusqueda.Count}";
+        }
+
+        private void BuscarSiguiente()
+        {
+            if (_idsBusqueda.Count == 0) return;
+            _indiceBusqueda = (_indiceBusqueda + 1) % _idsBusqueda.Count;
+            ActualizarContadorBusqueda();
+            SaltarA(_idsBusqueda[_indiceBusqueda], 5);
+        }
+
+        private void BuscarAnterior()
+        {
+            if (_idsBusqueda.Count == 0) return;
+            _indiceBusqueda = (_indiceBusqueda - 1 + _idsBusqueda.Count) % _idsBusqueda.Count;
+            ActualizarContadorBusqueda();
+            SaltarA(_idsBusqueda[_indiceBusqueda], 5);
+        }
+
+        /// <summary>
+        /// Baja al mensaje: si está cargado, scroll + selección; si no, trae
+        /// una página más y reintenta (acotado).
+        /// </summary>
+        private void SaltarA(string id, int intentos)
+        {
+            if (_usuarioDestino == null) return;
+            var vm = _mensajes.FirstOrDefault(m => !m.EsCabeceraDia && m.Id == id);
+            if (vm != null)
+            {
+                lstMensajes.ScrollIntoView(vm);
+                lstMensajes.SelectedItem = vm;
+                return;
+            }
+            if (intentos <= 0 || btnAnteriores.Visibility != Visibility.Visible)
+            {
+                txtBuscarContador.Text = "Fuera del historial cargado";
+                return;
+            }
+            _saltoPendiente = id;
+            _intentosSalto = intentos - 1;
+            BtnAnteriores_Click(this, new RoutedEventArgs());
+        }
+
         private async void MessageImage_Loaded(object sender, RoutedEventArgs e)
         {
             if (sender is Image { DataContext: MensajeVM vm }) await CargarImagenAsync(vm);
@@ -363,14 +869,25 @@ namespace Mensajeria.Views
         private async Task CargarImagenAsync(MensajeVM vm)
         {
             if (vm.Imagen != null || vm.Cargando || vm.Solicitada) return;
+            // UIX-09: una sola carga por mensaje; la anterior se cancela.
+            if (_cargasImagen.TryGetValue(vm.Id, out var previa))
+            {
+                try { previa.Cancel(); } catch { }
+                _cargasImagen.Remove(vm.Id);
+            }
+            var cts = new CancellationTokenSource();
+            _cargasImagen[vm.Id] = cts;
+            CancellationToken token = cts.Token;
             vm.Cargando = true;
             vm.EstadoImagen = "Cargando imagen…";
-            await _limiteImagenes.WaitAsync();
             try
             {
-                var bitmap = await Task.Run(async () =>
-                {
-                    string ruta = vm.RutaArchivo;
+                await _limiteImagenes.WaitAsync(token).ConfigureAwait(true);
+                token.ThrowIfCancellationRequested();
+                    var bitmap = await Task.Run(async () =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        string ruta = vm.RutaArchivo;
                     if (string.IsNullOrWhiteSpace(ruta) || !File.Exists(ruta))
                     {
                         string extension = Path.GetExtension(vm.NombreArchivo);
@@ -409,15 +926,22 @@ namespace Mensajeria.Views
                 vm.RutaArchivo = bitmap.Path;
                 vm.EstadoImagen = vm.NombreArchivo;
             }
+            catch (OperationCanceledException)
+            {
+                // UIX-09: cancelación del usuario o cambio de vista: silencio,
+                // sin ofrecer reintento de algo que ya se dejó atrás.
+                vm.EstadoImagen = "Carga cancelada";
+            }
             catch (Exception ex)
             {
-                vm.EstadoImagen = ex.Message;
+                vm.EstadoImagen = MensajesUsuario.Archivo(ex);
                 vm.Solicitada = true;
             }
             finally
             {
                 _limiteImagenes.Release();
                 vm.Cargando = false;
+                _cargasImagen.Remove(vm.Id);
             }
         }
 
@@ -428,6 +952,30 @@ namespace Mensajeria.Views
                 vm.Solicitada = false;
                 await CargarImagenAsync(vm);
             }
+        }
+
+        private void BtnCancelarImagen_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button { DataContext: MensajeVM vm }) CancelarCargaImagen(vm.Id);
+        }
+
+        /// <summary>UIX-09: cancela la carga en vuelo de ese mensaje.</summary>
+        private void CancelarCargaImagen(string id)
+        {
+            if (_cargasImagen.TryGetValue(id, out var cts))
+            {
+                try { cts.Cancel(); } catch { }
+            }
+        }
+
+        /// <summary>UIX-09: cancela todas las cargas (cambio de chat o salida).</summary>
+        private void CancelarTodasLasCargas()
+        {
+            foreach (var cts in _cargasImagen.Values)
+            {
+                try { cts.Cancel(); } catch { }
+            }
+            _cargasImagen.Clear();
         }
 
         private string _citaAutor = "";
@@ -455,25 +1003,11 @@ namespace Mensajeria.Views
 
         private static void AbrirImagenGrande(MensajeVM vm)
         {
+            // UIX-08: visor con zoom y pan en vez de ventana fija.
             try
             {
-                var vista = new System.Windows.Controls.Image
-                {
-                    Source = vm.Imagen,
-                    Stretch = Stretch.Uniform,
-                    MaxHeight = 720,
-                    MaxWidth = 900
-                };
-                var ventana = new Window
-                {
-                    Title = string.IsNullOrWhiteSpace(vm.NombreArchivo) ? "Imagen" : vm.NombreArchivo,
-                    Content = vista,
-                    Width = 940,
-                    Height = 760,
-                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                    Background = Application.Current?.TryFindResource("WindowBgBrush") as Brush ?? Brushes.Black
-                };
-                ventana.Show();
+                new ImagenViewerWindow(vm.Imagen,
+                    string.IsNullOrWhiteSpace(vm.NombreArchivo) ? "Imagen" : vm.NombreArchivo).Show();
             }
             catch { }
         }
@@ -510,6 +1044,7 @@ namespace Mensajeria.Views
             bool hayImagen = !string.IsNullOrEmpty(_imagenPendiente);
             bool hayArchivo = !string.IsNullOrEmpty(_archivoPendiente);
             if (texto.Length == 0 && !hayImagen && !hayArchivo) return;
+            LimpiarAvisoInline();
             btnEnviar.IsEnabled = false;
             try
             {
@@ -540,11 +1075,16 @@ namespace Mensajeria.Views
                 bordeRespuesta.Visibility = Visibility.Collapsed;
                 _citaAutor = "";
                 _citaExtracto = "";
-                if (!enRed) MessageBox.Show("Sin red: guardado para reintentar.", "Sin conexión");
+                if (!enRed) MostrarAvisoInline("Sin red: guardado para reintentar.", TipoAvisoInline.Informacion);
                 CargarHistorial(_usuarioDestino);
+                MarcarConversacionReciente(_usuarioDestino);
             }
-            catch (NullReferenceException) { MessageBox.Show("Sesión no válida, vuelve a iniciar sesión.", "No se pudo enviar"); }
-            catch (Exception ex) { MessageBox.Show(ex.Message, "No se pudo enviar"); }
+            catch (NullReferenceException) { MostrarAvisoInline("Sesión no válida, vuelve a iniciar sesión.", TipoAvisoInline.Error); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Falló el envío de un mensaje: {0}", ex);
+                MostrarAvisoInline(MensajesUsuario.Accion(ex, "enviar el mensaje"), TipoAvisoInline.Error);
+            }
             finally { ActualizarEstadoEnvio(); }
         }
 
@@ -645,14 +1185,6 @@ namespace Mensajeria.Views
             ActualizarEstadoEnvio();
         }
 
-        private void BtnAdjuntarArchivo_Click(object sender, RoutedEventArgs e)
-        {
-            if (string.IsNullOrEmpty(_usuarioDestino)) return;
-            var dlg = new OpenFileDialog { Filter = "Todos los archivos|*.*" };
-            if (dlg.ShowDialog() == true)
-                FijarArchivoPendiente(dlg.FileName);
-        }
-
         private void FijarArchivoPendiente(string ruta)
         {
             try
@@ -660,8 +1192,8 @@ namespace Mensajeria.Views
                 long tamano = new FileInfo(ruta).Length;
                 if (tamano > FachadaCliente.MaxBytesArchivo)
                 {
-                    MessageBox.Show($"El archivo supera el máximo de 50 MB ({tamano} bytes).",
-                        "Adjunto no válido");
+                    MostrarAvisoInline($"El archivo supera el máximo de 50 MB ({tamano} bytes).",
+                        TipoAvisoInline.Advertencia);
                     return;
                 }
                 _archivoPendiente = ruta;
@@ -671,7 +1203,8 @@ namespace Mensajeria.Views
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Adjunto no válido");
+                System.Diagnostics.Trace.TraceError("No se pudo leer el archivo adjunto: {0}", ex);
+                MostrarAvisoInline(MensajesUsuario.Archivo(ex), TipoAvisoInline.Error);
             }
         }
 
@@ -716,11 +1249,12 @@ namespace Mensajeria.Views
                     await File.WriteAllBytesAsync(ruta, bytes);
                 }
                 vm.RutaArchivo = ruta;
-                MessageBox.Show($"Archivo guardado en {ruta}.", "Descarga completa");
+                MostrarAvisoInline($"Archivo guardado en {ruta}.", TipoAvisoInline.Exito);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "No se pudo descargar");
+                System.Diagnostics.Trace.TraceError("No se pudo descargar un archivo: {0}", ex);
+                MostrarAvisoInline(MensajesUsuario.Accion(ex, "descargar el archivo"), TipoAvisoInline.Error);
             }
             finally
             {
@@ -730,6 +1264,8 @@ namespace Mensajeria.Views
 
         private void BtnSalir_Click(object sender, RoutedEventArgs e)
         {
+            if (MessageBox.Show("¿Deseas salir y cerrar esta sesión?", "Confirmar salida",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             VolverAlInicio();
             Close();
         }
@@ -744,7 +1280,11 @@ namespace Mensajeria.Views
                 VolverAlInicio();
                 Close();
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message, "No se pudieron cerrar las otras sesiones"); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("No se pudieron cerrar las otras sesiones: {0}", ex);
+                MostrarAvisoInline(MensajesUsuario.Accion(ex, "cerrar las otras sesiones"), TipoAvisoInline.Error);
+            }
         }
 
         private string Identidad(string codigo)
@@ -774,14 +1314,14 @@ namespace Mensajeria.Views
         private static string Valor(Dictionary<string, object> fila, string clave) =>
             fila.TryGetValue(clave, out var valor) && valor != null ? valor.ToString() ?? "" : "";
 
-        /// <summary>Fecha corta local "aaaa-MM-dd HH:mm" como el cliente Python.</summary>
-        private static string FormatearFecha(string crudo)
-        {
-            if (!string.IsNullOrWhiteSpace(crudo)
-                && DateTimeOffset.TryParse(crudo, out var instante))
-                return instante.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
-            return (crudo ?? "").Length <= 16 ? crudo ?? "" : crudo!.Substring(0, 16);
-        }
+        private static DateTimeOffset? ParseFechaConversacion(string fecha) =>
+            DateTimeOffset.TryParse(fecha, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeLocal, out var instante)
+                ? instante.ToUniversalTime() : null;
+
+        /// <summary>Hora corta relativa (UIX-03): delega al contrato compartido.</summary>
+        private static string FormatearFecha(string crudo) =>
+            Transversal.FormatoFecha.HoraCorta(crudo);
 
         private static string? GetString(Dictionary<string, JsonElement> fila, string clave) =>
             fila.TryGetValue(clave, out var valor) && valor.ValueKind == JsonValueKind.String

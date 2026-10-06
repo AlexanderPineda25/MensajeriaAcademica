@@ -1,6 +1,6 @@
 # Preparar cualquier computador para que el programa funcione
 
-Actualizado: **2026-10-05**. Guía de **preparación de entorno**, desde un Windows limpio hasta
+Actualizado: **2026-10-06**. Guía de **preparación de entorno**, desde un Windows limpio hasta
 "compilo y los 4 procesos arrancan".
 
 > **Qué NO es esta guía.** No es cómo desplegar: eso es [`DESPLIEGUE.md`](DESPLIEGUE.md).
@@ -34,6 +34,12 @@ Solo el **PC de desarrollo** (el que tiene el repo) necesita el toolchain comple
 > las distribuciones ya son autocontenidas.
 
 ## 2. Paso 0 — Comprobar qué falta
+
+Para el servidor, el script [`preparar-entorno-servidor.ps1`](universidad-mensajeria/herramientas/preparar-entorno-servidor.ps1)
+automatiza la revisión e instalación portable de JDK 21+ y Maven 3.9.x en el perfil del usuario,
+sin permisos de administrador. También detecta Docker/Compose y la conectividad a MySQL. Consulta
+[AUTOMATIZACION_ENTORNO.md](AUTOMATIZACION_ENTORNO.md) para los comandos, checksums y límites de
+permisos; Docker/WSL no se instalan automáticamente.
 
 Ejecuta esto **antes** de instalar nada. Es de solo lectura: no modifica el equipo.
 
@@ -405,6 +411,7 @@ Los cuatro del punto 4 deben decir `True`. Si alguno dice `False`, vuelve a ejec
 |---|---|---|
 | `release version 21 not supported` | JDK activo < 21 | §3.2 y §3.3 |
 | `java -version` dice 17 con el 21 instalado | Shim `javapath` de Oracle gana el `PATH` | §3.3 |
+| El servidor imprime `sun.misc.Unsafe::allocateMemory` desde `com.sun.marlin.OffHeapArray` | JavaFX Graphics 21.0.6 del servidor usa ese método interno; es una advertencia de la dependencia de renderizado, no un error de compilación | El proceso puede seguir funcionando. Opciones y cambios de compatibilidad en [README del servidor](universidad-mensajeria/server/servidor-app/README.md#advertencia-de-javafx-y-sunmiscunsafe) |
 | `mvn` no se reconoce tras instalar | Terminal abierta antes de cambiar el `PATH` | Cierra y abre la terminal |
 | El `PATH` dejó de funcionar | Alguien usó `setx PATH` (trunca a 1024) | Restaura el `PATH` desde *Variables de entorno* |
 | `mvn -v` dice Java 17 | Maven usa `JAVA_HOME`, no el `PATH` | Corrige `JAVA_HOME` |

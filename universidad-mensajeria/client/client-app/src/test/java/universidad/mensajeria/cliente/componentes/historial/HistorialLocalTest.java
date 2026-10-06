@@ -187,4 +187,42 @@ class HistorialLocalTest {
 
         assertEquals(List.of("in-1"), historial.idsNoLeidos("A", "B"));
     }
+
+    @Test
+    void buscarEncuentraPorTextoIgnorandoMayusculasYConversacion() throws Exception {
+        historial.guardar(texto("m1", "A", "B", "2026-01-01T10:00:00"));
+        historial.guardar(new MensajeLocal("m2", "B", "A", "MENSAJE_TEXTO",
+                "HOLA de vuelta", null, 4, 1, null, null, null,
+                "2026-01-01T10:05:00", false, true));
+        historial.guardar(new MensajeLocal("m3", "A", "C", "MENSAJE_TEXTO", "hola",
+                null, 4, 1, null, null, null, "2026-01-01T10:10:00", true, true));
+
+        List<MensajeLocal> hallados = historial.buscar("A", "B", "HOLA", 50);
+
+        assertEquals(List.of("m2", "m1"), hallados.stream().map(MensajeLocal::idMensaje).toList());
+    }
+
+    @Test
+    void buscarTrataPorcentajeYGuionBajoComoLiterales() throws Exception {
+        historial.guardar(new MensajeLocal("m1", "A", "B", "MENSAJE_TEXTO",
+                "100% seguro_hola", null, 4, 1, null, null, null,
+                "2026-01-01T10:00:00", true, true));
+        historial.guardar(texto("m2", "A", "B", "2026-01-01T10:05:00"));
+
+        assertEquals(List.of("m1"), historial.buscar("A", "B", "100%", 50)
+                .stream().map(MensajeLocal::idMensaje).toList());
+        assertEquals(List.of("m1"), historial.buscar("A", "B", "seguro_hola", 50)
+                .stream().map(MensajeLocal::idMensaje).toList());
+        assertTrue(historial.buscar("A", "B", "inexistente", 50).isEmpty());
+    }
+
+    @Test
+    void buscarEncuentraPorNombreDeArchivo() throws Exception {
+        historial.guardar(new MensajeLocal("m1", "A", "B", "MENSAJE_ARCHIVO", null,
+                "hash", null, null, "informe.pdf", null, 12L,
+                "2026-01-01T10:00:00", true, true));
+
+        assertEquals(List.of("m1"), historial.buscar("A", "B", "informe", 50)
+                .stream().map(MensajeLocal::idMensaje).toList());
+    }
 }

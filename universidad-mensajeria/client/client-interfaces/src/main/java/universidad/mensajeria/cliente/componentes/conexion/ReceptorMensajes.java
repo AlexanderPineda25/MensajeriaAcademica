@@ -1,18 +1,17 @@
 package universidad.mensajeria.cliente.componentes.conexion;
 
-import universidad.mensajeria.common.tipos.Mensaje;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
 
 /**
- * Retrollamadas de red hacia la fachada (Observer): la UI nunca toca sockets,
- * solo recibe estos eventos ya en objetos Mensaje.
+ * Retrollamadas del puerto de comunicación con el servidor.
  */
 public interface ReceptorMensajes {
 
     /** Texto, imagen o broadcast entrante (ya persistido por la fachada). */
-    void alRecibir(Mensaje mensaje);
+    void alRecibir(RespuestaRed mensaje);
 
     /** El servidor cerró o expulsó esta sesión. */
-    void alCierre(Mensaje aviso);
+    void alCierre(RespuestaRed aviso);
 
     /** Error asíncrono (sin solicitud pendiente que lo reclame). */
     void alError(String motivo);

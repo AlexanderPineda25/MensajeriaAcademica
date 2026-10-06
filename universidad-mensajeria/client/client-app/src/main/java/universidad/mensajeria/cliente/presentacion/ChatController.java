@@ -2,23 +2,22 @@ package universidad.mensajeria.cliente.presentacion;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.util.Base64;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.prefs.Preferences;
 import java.util.logging.Logger;
 import javafx.animation.KeyFrame;
+import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
@@ -33,20 +32,25 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.TransferMode;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
-import universidad.mensajeria.cliente.fachada.FachadaCliente;
+import universidad.mensajeria.cliente.fachada.InterfazChatCliente;
 import universidad.mensajeria.cliente.presentacion.celdas.MensajeCell;
 import universidad.mensajeria.cliente.presentacion.celdas.UsuarioCell;
 import universidad.mensajeria.cliente.transversal.records.MensajeLocal;
+import universidad.mensajeria.cliente.transversal.records.PaginaHistorialRemota;
 import universidad.mensajeria.cliente.transversal.records.RecienteChat;
+import universidad.mensajeria.cliente.transversal.EstadoConexion;
+import universidad.mensajeria.cliente.presentacion.celdas.FilaChat;
+import universidad.mensajeria.cliente.presentacion.celdas.FilasChat;
 import universidad.mensajeria.cliente.transversal.records.UsuarioLocal;
 import universidad.mensajeria.cliente.transversal.utilerias.FormatoRespuesta;
 import universidad.mensajeria.cliente.transversal.utilerias.FormatoUsuario;
-import universidad.mensajeria.common.tipos.Mensaje;
-import universidad.mensajeria.common.tipos.TipoMensaje;
+import universidad.mensajeria.cliente.transversal.records.EventoCliente;
 
 /** Presentación JavaFX: no accede directamente a red ni a persistencia. */
 public final class ChatController {
@@ -69,48 +73,98 @@ public final class ChatController {
     @FXML private ComboBox<String> comboFiltro;
     @FXML private ComboBox<String> comboTema;
     @FXML private TextField campoBuscar;
+    @FXML private javafx.scene.layout.HBox barraBuscar;
+    @FXML private TextField campoBuscarHistorial;
+    @FXML private Label etiquetaBuscarContador;
     @FXML private TextArea campoEntrada;
     @FXML private ListView<RecienteChat> listaUsuarios;
-    @FXML private ListView<MensajeLocal> listaMensajes;
+    @FXML private ListView<FilaChat> listaMensajes;
     @FXML private ImageView vistaPrevia;
     @FXML private Button botonMas;
+    @FXML private Button botonNuevos;
+    @FXML private javafx.scene.control.ProgressIndicator ruedaHistorial;
     @FXML private Button botonEnviar;
     @FXML private Label bannerOffline;
 
-    private FachadaCliente fachada;
+    private final Executor tareasFondo;
+    private final InterfazNavegacionCliente navegacion;
+    private GestorAdjuntosChat gestorAdjuntos;
     private Preferences prefs;
-    private byte[] imagenLista;
-    private String nombreImagenLista;
-    private MensajeLocal respuestaSeleccionada;
-    private int offsetActual;
-    private final BooleanProperty enviando = new SimpleBooleanProperty();
-    private final BooleanProperty adjuntoDisponible = new SimpleBooleanProperty();
-    private final BooleanProperty hayDestino = new SimpleBooleanProperty();
-    private final Map<String, UsuarioLocal> directorio = new HashMap<>();
-    private final Map<String, Integer> paginaPorMensaje = new HashMap<>();
-    private final Set<String> idsCargaImagen = new HashSet<>();
-    private final Set<String> idsImagenFallida = new HashSet<>();
-    private final Map<String, Object> locksMetadata = new ConcurrentHashMap<>();
-    private final Consumer<Mensaje> alEntrar = this::alMensajeEntrante;
-    private final Map<String, Integer> paginaRemota = new ConcurrentHashMap<>();
-    private final Map<String, Integer> totalRemoto = new ConcurrentHashMap<>();
+    private final BooleanProperty enviando;
+    private final BooleanProperty adjuntoDisponible;
+    private final BooleanProperty hayDestino;
+    private final Map<String, UsuarioLocal> directorio;
+    private final Consumer<EventoCliente> alEntrar = this::alMensajeEntrante;
+    /** PAT-03: la vista se suscribe al estado; antes lo deducía sondeando. */
+    private final Consumer<EstadoConexion> alCambiarEstado = this::pintarEstadoConexion;
+    // UIX-06/UIX-07: búsqueda en el historial con debounce.
+    private final List<String> idsBusqueda = new ArrayList<>();
+    private int indiceBusqueda = -1;
+    private String patronBusqueda = "";
+    private String saltoPendiente = null;
+    private int intentosSalto = 0;
+    // UIX-16: mensajes que llegaron mientras se lee historial viejo.
+    private int nuevosPendientes = 0;
+    private PauseTransition pausaBuscarSidebar;
+    private PauseTransition pausaBuscarHistorial;
     private int versionAdjunto;
     private Timeline respaldo;
     private boolean refrescoEnCurso;
     private boolean refrescoForzadoPendiente;
     private boolean cierreRemotoProcesado;
+    private volatile boolean controladorDetenido;
+    private volatile EstadoConexion ultimoEstadoConexion = EstadoConexion.SIN_RED;
     private long ultimoRefrescoMs;
-    private ObservableList<RecienteChat> todos = FXCollections.observableArrayList();
+    private final ObservableList<RecienteChat> todos;
+
+    private final ChatViewModel viewModel;
+
+    public ChatController(ChatViewModel viewModel, InterfazNavegacionCliente navegacion) {
+        this.viewModel = viewModel;
+        this.tareasFondo = viewModel != null ? viewModel.tareasFondo() : null;
+        this.navegacion = navegacion;
+        this.enviando = viewModel.enviandoProperty();
+        this.adjuntoDisponible = viewModel.adjuntoDisponibleProperty();
+        this.hayDestino = viewModel.hayDestinoProperty();
+        this.directorio = viewModel.directorio();
+        this.todos = viewModel.recientes();
+    }
+
+    public ChatController(InterfazChatCliente fachada, Executor tareasFondo,
+                          InterfazNavegacionCliente navegacion) {
+        this(new ChatViewModel(fachada, tareasFondo), navegacion);
+    }
+
+    public ChatViewModel viewModel() {
+        return viewModel;
+    }
 
     @FXML
     private void initialize() {
-        fachada = ClienteApp.fachada();
         prefs = Preferences.userNodeForPackage(ChatController.class);
-        etiquetaSesion.setText("Sesión activa · " + nombreVisible(fachada.codigoActual()));
+        etiquetaSesion.setText("Sesión activa · " + nombreVisible(viewModel.codigoActual()));
+        // UIX-07: debounce compartido para las dos búsquedas (300 ms).
+        pausaBuscarSidebar = new PauseTransition(javafx.util.Duration.millis(300));
+        pausaBuscarSidebar.setOnFinished(e -> aplicarFiltro());
+        pausaBuscarHistorial = new PauseTransition(javafx.util.Duration.millis(300));
+        pausaBuscarHistorial.setOnFinished(e -> buscarHistorialFondo());
+        gestorAdjuntos = new GestorAdjuntosChat(viewModel, tareasFondo, listaMensajes,
+                this::seleccionado, this::estado);
         listaUsuarios.setCellFactory(v -> new UsuarioCell(this::nombreVisible));
-        listaMensajes.setCellFactory(v -> new MensajeCell(this::cargarImagenVisible,
-                this::reintentarImagen, this::alResponder, this::nombreVisible,
-                idsImagenFallida::contains, this::alDescargarArchivo));
+        listaMensajes.setCellFactory(v -> new MensajeCell(gestorAdjuntos::cargarImagenVisible,
+                gestorAdjuntos::reintentarImagen, this::alResponder, this::nombreVisible,
+                gestorAdjuntos::imagenFallida, gestorAdjuntos::descargarArchivo,
+                () -> patronBusqueda));
+        // UIX-10: al cambiar el ancho de la ventana las burbujas se reacomodan
+        // (la celda calcula su ancho en cada pintado).
+        listaMensajes.widthProperty().addListener((o, a, b) -> listaMensajes.refresh());
+        // UIX-13: estados vacíos en vez de rectángulos en blanco.
+        Label sinMensajes = new Label("Sin mensajes aún. Escribe el primero.");
+        sinMensajes.getStyleClass().add("empty-placeholder");
+        listaMensajes.setPlaceholder(sinMensajes);
+        Label sinContactos = new Label("Sin contactos todavía.");
+        sinContactos.getStyleClass().add("empty-placeholder");
+        listaUsuarios.setPlaceholder(sinContactos);
         comboFiltro.setItems(FXCollections.observableArrayList("Todos", "Conectados", "No leídos"));
         comboFiltro.getSelectionModel().selectFirst();
         comboTema.setItems(FXCollections.observableArrayList("Oscuro", "Claro"));
@@ -119,37 +173,65 @@ public final class ChatController {
         comboTema.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             Tema.guardar("Claro".equals(b) ? Tema.CLARO : Tema.OSCURO);
             if (listaMensajes.getScene() != null) {
-                ClienteApp.aplicarTema(listaMensajes.getScene(), false);
+                navegacion.aplicarTema(listaMensajes.getScene(), false);
             }
         });
-        campoBuscar.textProperty().addListener((o, a, b) -> aplicarFiltro());
+        campoBuscar.textProperty().addListener((o, a, b) -> {
+            // UIX-07: sin debounce cada tecla reconstruía la lista de contactos.
+            pausaBuscarSidebar.stop();
+            pausaBuscarSidebar.playFromStart();
+        });
+        // UIX-06: Ctrl+F abre la búsqueda en el historial; Esc la cierra.
+        campoBuscarHistorial.textProperty().addListener((o, a, b) -> {
+            pausaBuscarHistorial.stop();
+            pausaBuscarHistorial.playFromStart();
+        });
+        campoBuscarHistorial.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) {
+                alCerrarBuscar();
+                e.consume();
+            } else if (e.getCode() == KeyCode.ENTER) {
+                if (e.isShiftDown()) alBuscarAnterior(); else alBuscarSiguiente();
+                e.consume();
+            }
+        });
+        listaMensajes.sceneProperty().addListener((o, anterior, escena) -> {
+            if (escena != null) {
+                escena.getAccelerators().put(
+                        new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN),
+                        this::mostrarBuscar);
+            }
+        });
         comboFiltro.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> aplicarFiltro());
-        campoEntrada.textProperty().addListener((o, a, b) -> actualizarEstadoEnviar());
         listaUsuarios.getSelectionModel().selectedItemProperty().addListener((obs, anterior, actual) -> {
             hayDestino.set(actual != null);
             if (anterior != null && actual != null && !anterior.otro().equals(actual.otro())) {
                 cancelarRespuesta();
             }
             if (actual != null) {
-                prefs.put(PREF_ULTIMO + "_" + fachada.codigoActual(), actual.otro());
-                offsetActual = 0;
-                paginaPorMensaje.clear();
+                prefs.put(PREF_ULTIMO + "_" + viewModel.codigoActual(), actual.otro());
+                viewModel.setOffsetActual(0);
+                // UIX-09: las descargas del chat anterior ya no pintan aquí.
+                gestorAdjuntos.cambiarConversacion();
+                // UIX-06: los resultados son por conversación; al cambiar, fuera.
+                alCerrarBuscar();
                 etiquetaChat.setText(nombreVisible(actual.otro()));
                 etiquetaPresencia.setText(actual.conectado() ? "en línea" : "desconectado");
                 cargarConversacionFondo();
-                fachada.marcarLeidosFondo(actual.otro());
+                viewModel.marcarLeidosEnFondo(actual.otro());
             } else {
                 etiquetaChat.setText("Selecciona una conversación");
                 etiquetaPresencia.setText("");
             }
-            actualizarEstadoEnviar();
         });
         botonEnviar.disableProperty().bind(Bindings.createBooleanBinding(
-                () -> !puedeEnviar(campoEntrada.getText(), imagenLista != null,
+                () -> !puedeEnviar(campoEntrada.getText(), adjuntoDisponible.get(),
                         hayDestino.get(), enviando.get()),
                 campoEntrada.textProperty(), enviando, adjuntoDisponible, hayDestino));
-        fachada.desuscribir(alEntrar);
-        fachada.suscribir(alEntrar);
+        viewModel.desuscribirEventos(alEntrar);
+        viewModel.suscribirEventos(alEntrar);
+        // PAT-03: entrega el estado actual de inmediato y avisa de cada cambio.
+        viewModel.alCambiarEstado(alCambiarEstado);
         configurarDragDrop();
         actualizarBannerOffline();
         alActualizar();
@@ -159,39 +241,36 @@ public final class ChatController {
     }
 
     public void detener() {
+        controladorDetenido = true;
         if (respaldo != null) respaldo.stop();
         refrescoEnCurso = false;
-        fachada.desuscribir(alEntrar);
-    }
-
-    private void actualizarEstadoEnviar() {
-        if (botonEnviar != null && !botonEnviar.disableProperty().isBound()) {
-            botonEnviar.setDisable(!puedeEnviar(campoEntrada.getText(), imagenLista != null,
-                    seleccionado() != null, enviando.get()));
+        if (gestorAdjuntos != null) {
+            gestorAdjuntos.detener();
         }
+        viewModel.desuscribirEventos(alEntrar);
+        viewModel.quitarObservadorEstado(alCambiarEstado);
+        viewModel.detener();
     }
 
     public static boolean puedeEnviar(String texto, boolean imagen, boolean hayDestino, boolean enviando) {
-        return hayDestino && !enviando && ((texto != null && !texto.isBlank()) || imagen);
+        return ChatViewModel.puedeEnviar(texto, imagen, hayDestino, enviando);
     }
 
     private void aplicarFiltro() {
-        String q = campoBuscar.getText() == null ? "" : campoBuscar.getText().trim().toLowerCase(Locale.ROOT);
         String filtro = comboFiltro.getSelectionModel().getSelectedItem();
-        ObservableList<RecienteChat> vista = FXCollections.observableArrayList();
-        for (RecienteChat r : todos) {
-            UsuarioLocal usuario = directorio.get(r.otro());
-            String nombre = usuario == null ? "" : (usuario.nombres() + " " + usuario.apellidos());
-            String preview = r.ultimoContenido() == null ? "" : r.ultimoContenido();
-            if (!q.isEmpty() && !r.otro().toLowerCase(Locale.ROOT).contains(q)
-                    && !nombre.toLowerCase(Locale.ROOT).contains(q)
-                    && !preview.toLowerCase(Locale.ROOT).contains(q)) continue;
-            if ("Conectados".equals(filtro) && !r.conectado()) continue;
-            if ("No leídos".equals(filtro) && r.noLeidos() <= 0) continue;
-            vista.add(r);
-        }
+        ObservableList<RecienteChat> vista = FXCollections.observableArrayList(
+                viewModel.filtrar(todos, campoBuscar.getText(), filtro));
         RecienteChat sel = listaUsuarios.getSelectionModel().getSelectedItem();
         listaUsuarios.setItems(vista);
+        // UIX-13: si el filtro no deja nada, decir por qué en vez de blanco.
+        if (vista.isEmpty()) {
+            Label aviso = new Label(todos.isEmpty()
+                    ? "Sin contactos todavía."
+                    : "Sin resultados para esta búsqueda.");
+            aviso.getStyleClass().add("empty-placeholder");
+            aviso.setWrapText(true);
+            listaUsuarios.setPlaceholder(aviso);
+        }
         if (sel != null) {
             for (RecienteChat r : vista) {
                 if (r.otro().equals(sel.otro())) {
@@ -223,14 +302,11 @@ public final class ChatController {
     private void alEnviar() {
         String destino = seleccionado();
         String texto = campoEntrada.getText() == null ? "" : campoEntrada.getText().trim();
-        byte[] imagen = imagenLista == null ? null : imagenLista.clone();
-        String nombre = nombreImagenLista;
+        byte[] adjunto = viewModel.adjuntoBytes();
+        byte[] imagen = adjunto == null ? null : adjunto.clone();
+        String nombre = viewModel.adjuntoNombre();
         if (!puedeEnviar(texto, imagen != null, destino != null, enviando.get())) return;
-        if (respuestaSeleccionada != null) {
-            String prefijo = FormatoRespuesta.prefijo(respuestaSeleccionada,
-                    nombreVisible(respuestaSeleccionada.origen()));
-            texto = prefijo + texto;
-        }
+        MensajeLocal respuesta = viewModel.respuestaSeleccionada();
         final String contenido = texto;
         enviando.set(true);
         campoEntrada.clear();
@@ -239,14 +315,16 @@ public final class ChatController {
         Task<Boolean> tarea = new Task<>() {
             @Override protected Boolean call() throws Exception {
                 boolean enRed = true;
-                if (!contenido.isBlank()) enRed = fachada.enviarTexto(destino, contenido);
+                if (!contenido.isBlank()) {
+                    enRed = viewModel.enviarTexto(destino, contenido, respuesta);
+                }
                 if (imagen != null) {
                     String ext = extension(nombre);
                     if (EXT_IMAGEN.contains(ext)) {
-                        enRed = fachada.enviarImagen(destino, imagen, nombre,
+                        enRed = viewModel.enviarImagen(destino, imagen, nombre,
                                 "image/" + ext) && enRed;
                     } else {
-                        enRed = fachada.enviarArchivo(destino, imagen, nombre,
+                        enRed = viewModel.enviarArchivo(destino, imagen, nombre,
                                 mimeDe(nombre)) && enRed;
                     }
                 }
@@ -263,7 +341,7 @@ public final class ChatController {
             estado("No se completó el envío: " + mensaje(tarea.getException()));
             cargarConversacionFondo();
         });
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
     @FXML
@@ -282,7 +360,7 @@ public final class ChatController {
     }
 
     private void alResponder(MensajeLocal mensaje) {
-        respuestaSeleccionada = mensaje;
+        viewModel.seleccionarRespuesta(mensaje);
         String quote = FormatoRespuesta.prefijo(mensaje, nombreVisible(mensaje.origen())).trim();
         etiquetaRespuesta.setText(quote.length() > 150 ? quote.substring(0, 147) + "…" : quote);
         barraRespuesta.setVisible(true);
@@ -292,7 +370,7 @@ public final class ChatController {
     @FXML private void alCancelarRespuesta() { cancelarRespuesta(); }
 
     private void cancelarRespuesta() {
-        respuestaSeleccionada = null;
+        viewModel.cancelarRespuesta();
         if (barraRespuesta != null) {
             barraRespuesta.setVisible(false);
             barraRespuesta.setManaged(false);
@@ -310,17 +388,14 @@ public final class ChatController {
         cargarArchivo(elegidor.showOpenDialog(listaMensajes.getScene().getWindow()));
     }
 
-    @FXML private void alQuitarImagen() { limpiarImagen(); actualizarEstadoEnviar(); }
+    @FXML private void alQuitarImagen() { limpiarImagen(); }
 
     private void limpiarImagen() {
         versionAdjunto++;
-        imagenLista = null;
-        nombreImagenLista = null;
-        adjuntoDisponible.set(false);
+        viewModel.limpiarAdjunto();
         vistaPrevia.setImage(null);
         barraAdjunto.setVisible(false);
         barraAdjunto.setManaged(false);
-        actualizarEstadoEnviar();
     }
 
     private void cargarArchivo(File archivo) {
@@ -336,8 +411,10 @@ public final class ChatController {
         tarea.setOnSucceeded(e -> {
             if (version != versionAdjunto) return;
             byte[] bytesArchivo = tarea.getValue();
-            imagenLista = bytesArchivo;
-            nombreImagenLista = archivo.getName();
+            viewModel.prepararAdjunto(bytesArchivo, archivo.getName(), mimeDe(archivo.getName()));
+            etiquetaAdjunto.setText(viewModel.adjuntoNombre());
+            barraAdjunto.setVisible(true);
+            barraAdjunto.setManaged(true);
             boolean esImagen = EXT_IMAGEN.contains(extension(archivo.getName()));
             Task<Image> preview = new Task<>() {
                 @Override protected Image call() {
@@ -350,17 +427,13 @@ public final class ChatController {
             preview.setOnSucceeded(done -> {
                 if (version != versionAdjunto) return;
                 vistaPrevia.setImage(preview.getValue());
-                etiquetaAdjunto.setText(nombreImagenLista
-                        + (esImagen ? "" : " (archivo generico)"));
-                adjuntoDisponible.set(true);
-                barraAdjunto.setVisible(true);
-                barraAdjunto.setManaged(true);
-                actualizarEstadoEnviar();
+                etiquetaAdjunto.setText(viewModel.adjuntoNombre()
+                        + (esImagen ? "" : " (archivo)"));
             });
-            fachada.fondo().execute(preview);
+            tareasFondo.execute(preview);
         });
         tarea.setOnFailed(e -> estado("No se pudo leer el archivo: " + mensaje(tarea.getException())));
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
     private void configurarDragDrop() {
@@ -393,9 +466,9 @@ public final class ChatController {
         estado("Actualizando directorio y presencia…");
         Task<Void> tarea = new Task<>() {
             @Override protected Void call() {
-                try { fachada.sincronizarDirectorio(); }
+                try { viewModel.sincronizarDirectorio(); }
                 catch (Exception e) { LOG.fine(() -> "directorio remoto omitido: " + mensaje(e)); }
-                try { fachada.refrescarPresencia(); }
+                try { viewModel.refrescarPresencia(); }
                 catch (Exception e) { LOG.fine(() -> "presencia manual omitida: " + mensaje(e)); }
                 return null;
             }
@@ -404,7 +477,7 @@ public final class ChatController {
             actualizarFondo();
             if (seleccionado() == null) restaurarUltimo();
         });
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
     private record Carga(String sel, List<RecienteChat> recientes, List<UsuarioLocal> usuarios,
@@ -434,15 +507,15 @@ public final class ChatController {
         refrescoEnCurso = true;
         ultimoRefrescoMs = ahora;
         String sel = seleccionado();
-        int off = offsetActual;
+        int off = viewModel.offsetActual();
         long inicio = System.nanoTime();
         Task<Carga> tarea = new Task<>() {
             @Override protected Carga call() throws Exception {
-                List<UsuarioLocal> usuarios = fachada.directorioLocal();
-                List<RecienteChat> rec = fachada.recientes();
+                List<UsuarioLocal> usuarios = viewModel.directorioLocal();
+                List<RecienteChat> rec = viewModel.cargarRecientes();
                 if (sel == null) return new Carga(null, rec, usuarios, List.of(), 0, off);
-                List<MensajeLocal> pag = fachada.conversacion(sel, LIMITE_PAGINA, off);
-                return new Carga(sel, rec, usuarios, pag, fachada.contarConversacion(sel), off);
+                List<MensajeLocal> pag = viewModel.cargarConversacion(sel, LIMITE_PAGINA, off);
+                return new Carga(sel, rec, usuarios, pag, viewModel.contarConversacion(sel), off);
             }
         };
         tarea.setOnSucceeded(e -> {
@@ -455,7 +528,7 @@ public final class ChatController {
             Carga c = tarea.getValue();
             directorio.clear();
             for (UsuarioLocal u : c.usuarios()) directorio.put(u.codigo(), u);
-            etiquetaSesion.setText("Sesión activa · " + nombreVisible(fachada.codigoActual()));
+            etiquetaSesion.setText("Sesión activa · " + nombreVisible(viewModel.codigoActual()));
             todos.setAll(c.recientes());
             aplicarFiltro();
             restaurarSeleccion(c.sel());
@@ -464,8 +537,9 @@ public final class ChatController {
             listaMensajes.refresh();
             estado("Recientes: " + c.recientes().size());
             long ms = (System.nanoTime() - inicio) / 1_000_000;
-            if (ms > 200 || fachada.suscriptores() > 1) {
-                LOG.info(() -> "[perf] refresco local=" + ms + "ms subs=" + fachada.suscriptores());
+            if (ms > 200 || viewModel.cantidadObservadoresEventos() > 1) {
+                LOG.info(() -> "[perf] refresco local=" + ms + "ms subs="
+                        + viewModel.cantidadObservadoresEventos());
             }
         });
         tarea.setOnFailed(e -> {
@@ -477,7 +551,7 @@ public final class ChatController {
             }
             LOG.fine(() -> "refresco local omitido: " + mensaje(tarea.getException()));
         });
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
     private void restaurarSeleccion(String sel) {
@@ -492,7 +566,7 @@ public final class ChatController {
 
     private void restaurarUltimo() {
         try {
-            String ultimo = prefs.get(PREF_ULTIMO + "_" + fachada.codigoActual(), null);
+            String ultimo = prefs.get(PREF_ULTIMO + "_" + viewModel.codigoActual(), null);
             if (ultimo == null) return;
             for (RecienteChat r : listaUsuarios.getItems()) {
                 if (r.otro().equals(ultimo)) {
@@ -505,24 +579,33 @@ public final class ChatController {
 
     @FXML private void alCargarMas() { cargarMas(); }
 
+    /** UIX-16: baja a lo nuevo sin perder el punto de lectura anterior. */
+    @FXML private void alIrANuevos() {
+        nuevosPendientes = 0;
+        botonNuevos.setVisible(false);
+        botonNuevos.setManaged(false);
+        viewModel.setOffsetActual(0);
+        cargarConversacionFondo();
+    }
+
     private void cargarMas() {
         String otro = seleccionado();
         if (otro == null) return;
         int mostrados = listaMensajes.getItems().size();
         Task<Boolean> tarea = new Task<>() {
             @Override protected Boolean call() throws Exception {
-                int totalLocal = fachada.contarConversacion(otro);
-                if (offsetActual + LIMITE_PAGINA < totalLocal) {
-                    offsetActual += LIMITE_PAGINA;
+                int totalLocal = viewModel.contarConversacion(otro);
+                if (viewModel.offsetActual() + LIMITE_PAGINA < totalLocal) {
+                    viewModel.setOffsetActual(viewModel.offsetActual() + LIMITE_PAGINA);
                     return false;
                 }
-                int siguiente = paginaRemota.getOrDefault(otro, 0);
-                Integer total = totalRemoto.get(otro);
+                int siguiente = gestorAdjuntos.paginaRemota(otro);
+                Integer total = gestorAdjuntos.totalPaginasRemotas(otro);
                 if (total != null && siguiente >= total) return null;
-                FachadaCliente.PaginaRemota remota = fachada.traerHistorial(otro, siguiente);
-                paginaRemota.put(otro, siguiente + 1);
-                totalRemoto.put(otro, remota.totalPaginas());
-                offsetActual = mostrados;
+                PaginaHistorialRemota remota = viewModel.traerHistorial(otro, siguiente);
+                gestorAdjuntos.registrarPaginaRemota(otro, siguiente + 1,
+                        remota.totalPaginas());
+                viewModel.setOffsetActual(mostrados);
                 return true;
             }
         };
@@ -531,92 +614,115 @@ public final class ChatController {
             if (trajo == null) estado("No hay más historial"); else cargarConversacionFondo();
         });
         tarea.setOnFailed(e -> estado("Error al cargar historial: " + mensaje(tarea.getException())));
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
-    private void cargarImagenVisible(MensajeLocal item) {
-        if (item == null || !idsCargaImagen.add(item.idMensaje())) return;
-        String codigoActual = fachada.codigoActual();
-        String chat = codigoActual != null && codigoActual.equals(item.origen())
-                ? item.destino() : item.origen();
-        int paginaMetadata = paginaPorMensaje.getOrDefault(item.idMensaje(), 0);
-        Task<byte[]> tarea = new Task<>() {
-            @Override protected byte[] call() throws Exception {
-                byte[] bytes;
-                try {
-                    bytes = fachada.descargarImagen(item.idMensaje());
-                } catch (IllegalStateException faltaId) {
-                    if (faltaId.getMessage() == null || !faltaId.getMessage().contains("metadatos")) throw faltaId;
-                    int pagina = paginaMetadata;
-                    String clave = chat + ":" + pagina;
-                    Object lock = locksMetadata.computeIfAbsent(clave, k -> new Object());
-                    synchronized (lock) {
-                        try { bytes = fachada.descargarImagen(item.idMensaje()); }
-                        catch (IllegalStateException aunSinId) {
-                            if (aunSinId.getMessage() == null || !aunSinId.getMessage().contains("metadatos")) throw aunSinId;
-                            FachadaCliente.PaginaRemota remota = fachada.traerHistorial(chat, pagina);
-                            paginaRemota.merge(chat, pagina + 1, Math::max);
-                            totalRemoto.put(chat, remota.totalPaginas());
-                            bytes = fachada.descargarImagen(item.idMensaje());
-                        }
-                    }
-                }
-                MensajeCell.precalentar(item.idMensaje(), Base64.getEncoder().encodeToString(bytes));
-                return bytes;
+    // ------------------------------------------------- UIX-06: buscar en el historial
+
+    private void mostrarBuscar() {
+        if (seleccionado() == null) {
+            estado("Elige una conversación para buscar en su historial.");
+            return;
+        }
+        barraBuscar.setVisible(true);
+        barraBuscar.setManaged(true);
+        campoBuscarHistorial.requestFocus();
+        campoBuscarHistorial.selectAll();
+    }
+
+    @FXML private void alCerrarBuscar() {
+        barraBuscar.setVisible(false);
+        barraBuscar.setManaged(false);
+        campoBuscarHistorial.clear();
+        patronBusqueda = "";
+        idsBusqueda.clear();
+        indiceBusqueda = -1;
+        saltoPendiente = null;
+        etiquetaBuscarContador.setText("");
+        listaMensajes.refresh();
+    }
+
+    @FXML private void alBuscarSiguiente() {
+        if (idsBusqueda.isEmpty()) return;
+        indiceBusqueda = (indiceBusqueda + 1) % idsBusqueda.size();
+        actualizarContadorBusqueda();
+        saltarA(idsBusqueda.get(indiceBusqueda), 5);
+    }
+
+    @FXML private void alBuscarAnterior() {
+        if (idsBusqueda.isEmpty()) return;
+        indiceBusqueda = (indiceBusqueda - 1 + idsBusqueda.size()) % idsBusqueda.size();
+        actualizarContadorBusqueda();
+        saltarA(idsBusqueda.get(indiceBusqueda), 5);
+    }
+
+    private void actualizarContadorBusqueda() {
+        if (idsBusqueda.isEmpty()) {
+            etiquetaBuscarContador.setText(patronBusqueda.isBlank() ? "" : "Sin resultados");
+        } else {
+            etiquetaBuscarContador.setText((indiceBusqueda + 1) + "/" + idsBusqueda.size());
+        }
+    }
+
+    private void buscarHistorialFondo() {
+        String otro = seleccionado();
+        String patron = campoBuscarHistorial.getText() == null
+                ? "" : campoBuscarHistorial.getText().trim();
+        if (otro == null || patron.isEmpty()) {
+            patronBusqueda = "";
+            idsBusqueda.clear();
+            indiceBusqueda = -1;
+            actualizarContadorBusqueda();
+            listaMensajes.refresh();
+            return;
+        }
+        Task<List<String>> tarea = new Task<>() {
+            @Override protected List<String> call() throws Exception {
+                return viewModel.buscarHistorial(otro, patron);
             }
         };
         tarea.setOnSucceeded(e -> {
-            idsCargaImagen.remove(item.idMensaje());
-            idsImagenFallida.remove(item.idMensaje());
-            listaMensajes.refresh();
-        });
-        tarea.setOnFailed(e -> {
-            idsCargaImagen.remove(item.idMensaje());
-            idsImagenFallida.add(item.idMensaje());
-            LOG.fine(() -> "imagen no disponible " + item.idMensaje() + ": " + mensaje(tarea.getException()));
-            listaMensajes.refresh();
-        });
-        fachada.fondo().execute(tarea);
-    }
-
-    private void reintentarImagen(MensajeLocal item) {
-        idsImagenFallida.remove(item.idMensaje());
-        cargarImagenVisible(item);
-    }
-
-    private void alDescargarArchivo(MensajeLocal item) {
-        if (item == null) {
-            return;
-        }
-        javafx.stage.FileChooser elegidor = new javafx.stage.FileChooser();
-        elegidor.setTitle("Guardar archivo");
-        elegidor.setInitialFileName(item.nombreArchivo() == null ? "archivo.bin" : item.nombreArchivo());
-        File destino = elegidor.showSaveDialog(listaMensajes.getScene().getWindow());
-        if (destino == null) {
-            return;
-        }
-        estado("Descargando " + item.nombreArchivo() + "…");
-        Task<Void> tarea = new Task<>() {
-            @Override protected Void call() throws Exception {
-                byte[] bytes;
-                try {
-                    bytes = fachada.descargarImagen(item.idMensaje());
-                } catch (Exception e) {
-                    // descargarImagen resuelve por archivoId; si falla, pedir descarga directa
-                    universidad.mensajeria.common.tipos.Mensaje resp =
-                            fachada.descargarArchivo(item.archivoId());
-                    if (resp == null || resp.contenidoImagen() == null) {
-                        throw new IllegalStateException("descarga no disponible");
-                    }
-                    bytes = Base64.getDecoder().decode(resp.contenidoImagen());
-                }
-                Files.write(destino.toPath(), bytes);
-                return null;
+            if (!patron.equals(campoBuscarHistorial.getText() == null
+                    ? "" : campoBuscarHistorial.getText().trim())) {
+                return;
             }
-        };
-        tarea.setOnSucceeded(e -> estado("Archivo guardado: " + destino.getName()));
-        tarea.setOnFailed(e -> estado("No se pudo descargar: " + mensaje(tarea.getException())));
-        fachada.fondo().execute(tarea);
+            patronBusqueda = patron;
+            idsBusqueda.clear();
+            idsBusqueda.addAll(tarea.getValue());
+            indiceBusqueda = idsBusqueda.isEmpty() ? -1 : 0;
+            actualizarContadorBusqueda();
+            listaMensajes.refresh();
+            if (!idsBusqueda.isEmpty()) {
+                saltarA(idsBusqueda.get(0), 5);
+            }
+        });
+        tarea.setOnFailed(e -> estado("No se pudo buscar: " + mensaje(tarea.getException())));
+        tareasFondo.execute(tarea);
+    }
+
+    /**
+     * Salta al mensaje: si está cargado, scroll + selección; si no, carga una
+     * página más y reintenta (acotado). El resaltado lo pinta la celda con el
+     * patrón activo.
+     */
+    private void saltarA(String id, int intentos) {
+        String otro = seleccionado();
+        if (otro == null || id == null) return;
+        for (int i = 0; i < listaMensajes.getItems().size(); i++) {
+            FilaChat fila = listaMensajes.getItems().get(i);
+            if (fila instanceof FilaChat.MensajeFila mf && id.equals(mf.mensaje().idMensaje())) {
+                listaMensajes.scrollTo(i);
+                listaMensajes.getSelectionModel().select(i);
+                return;
+            }
+        }
+        if (intentos <= 0 || !botonMas.isVisible()) {
+            estado("La coincidencia no está en el historial cargado.");
+            return;
+        }
+        saltoPendiente = id;
+        intentosSalto = intentos - 1;
+        alCargarMas();
     }
 
     private void pintarPagina(String otro, List<MensajeLocal> pagina, int total, int off) {
@@ -624,21 +730,43 @@ public final class ChatController {
         for (int i = 0; i < pagina.size(); i++) {
             MensajeLocal m = pagina.get(i);
             int rankDesdeMasNuevo = off + pagina.size() - 1 - i;
-            paginaPorMensaje.put(m.idMensaje(), rankDesdeMasNuevo / LIMITE_PAGINA);
+            gestorAdjuntos.registrarPaginaDeMensaje(
+                    m.idMensaje(), rankDesdeMasNuevo / LIMITE_PAGINA);
         }
-        if (off == 0) {
-            listaMensajes.getItems().setAll(pagina);
-            if (!pagina.isEmpty()) listaMensajes.scrollTo(pagina.size() - 1);
-        } else {
+        // UIX-04/UIX-05: la lista muestra filas (mensajes + separadores de día),
+        // no mensajes sueltos. Se reconstruye desde todos los mensajes cargados
+        // para que las cabeceras y las rachas queden bien también al anteponer
+        // páginas viejas (el anclaje fino del scroll es UIX-16, Lote D).
+        List<MensajeLocal> mensajes = new ArrayList<>(pagina);
+        int filasAntes = listaMensajes.getItems().size();
+        if (off > 0) {
             Set<String> existentes = new HashSet<>();
-            for (MensajeLocal m : listaMensajes.getItems()) existentes.add(m.idMensaje());
-            ObservableList<MensajeLocal> combinada = FXCollections.observableArrayList();
-            for (MensajeLocal m : pagina) if (!existentes.contains(m.idMensaje())) combinada.add(m);
-            combinada.addAll(listaMensajes.getItems());
-            listaMensajes.setItems(combinada);
+            List<MensajeLocal> actuales = new ArrayList<>();
+            for (FilaChat fila : listaMensajes.getItems()) {
+                if (fila instanceof FilaChat.MensajeFila mf) {
+                    existentes.add(mf.mensaje().idMensaje());
+                    actuales.add(mf.mensaje());
+                }
+            }
+            mensajes.removeIf(m -> existentes.contains(m.idMensaje()));
+            mensajes.addAll(actuales);
         }
-        boolean mas = total > listaMensajes.getItems().size() || (totalRemoto.containsKey(otro)
-                && paginaRemota.getOrDefault(otro, 0) < totalRemoto.get(otro));
+        listaMensajes.getItems().setAll(FilasChat.armar(mensajes));
+        if (off == 0 && !listaMensajes.getItems().isEmpty()) {
+            listaMensajes.scrollTo(listaMensajes.getItems().size() - 1);
+            nuevosPendientes = 0;
+            botonNuevos.setVisible(false);
+            botonNuevos.setManaged(false);
+        } else if (off > 0) {
+            // UIX-16: ancla en el primer mensaje que ya se veía: las filas
+            // nuevas van todas encima, así que su índice sube justo eso.
+            int nuevas = listaMensajes.getItems().size() - filasAntes;
+            if (nuevas > 0) {
+                listaMensajes.scrollTo(Math.min(nuevas, listaMensajes.getItems().size() - 1));
+            }
+        }
+        boolean mas = total > listaMensajes.getItems().size()
+                || gestorAdjuntos.hayMasHistorialRemoto(otro);
         botonMas.setVisible(mas);
         botonMas.setManaged(mas);
     }
@@ -646,72 +774,97 @@ public final class ChatController {
     private void cargarConversacionFondo() {
         String otro = seleccionado();
         if (otro == null) return;
-        int off = offsetActual;
+        int off = viewModel.offsetActual();
+        // UIX-14: la rueda gira mientras el historial se trae en fondo.
+        ruedaHistorial.setVisible(true);
+        ruedaHistorial.setManaged(true);
         Task<Carga> tarea = new Task<>() {
             @Override protected Carga call() throws Exception {
-                List<MensajeLocal> pag = fachada.conversacion(otro, LIMITE_PAGINA, off);
-                return new Carga(otro, List.of(), List.of(), pag, fachada.contarConversacion(otro), off);
+                List<MensajeLocal> pag = viewModel.cargarConversacion(otro, LIMITE_PAGINA, off);
+                return new Carga(otro, List.of(), List.of(), pag,
+                        viewModel.contarConversacion(otro), off);
             }
         };
-        tarea.setOnSucceeded(e -> pintarPagina(otro, tarea.getValue().pagina(),
-                tarea.getValue().total(), off));
-        tarea.setOnFailed(e -> estado("Error: " + mensaje(tarea.getException())));
-        fachada.fondo().execute(tarea);
+        tarea.setOnSucceeded(e -> {
+            ruedaHistorial.setVisible(false);
+            ruedaHistorial.setManaged(false);
+            pintarPagina(otro, tarea.getValue().pagina(), tarea.getValue().total(), off);
+            // UIX-06: si hay un salto pendiente (búsqueda), se reintenta ahora
+            // que hay más mensajes cargados.
+            if (saltoPendiente != null) {
+                String id = saltoPendiente;
+                int intentos = intentosSalto;
+                saltoPendiente = null;
+                saltarA(id, intentos);
+            }
+        });
+        tarea.setOnFailed(e -> {
+            ruedaHistorial.setVisible(false);
+            ruedaHistorial.setManaged(false);
+            estado("Error: " + mensaje(tarea.getException()));
+        });
+        tareasFondo.execute(tarea);
     }
 
-    private void marcarLeidosAsync(String otro) { fachada.marcarLeidosFondo(otro); }
+    private void marcarLeidosAsync(String otro) { viewModel.marcarLeidosEnFondo(otro); }
 
-    private void alMensajeEntrante(Mensaje mensaje) {
-        if (mensaje.tipo() == TipoMensaje.PRESENCIA) {
+    private void alMensajeEntrante(EventoCliente evento) {
+        if (evento.tipo() == EventoCliente.Tipo.PRESENCIA) {
             Platform.runLater(this::actualizarFondo);
             return;
         }
         Platform.runLater(() -> {
-            if (mensaje.tipo() == TipoMensaje.CLOSE_NOTICE) {
-                if (cierreRemotoProcesado) return;
-                cierreRemotoProcesado = true;
-                String motivo = mensaje.mensajeError() == null || mensaje.mensajeError().isBlank()
-                        ? "Sesión cerrada por el servidor."
-                        : mensaje.mensajeError();
-                estado("Sesión cerrada: " + motivo);
-                detener();
-                fachada.cerrarSesionRemota();
-                ClienteApp.avisarProximoLogin("Sesión cerrada por inactividad (10 min), inicie de nuevo. "
-                        + motivo);
-                try { ClienteApp.mostrarLogin(); }
-                catch (Exception e) { estado("No se pudo volver al inicio: " + mensaje(e)); }
+            if (evento.tipo() == EventoCliente.Tipo.SESION_CERRADA) {
+                manejarCierreSesion();
                 return;
             }
-            String afectado = mensaje.remitente() != null ? mensaje.remitente() : mensaje.destinatario();
+            String afectado = evento.remitente() != null
+                    ? evento.remitente() : evento.destinatario();
             String sel = seleccionado();
-            if (esAcuse(mensaje.tipo())) {
+            if (evento.esAcuse()) {
                 actualizarFondoForzado();
             } else {
                 actualizarFondo();
             }
-            if (sel != null && sel.equals(afectado) && !esAcuse(mensaje.tipo())) marcarLeidosAsync(sel);
+            // UIX-16: si se lee historial viejo, lo nuevo no arrastra el scroll:
+            // se avisa con el botón y se baja al pulsarlo.
+            if (sel != null && sel.equals(afectado) && !evento.esAcuse()
+                    && viewModel.offsetActual() > 0) {
+                nuevosPendientes++;
+                botonNuevos.setText("↓ " + nuevosPendientes + " nuevos");
+                botonNuevos.setVisible(true);
+                botonNuevos.setManaged(true);
+            }
+            if (sel != null && sel.equals(afectado) && !evento.esAcuse()) {
+                marcarLeidosAsync(sel);
+            }
         });
-    }
-
-    public static boolean esAcuse(TipoMensaje tipo) {
-        return tipo == TipoMensaje.MENSAJE_LEIDO || tipo == TipoMensaje.MENSAJE_ENTREGADO;
     }
 
     @FXML
     private void alKick() {
         Task<Void> tarea = new Task<>() {
-            @Override protected Void call() throws Exception { fachada.expulsarOtrasSesiones(); return null; }
+            @Override protected Void call() throws Exception {
+                viewModel.expulsarOtrasSesiones();
+                return null;
+            }
         };
         tarea.setOnSucceeded(e -> estado("Se solicitó cerrar tus otras sesiones"));
         tarea.setOnFailed(e -> estado("Error: " + mensaje(tarea.getException())));
-        fachada.fondo().execute(tarea);
+        tareasFondo.execute(tarea);
     }
 
-    @FXML private void alSalir() { salirAlInicio(false); }
+    @FXML private void alSalir() {
+        if (navegacion.confirmar("¿Deseas cerrar esta sesión y volver al inicio?")) {
+            salirAlInicio(false);
+        }
+    }
 
     @FXML
     private void alSalirTodos() {
-        salirAlInicio(true);
+        if (navegacion.confirmar("¿Deseas cerrar esta sesión y cerrar también las otras sesiones de tu cuenta?")) {
+            salirAlInicio(true);
+        }
     }
 
     void salirAlInicio() {
@@ -722,13 +875,13 @@ public final class ChatController {
         detener();
         Task<Void> tarea = new Task<>() {
             @Override protected Void call() throws Exception {
-                if (todasLasSesiones) fachada.expulsarOtrasSesiones();
-                try { fachada.logout(); } catch (Exception ignorada) { fachada.desconectar(); }
+                if (todasLasSesiones) viewModel.expulsarOtrasSesiones();
+                try { viewModel.logout(); } catch (Exception ignorada) { viewModel.desconectar(); }
                 return null;
             }
         };
-        tarea.setOnSucceeded(e -> { try { ClienteApp.mostrarLogin(); } catch (Exception err) { estado(mensaje(err)); } });
-        fachada.fondo().execute(tarea);
+        tarea.setOnSucceeded(e -> { try { navegacion.mostrarLogin(); } catch (Exception err) { estado(mensaje(err)); } });
+        tareasFondo.execute(tarea);
     }
 
     private void estado(String texto) {
@@ -737,16 +890,57 @@ public final class ChatController {
     }
 
     private void actualizarBannerOffline() {
-        if (bannerOffline == null || fachada == null) {
+        if (bannerOffline == null || viewModel == null) {
             return;
         }
-        boolean sinRed = !fachada.conectado();
+        boolean sinRed = !viewModel.conectado();
         bannerOffline.setVisible(sinRed);
         bannerOffline.setManaged(sinRed);
     }
 
+    /**
+     * PAT-03/UIX-00c: pinta el estado que publica la fachada. Llega en el hilo
+     * de red, así que el salto a JavaFX es obligatorio. El banner ámbar aparece
+     * en cuanto cae el socket, sin esperar al sondeo de 30 s.
+     */
+    private void pintarEstadoConexion(EstadoConexion estado) {
+        boolean restaurada = ultimoEstadoConexion == EstadoConexion.SIN_RED
+                && estado == EstadoConexion.CONECTADO;
+        ultimoEstadoConexion = estado;
+        Platform.runLater(() -> {
+            if (estado == EstadoConexion.SESION_CERRADA && !controladorDetenido) {
+                manejarCierreSesion();
+                return;
+            }
+            if (bannerOffline != null) {
+                bannerOffline.setVisible(estado.muestraBanner());
+                bannerOffline.setManaged(estado.muestraBanner());
+                if (estado.muestraBanner()) {
+                    bannerOffline.setText(estado.texto());
+                }
+            }
+            if (etiquetaEstado != null && !estado.equals(EstadoConexion.CONECTADO)) {
+                etiquetaEstado.setText(estado.texto());
+            }
+            if (restaurada && !controladorDetenido) alActualizar();
+        });
+    }
+
+    private void manejarCierreSesion() {
+        if (cierreRemotoProcesado || controladorDetenido) return;
+        cierreRemotoProcesado = true;
+        detener();
+        viewModel.cerrarSesionRemota();
+        navegacion.avisarProximoLogin("Tu sesión se cerró. Inicia sesión nuevamente.");
+        try {
+            navegacion.mostrarLogin();
+        } catch (Exception e) {
+            LOG.warning("No se pudo volver al inicio de sesión.");
+        }
+    }
+
     private static String mensaje(Throwable e) {
-        return e == null ? "error desconocido" : e.getMessage() != null ? e.getMessage() : e.toString();
+        return FormatoErrorCliente.mensaje(e);
     }
 
     private static String extension(String nombre) {

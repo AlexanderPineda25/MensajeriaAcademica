@@ -1,14 +1,15 @@
 package universidad.mensajeria.server.transversal.fachada;
 
-import universidad.mensajeria.common.interno.ArchivoDTO;
 import universidad.mensajeria.common.interno.EstadoServidor;
+import universidad.mensajeria.common.interno.DetalleUsuarioDTO;
+import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.interno.InformeDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
 import universidad.mensajeria.common.interno.MensajeResumenDTO;
+import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.interno.UsuarioResumen;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -26,6 +27,13 @@ public interface Fachada {
     List<String> usuariosConectados();
 
     List<UsuarioResumen> usuariosRegistrados();
+
+    DetalleUsuarioDTO detalleUsuario(String codigo);
+
+    PaginaDTO<MensajeResumenDTO> paginaMensajesUsuario(String codigo, boolean soloArchivos,
+                                                        int pagina, int tamano);
+
+    List<IdSesion> sesionesActivas();
 
     int mensajesEnCola();
 
@@ -63,11 +71,6 @@ public interface Fachada {
      */
     default List<MensajeResumenDTO> mensajesDetalle(InformeFiltroDTO filtro) {
         return List.of();
-    }
-
-    /** Metadatos del archivo asociado a un mensaje (para previsualizar). */
-    default Optional<ArchivoDTO> archivoParaVista(long archivoId) {
-        return Optional.empty();
     }
 
     /** Bytes del archivo asociado (miniatura en la vista escritorio). */

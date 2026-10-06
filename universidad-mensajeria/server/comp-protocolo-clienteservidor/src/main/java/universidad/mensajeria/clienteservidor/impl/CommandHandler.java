@@ -14,4 +14,17 @@ public interface CommandHandler {
 
     /** Nombre del bean/tipo del catalogo que atiende (p.ej. "LOGIN"). */
     String tipo();
+
+    /**
+     * SEC-05: el default es {@code true} (fallo cerrado) porque casi toda trama
+     * pertenece a una sesion autenticada; solo LOGIN es publica. Un comando
+     * nuevo nace protegido: si olvida la guarda de
+     * {@code Comandos.exigirAutenticacion}, el test parametrizado de
+     * DespachadorTest lo detecta porque el tipo sigue marcando true. Quien
+     * quiera abrirlo debe sobreescribir esto, y el mismo test exige que el
+     * conjunto de tipos abiertos sea exactamente el declarado como publico.
+     */
+    default boolean requiereAutenticacion() {
+        return true;
+    }
 }

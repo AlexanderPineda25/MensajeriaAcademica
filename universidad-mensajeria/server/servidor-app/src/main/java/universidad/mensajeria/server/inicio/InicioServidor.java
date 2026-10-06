@@ -26,7 +26,6 @@ import universidad.mensajeria.server.transversal.config.DbProperties;
 import universidad.mensajeria.server.transversal.config.FiltrosProperties;
 import universidad.mensajeria.server.transversal.config.PoolProperties;
 import universidad.mensajeria.server.transversal.config.RedProperties;
-import universidad.mensajeria.server.transversal.config.SecretosProduccion;
 import universidad.mensajeria.server.transversal.config.SesionProperties;
 import universidad.mensajeria.usuarios.InterfazUsuariosDisponibles;
 
@@ -173,6 +172,11 @@ public class InicioServidor implements ApplicationRunner, ExitCodeGenerator {
             new VistaConsola(sistema.fachada()).ejecutar();
         } else if (escritorio != null) {
             escritorio.join();
+            if (requiereEsperaServicio(salirAlTerminar, codigoSalida)) {
+                // Cerrar la ventana administrativa no apaga el servidor.
+                // En modo sin JLine, se espera a SIGTERM/cierre de Spring.
+                esperarCierre();
+            }
         } else if (requiereEsperaServicio(salirAlTerminar, codigoSalida)) {
             // DIST-01: servicio headless (contenedor): sin consola que bloquee
             // ni escritorio al que unirse, el run terminaba y el proceso salia

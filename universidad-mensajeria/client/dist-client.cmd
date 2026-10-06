@@ -11,7 +11,7 @@ if not exist "pom.xml" (
 )
 
 set DIST=dist\MensajeriaClienteJava
-set JAVAFX_VERSION=25.0.1
+set JAVAFX_VERSION=22.0.2
 
 rem `install` y no `package`: el paso 2 (dependency:copy-dependencies)
 rem resuelve dto/codec/client-interfaces desde el repo local, y `package`

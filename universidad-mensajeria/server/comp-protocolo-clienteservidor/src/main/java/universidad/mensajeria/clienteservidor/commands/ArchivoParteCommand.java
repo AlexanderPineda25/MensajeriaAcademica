@@ -4,7 +4,6 @@ import universidad.mensajeria.clienteservidor.SalidaClienteServidor.SalidaMensaj
 import universidad.mensajeria.clienteservidor.SalidaClienteServidor.SalidaRespuestas;
 import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.tipos.Mensaje;
-import universidad.mensajeria.common.tipos.TipoMensaje;
 import universidad.mensajeria.clienteservidor.impl.CommandHandler;
 
 /** ARCHIVO_PARTE: un bloque base64 de la transferencia indicada por archivoId. */

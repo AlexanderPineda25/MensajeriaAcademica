@@ -21,6 +21,12 @@ from componentes.autenticacion import Autenticacion
 from componentes.historial_local import HistorialLocal
 from store.database import Database
 from transversal.config import Config
+from transversal.estado_conexion import (
+    CONECTADO,
+    CONECTANDO,
+    SESION_CERRADA,
+    SIN_RED,
+)
 
 DESTINO_BROADCAST = "*"
 # Fragmentación de archivos (contrato congelado Pista 1)
@@ -39,6 +45,11 @@ class FachadaCliente:
         self.on_cierre_ui = on_cierre_ui
         self.on_desconexion_ui = on_desconexion_ui
         self.on_presencia_ui = on_presencia_ui
+        # PAT-03: estado de conexion observable. Antes la vista se enteraba de
+        # la caida por un texto que se cambiaba de paso y el banner offline solo
+        # se movia dentro del resultado de `directorio`.
+        self.estado_conexion = SIN_RED
+        self.on_estado_ui = None
         try:
             tls_puerto = int(self.config.get("tls.puerto", 5001) or 5001)
         except (TypeError, ValueError):
@@ -57,8 +68,25 @@ class FachadaCliente:
         self.codigo_actual = None
 
     # ---------------------------------------------------------- ciclo de vida
+    def _cambiar_estado(self, nuevo):
+        """PAT-03: unico punto donde cambia el estado de conexion."""
+        if nuevo == self.estado_conexion:
+            return
+        self.estado_conexion = nuevo
+        if self.on_estado_ui:
+            try:
+                self.on_estado_ui(nuevo)
+            except Exception:
+                pass
+
     def conectar(self):
-        self.conexion.conectar()
+        self._cambiar_estado(CONECTANDO)
+        try:
+            self.conexion.conectar()
+            self._cambiar_estado(CONECTADO)
+        except Exception:
+            self._cambiar_estado(SIN_RED)
+            raise
 
     def desconectar(self):
         if self.codigo_actual:
@@ -72,12 +100,14 @@ class FachadaCliente:
                 pass
         self.conexion.desconectar()
         self.codigo_actual = None
+        self._cambiar_estado(SIN_RED)
 
     def login(self, codigo, contrasena):
         if not self.conexion.conectado:
             self.conectar()
         resp = self.autenticacion.login(codigo, contrasena)
         if resp.get("exito"):
+            self._cambiar_estado(CONECTADO)
             self.fijar_cuenta(codigo)
         return resp
 
@@ -432,6 +462,12 @@ class FachadaCliente:
     def contar_conversacion(self, destinatario):
         return self.historial.contar_conversacion(self.codigo_actual, destinatario)
 
+    def buscar_en_historial(self, destinatario, patron, limite=200):
+        """UIX-06: ids con el patrón (de más nuevo a más viejo)."""
+        return [m["id_mensaje"]
+                for m in self.historial.buscar_en_conversacion(
+                    self.codigo_actual, destinatario, patron, limite)]
+
     def traer_historial(self, destinatario, pagina):
         self._exigir_sesion()
         resp = self.conexion.pedir({
@@ -615,10 +651,6 @@ class FachadaCliente:
             raise RuntimeError(resp.get("mensajeError") or defecto)
         # Respuesta con tipo inesperado pero sin error: se acepta (tolerante).
 
-    def _guardar_propio(self, id_msg, destinatario, tipo, contenido, fecha):
-        self.historial.guardar_mensaje(id_msg, self.codigo_actual, destinatario,
-                                       tipo, contenido, fecha)
-
     def _asegurar_en_cache(self, codigo):
         ahora = datetime.datetime.now().isoformat()
         existentes = {u["codigo"] for u in self.historial.listar_cache_usuarios()}
@@ -678,9 +710,17 @@ class FachadaCliente:
 
     def _handle_cierre(self, msg):
         self.codigo_actual = None
+        # PAT-03: CLOSE_NOTICE es "el servidor cerró mi sesión", no una caída de
+        # red. Distinguirlo evita que la UI ofrezca reconectar donde lo que hace
+        # falta es volver a entrar.
+        self._cambiar_estado(SESION_CERRADA)
         if self.on_cierre_ui:
             self.on_cierre_ui(msg)
 
     def _handle_desconexion(self):
+        # PAT-03: el hilo receptor murio. Solo degrada si no estamos ya en una
+        # sesion cerrada: un cierre voluntario tambien pasa por aqui.
+        if self.estado_conexion != SESION_CERRADA:
+            self._cambiar_estado(SIN_RED)
         if self.on_desconexion_ui:
             self.on_desconexion_ui()

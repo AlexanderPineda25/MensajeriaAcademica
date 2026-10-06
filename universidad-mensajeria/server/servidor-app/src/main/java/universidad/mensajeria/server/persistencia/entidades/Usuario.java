@@ -79,8 +79,4 @@ public class Usuario {
     public LocalDateTime getFechaRegistro() { return fechaRegistro; }
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
-
-    public String nombreCompleto() {
-        return nombres + " " + apellidos;
-    }
 }

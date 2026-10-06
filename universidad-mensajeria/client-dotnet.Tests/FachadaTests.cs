@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Mensajeria.Componentes;
 using Mensajeria.Fachada;
 using Mensajeria.Store;
+using Mensajeria.Transversal;
 using Xunit;
 
 namespace Mensajeria.Tests
@@ -48,6 +49,23 @@ namespace Mensajeria.Tests
             Assert.Equal("h", conv[0]["hash"]);
             Assert.Equal(conv[0]["id"], _red.Peticiones.Last()["id"]);
             Assert.Empty(_f.Pendientes());
+        }
+
+        [Fact]
+        public async Task BuscarEnHistorialDevuelveIdsDeMasNuevoAMasViejo()
+        {
+            // UIX-06: la fachada delega en HistorialLocal.BuscarEnConversacion.
+            Assert.True(await _f.EnviarTextoAsync("B002", "hola mundo"));
+            Assert.True(await _f.EnviarTextoAsync("B002", "HOLA de vuelta"));
+            Assert.True(await _f.EnviarTextoAsync("C003", "hola otro"));
+
+            var ids = _f.BuscarEnHistorial("B002", "HOLA");
+
+            Assert.Equal(2, ids.Count);
+            Assert.DoesNotContain(
+                (string)_f.CargarHistorial("C003")[0]["id"], ids);
+            Assert.Empty(_f.BuscarEnHistorial("B002", "inexistente"));
+            Assert.Empty(_f.BuscarEnHistorial("B002", "  "));
         }
 
         [Fact]
@@ -195,6 +213,13 @@ namespace Mensajeria.Tests
             public void Recibir(Dictionary<string, JsonElement> msg) =>
                 OnMensajeRecibido?.Invoke(msg);
 
+            /// <summary>PAT-03: simula que el hilo receptor muere (corte de red).</summary>
+            public void Caer() => OnDesconectado?.Invoke();
+
+            /// <summary>PAT-03: el servidor manda CLOSE_NOTICE y cierra.</summary>
+            public void CerrarSesion() => OnCierre?.Invoke(Doc(new Dictionary<string, object?>
+                { { "tipo", "CLOSE_NOTICE" } }));
+
             public Task ConectarAsync(string host, int puerto)
             {
                 Conexiones++;
@@ -247,6 +272,70 @@ namespace Mensajeria.Tests
             {
                 public IOExceptionShim() : base("corte simulado") { }
             }
+        }
+
+        // ---------------------------------------------------------------- PAT-03
+
+        [Fact]
+        public async Task EstadoDeConexionAvanzaConectandoYConectado()
+        {
+            var vistos = new List<EstadoConexion>();
+            _f.OnEstadoConexion += e => vistos.Add(e);
+
+            await _f.ConectarAsync();
+
+            Assert.Equal(EstadoConexion.Conectado, _f.EstadoConexion);
+            Assert.Equal(EstadoConexion.Conectando, vistos[0]);
+        }
+
+        [Fact]
+        public void CaidaDelHiloPasaASinRedYEnciendeElBanner()
+        {
+            // UIX-00a: esto es lo que no hacia nadie antes. El banner ahora se
+            // enciende porque el estado es observable.
+            _red.Caer();
+
+            Assert.Equal(EstadoConexion.SinRed, _f.EstadoConexion);
+            Assert.True(EstadoConexionTexto.MuestraBanner(_f.EstadoConexion));
+        }
+
+        [Fact]
+        public void CierreDelServidorNoEsCaidaDeRed()
+        {
+            _red.CerrarSesion();
+
+            Assert.Equal(EstadoConexion.SesionCerrada, _f.EstadoConexion);
+        }
+
+        [Fact]
+        public void UnCierreVoluntarioNoSeReportaComoCaida()
+        {
+            _red.CerrarSesion();
+            var trasCierre = _f.EstadoConexion;
+
+            _red.Caer();
+
+            Assert.Equal(trasCierre, _f.EstadoConexion);
+        }
+
+        [Fact]
+        public void LosTextosCoincidenConLosDeLosOtrosClientes()
+        {
+            // Contrato compartido (VIS-02): el mismo texto en los 3 clientes.
+            Assert.Equal("Sin conexión — mensajes en cola local, se reintentan solos",
+                EstadoConexionTexto.Texto(EstadoConexion.SinRed));
+            Assert.Equal("En línea", EstadoConexionTexto.Texto(EstadoConexion.Conectado));
+            Assert.Equal("Conectando…", EstadoConexionTexto.Texto(EstadoConexion.Conectando));
+            Assert.Equal("Sesión cerrada", EstadoConexionTexto.Texto(EstadoConexion.SesionCerrada));
+        }
+
+        [Fact]
+        public void ElBannerSoloSeEnciendeEnEstadosDegradados()
+        {
+            Assert.False(EstadoConexionTexto.MuestraBanner(EstadoConexion.Conectado));
+            Assert.False(EstadoConexionTexto.MuestraBanner(EstadoConexion.Conectando));
+            Assert.True(EstadoConexionTexto.MuestraBanner(EstadoConexion.SinRed));
+            Assert.True(EstadoConexionTexto.MuestraBanner(EstadoConexion.SesionCerrada));
         }
     }
 }

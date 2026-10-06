@@ -1,12 +1,25 @@
 # Análisis técnico — auditoría de código, UI y patrones
 
-Actualizado: **2026-10-05**. Este documento es la **base de evidencia** de la ronda de
-planificación 2026-10-05. No es una lista de deseos: cada hallazgo lleva `archivo:línea` y el
-conteo de referencias que lo sostiene.
+Actualizado: **2026-10-06**. Este documento conserva la **base de evidencia de la auditoría
+inicial del 2026-10-05**: rutas, conteos y síntomas describen lo que se encontró antes de varios
+arreglos. No es el tablero vigente; usa [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md) para saber qué
+hallazgos siguen abiertos. No inferir que un hallazgo descrito en presente continúa ocurriendo.
 
-> **Regla de este documento.** Nada de lo que está aquí se ha modificado. Solo se planificó.
-> El tablero que manda hacia adelante es [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md); el plan
-> ejecutable de refactor es [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md).
+> **Estado de aplicación.** Los hallazgos de §1 (`SEC-05`, `SEC-06`), §2 (lotes `MUERTE-1` a
+> `MUERTE-5`), **§3.1 (los 6 bugs P0 de UI)** y **§4 (`PAT-03`)** **se aplicaron el 2026-10-05**:
+> el texto de abajo conserva la foto *antes* del cambio, que es la que sostiene las decisiones. Lo
+> que se aplicó, lo que se corrigió sobre la marcha y lo que se conservó a propósito está en
+> [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md) §2, §4.2, §5.1 y §6.1. Cuatro ítems **no** se trataron
+> porque las reglas B2/B5 los declaran vivos o porque exceden un lote de limpieza: `MUERT-23`
+> (dobles de prueba que implementan una interfaz que la vista sí llama), `MUERT-37`
+> (`bannerOffline`, que pasó a ser **el objetivo de `UIX-00a`** y por tanto ya no está muerto), la
+> tabla MIME de §2.5 (unificación que cambiaría el tipo de trama; pertenece a `SEG-02`/`VIS-02`) y
+> las mejoras P1/P2 de §3.2. Después de esta auditoría se implementaron varios lotes adicionales,
+> incluido `UIX-15`; consultar el roadmap para el estado actual.
+
+> **Regla de este documento.** Las filas de inventario de §2–§6 son una foto histórica y no se
+> vuelven a fechar como si fueran una nueva auditoría. Los cierres posteriores se anotan en el
+> roadmap y en los hitos de esta misma auditoría.
 
 ## 0. Cómo se leyó el código
 
@@ -55,6 +68,16 @@ completo. Un test que solo compruebe "responde bien a un usuario autenticado" pa
 regresión que envíe cada trama sin autenticar y exija `ERROR`. El test es la parte importante:
 sin él, el hueco vuelve el próximo vez que alguien añade un comando nuevo.
 
+> ### ✅ Cerrado 2026-10-05 (ver `ESTADO_ROADMAP.md` §2)
+>
+> Las 3 guards añadidas; `CommandHandler.requiereAutenticacion()` con **default `true`** (fallo
+> cerrado) y `LoginCommand` como único `false`; test parametrizado que recorre los **14** tipos
+> registrados y exige `ERROR` **y cero llamadas de negocio**; test que fija el conjunto abierto
+> en `{LOGIN}`; y `MensajeriaE2ETest.tramaNoAutenticadaSeRechaza` sobre socket crudo.
+> **Prueba de que el test tiene dientes:** se revirtió la guarda de `ListarUsuariosCommand` a
+> propósito y falló con `expected [error:...] but was [error:..., usuarios]`, nombrando el comando
+> y la fuga.
+
 ### Corolario — el fallo de guarda no es visible en la firma
 
 Que `respuestas` sea un parámetro **no usado** en los 3 comandos es exactamente lo que hace
@@ -66,6 +89,25 @@ contrario. Es un argumento para `PUG-04` (revisor obligatorio de comandos nuevos
 Leyenda: **C** = muerto cierto (0 referencias fuera de su propia definición).
 **P** = probablemente muerto (0 referencias estáticas, pero alcanzable por framework,
 reflexión, anotación o contrato SPI).
+
+> **Aplicados 2026-10-05** (`MUERTE-1` a `MUERTE-5`; el detalle y las cifras están en
+> `ESTADO_ROADMAP.md` §4). Las tablas de abajo conservan la foto **antes** del cambio. Tres
+> correcciones sobre el plan salieron al ejecutar, y conviene conocerlas porque invalidan
+> parte de lo escrito aquí:
+>
+> - **`MUERT-12` no era solo el campo:** quitar `ip_destinatario` de la entidad JPA obliga a
+>   retirar la columna, así que se añadió la migración `V3__quita_ip_destinatario.sql` en los
+>   **3** dialectos. `REGISTRO_RESPUESTA` sí era un tipo del **wire**, pero la regla B4 se
+>   comprobó contra la BD: `registro_acciones.tipo` solo guarda valores de `TipoAccion`
+>   (0 filas con `REGISTRO_RESPUESTA`, `CONECTADO`, `HISTORIAL` o `DESCARGA`).
+> - **`MUERT-01` arrastraba más:** al borrar `Fachada.archivoParaVista` quedó sin llamadas
+>   `ArchivoVistaCaso.metadatos(...)`, que se borró también.
+> - **Dos hallazgos de la auditoría eran falsos positivos por búsqueda de texto**, y borrarlos
+>   habría roto cosas: `MUERT-23` (los dobles de prueba implementan una interfaz que la vista sí
+>   llama: `fachada_cliente.py:66,506` y `chat_window.py:1008`) y el "fallback" de `LocalStore`
+>   de §2.5, que **no** era inalcanzable: lo ejecutaban todos los tests de store .NET porque el
+>   proyecto de tests no copiaba el `.sql`. Ese "test verde" validaba un esquema que la app
+>   nunca usa.
 
 ### 2.1 Servidor Java — 13 símbolos C + 2 P
 
@@ -192,33 +234,42 @@ No es código muerto sino el mismo concepto escrito dos veces. Sale gratis con l
 
 | Ubicación | Duplicación | Nota |
 |---|---|---|
-| `client-dotnet/Fachada/FachadaCliente.cs:63-84`, `Views/LoginWindow.xaml.cs:38-62`, `Temas/Tema.cs:20-51` | **3 analizadores/gestores propios de `client.properties` en el mismo proyecto** | `CargarServidor` **ignora `tls.*` y `db.url`**, así que el servidor que *muestra* el login puede no ser el que *usa* |
-| `client-dotnet/Store/LocalStore.cs:306-352` (`fallbackSchema`) vs `Store/schema-local.sql` vs `common-protocol/.../schema-local.sql` | **3 copias del DDL**, y `Mensajeria.csproj:18-20` ya garantiza que el `.sql` se copie | el fallback es inalcanzable |
-| `client-dotnet/Store/LocalStore.cs:257-278` (`AsegurarColumnas`) vs `:356-382` (`MigrarHistorial`) | 2 implementaciones del mismo "añade `estado` + `archivo_id` si falta" | `MigrarHistorial` se invoca desde `Inicializar()` (`:353`), justo después de que `Inicializar()` ya ejecutara el esquema en `:300` |
-| `client-python/ui/chat_window.py:442-464` vs `ui/login_window.py:135-157` | `_leer_modo`/`_guardar_modo`/`_cambiar_tema` **byte a byte idénticos** | un arreglo en una ventana no llega a la otra |
-| `client/.../ChatController.java:752-773`, `chat_window.py:1027,1045-1048`, `ChatWindow.xaml.cs:604-608` | tabla MIME (`.png/.jpg/...`) reescrita 3 veces | |
-| `client-python/tests/test_schema_distribuible.py:34` | protege la copia Python del esquema canónico | **la copia .NET no tiene equivalente** → puede divergir en silencio |
+| `client-dotnet/Store/LocalStore.cs:306-352` (`fallbackSchema`) vs `Store/schema-local.sql` vs `common-protocol/.../schema-local.sql` | **3 copias del DDL**, y `Mensajeria.csproj:18-20` ya garantiza que el `.sql` se copie | ⚠️ **Corregido al aplicar**: el fallback **no era inalcanzable**. `Mensajeria.Tests.csproj` compila `Store\*.cs` pero no copiaba el `.sql`, así que **los 35 tests de store pasaban por la copia incrustada y la app usaba la otra**: dos esquemas que podían divergir sin que nada lo notara. Ahora el proyecto de tests enlaza el `schema-local.sql` de `client-dotnet`, y `LocalStore` falla con un mensaje explícito si falta. |
+| `client-dotnet/Fachada/FachadaCliente.cs:63-84`, `Views/LoginWindow.xaml.cs:38-62`, `Temas/Tema.cs:20-51` | **3 analizadores/gestores propios de `client.properties` en el mismo proyecto** | `CargarServidor` **ignora `tls.*` y `db.url`**, así que el servidor que *muestra* el login puede no ser el que *usa*. Además leían de **dos rutas distintas** (`BaseDirectory` vs directorio de trabajo), y `Tema.Guardar` escribía en la que `FachadaCliente` no leía. **Corregido**: los 3 pasan por `Transversal/ClienteConfig.cs`, con una sola ruta y validación por rango |
+| `client-dotnet/Store/LocalStore.cs:257-278` (`AsegurarColumnas`) vs `:356-382` (`MigrarHistorial`) | 2 implementaciones del mismo "añade `estado` + `archivo_id` si falta" | `MigrarHistorial` se invoca desde `Inicializar()` (`:353`), justo después de que `Inicializar()` ya ejecutara el esquema en `:300`. **Unificadas**: una sola `MigrarHistorial(conn, tx?)`; el arranque la pasa con transacción y la migración de legado la llama tolerando fallo, que era el comportamiento de cada copia |
+| `client-python/ui/chat_window.py:442-464` vs `ui/login_window.py:135-157` | `_leer_modo`/`_guardar_modo`/`_cambiar_tema` **byte a byte idénticos** | un arreglo en una ventana no llega a la otra. **Unificado** en `ui/tema.py` (`modo_guardado`, `guardar_modo`, `modo_por_indice`); las ventanas conservan sus métodos privados como delegadores, que es la superficie que usan los tests |
+| `client/.../ChatController.java:752-773`, `chat_window.py:1027,1045-1048`, `ChatWindow.xaml.cs:604-608` | tabla MIME (`.png/.jpg/...`) reescrita 3 veces | **No unificada, a propósito.** No es duplicación dentro de un módulo: Java lleva un `switch` propio y Python/.NET usan el `mimetypes`/`ContentType` de su plataforma. Y ya **divergen**: Java clasifica `.bmp` como archivo y Python/.NET como imagen. Unificarla cambia **el tipo de trama que se envía por el cable**, o sea que es una decisión de paridad de producto (`SEG-02`) y de contrato compartido (`VIS-02`), no un lote de limpieza. Se deja intacta y la deriva, documentada. |
+| `client-python/tests/test_schema_distribuible.py:34` | protege la copia Python del esquema canónico | **la copia .NET no tiene equivalente** → puede divergir en silencio. **Resuelto por otra vía**: `Mensajeria.Tests.csproj` enlaza ahora el `schema-local.sql` de `client-dotnet` y lo ejecuta en cada test de store, así que la copia .NET queda atada al fichero que se distribuye (cierra en la práctica `PAT-06`). |
 
 ## 3. Bugs funcionales encontrados en la capa de presentación
 
 Estos no son deuda estética: son comportamientos que el usuario no pidió y no puede usar.
 
-### 3.1 P0 — funciones que existen y no hacen nada
+### 3.1 P0 — funciones que existen y no hacen nada — ✅ aplicadas 2026-10-05
 
-| ID | Cliente | Qué pasa | Evidencia |
+Los 6 se cerraron. `UIX-00a` y `UIX-00c` no se tocaron "a mano": se hizo `PAT-03` (§6.1 de
+`ESTADO_ROADMAP.md`), que era la causa de los dos, y se cerraron de paso. Detalle, verificación
+en la app real y el defecto de layout que solo apareció al hacer visible el banner: §5.1 del
+roadmap.
+
+| ID | Cliente | Qué pasaba | Evidencia (antes) |
 |---|---|---|---|
-| UIX-00a | .NET | **La pérdida de conexión es invisible.** `OnDesconectado` existe en el transporte y en la fachada, y `bannerOffline` existe en el XAML, pero **ninguna vista se suscribe** y nadie cambia el `Visibility`. El aviso Offline de los 3 clientes solo aparece en Java y Python. | `FachadaCliente.cs:41` (declaración) · `:122` (única invocación) · `IConexionRed.cs:13`, `ConexionRed.cs:31,141` · `ChatWindow.xaml:29` (nada más) · **0 refs en `Views/*.cs`** |
-| UIX-00b | Python | **El botón "Reintentar imagen" nunca reintenta.** El `_ejecutar("imagen", cargar)` está **después** del `raise`, dentro del `def cargar`. | `chat_window.py:1249` (raise) → `:1250` (inalcanzable) |
-| UIX-00c | Java | **`alError()` y `alDesconexion()` están vacíos.** No son manejadores: son un comentario en el cuerpo. Los errores de red asíncronos se descartan en silencio. | `FachadaCliente.java:767-770` y `:772-775` |
-| UIX-00d | Java | **El fallo de persistencia se traga.** `catch (Exception e) { }` alrededor de la escritura en H2, en el camino de recepción. | `FachadaCliente.java:756-758` |
-| UIX-00e | Python | **`login()` se ejecuta en el hilo de la GUI.** Puede bloquear hasta 15 s y congela la ventana entera. Java lo hace bien con un `Task`. | `login_window.py:204` vs `LoginController.java:86-125`; timeout en `conexion_red.py:17,131` |
-| UIX-00f | .NET | **"Conectando…" se pinta dentro de la caja roja de error.** El texto de carga se escribe en `txtError` mientras `bordeError.Visibility = Visible` (fondo `#FDECEA`, texto `#B91C1C`). El estado de carga parece un error. | `LoginWindow.xaml.cs:85-86` vs `LoginWindow.xaml:52-55` |
+| UIX-00a | .NET | **La pérdida de conexión es invisible.** `OnDesconectado` existía en el transporte y en la fachada, y `bannerOffline` en el XAML, pero ninguna vista se suscribía | `FachadaCliente.cs:41,122` · `IConexionRed.cs:13` · `ChatWindow.xaml:29` · 0 refs en `Views/*.cs` |
+| UIX-00b | Python | **El botón "Reintentar imagen" nunca reintenta.** El `_ejecutar("imagen", cargar)` estaba **después** del `raise`, dentro de `def cargar` | `chat_window.py:1249` (raise) → `:1250` (inalcanzable) |
+| UIX-00c | Java | **`alError()` y `alDesconexion()` estaban vacíos.** No eran manejadores: eran un comentario | `FachadaCliente.java:767-770` y `:772-775` |
+| UIX-00d | Java | **El fallo de persistencia se tragaba.** `catch (Exception e) { }` en el camino de recepción | `FachadaCliente.java:756-758` |
+| UIX-00e | Python | **`login()` se ejecutaba en el hilo de la GUI.** Bloqueaba hasta 15 s | `login_window.py:204` vs `LoginController.java:86-125` |
+| UIX-00f | .NET | **"Conectando…" se pintaba dentro de la caja roja de error** | `LoginWindow.xaml.cs:85-86` vs `LoginWindow.xaml:52-55` |
 
-### 3.2 P1 — consistencia rota entre las 3 pistas
+### 3.2 P1 — matriz de hallazgos original de UI (auditoría 2026-10-05)
+
+La tabla siguiente preserva la evidencia **antes de la implementación**; no representa el estado
+actual. `UIX-02..09`, `UIX-10..16` y `UIX-01` se abordaron después en sus lotes; `UIX-15` quedó
+cerrado en Lote F el 2026-10-06. Para los elementos pendientes, consulta `ESTADO_ROADMAP.md` §5.
 
 | ID | Asunto | Java | Python | .NET |
 |---|---|---|---|---|
-| UIX-01 | **Virtualización de la lista de mensajes** | ✅ `ListView` (`chat.fxml:47`) | ❌ **`QListWidget` + un `QWidget` por fila**, con `setUniformItemSizes(False)` explícito (`:341`) | ✅ `VirtualizingPanel` + `Recycling` (`ChatWindow.xaml:121`) |
+| UIX-01 | **Virtualización de la lista de mensajes** | ✅ `ListView` (`chat.fxml:47`) | ✅ `QListView` + `MensajeListModel`/`MensajeDelegate` (`ui/lista_virtual.py`); `_MessageRow` eliminado de `chat_window.py` | ✅ `VirtualizingPanel` + `Recycling` (`ChatWindow.xaml:121`) |
 | UIX-02 | **Distintivo de no leídos** | ✅ pastilla real (`UsuarioCell.java:63-66`) + filtro "No leídos" | ⚠️ truco de texto `"  (N)"` limpiado por regex (`chat_window.py:701,703`), sin filtro | ❌ **no existe** (`UsuarioVM` no tiene el campo) |
 | UIX-03 | **Formato de fecha** | ⚠️ `substring(11,16)`: **descarta la fecha** y puede render vacío (`MensajeCell.java:165-166`) | ⚠️ cadena cruda, sin formatear (llega `T10:00:00` y `2026-01-01 10:00:00` mezclados) (`chat_window.py:863,119`) | ✅ `yyyy-MM-dd HH:mm`, el mejor de los 3 (`ChatWindow.xaml.cs:778-784`) |
 | UIX-04 | **Separadores de día** | ❌ | ❌ | ❌ |
@@ -232,7 +283,7 @@ Estos no son deuda estética: son comportamientos que el usuario no pidió y no 
 | UIX-12 | **`Shift+Enter` = salto de línea** | ✅ | ❌ **imposible**: el campo es un `LineEdit` (`chat_window.py:412`) | ⚠️ `TextWrapping="Wrap"` pero Enter está interceptado → también imposible |
 | UIX-13 | **Estados vacíos** | ❌ lista en blanco si no hay mensajes | ❌ | ❌ — en los 3, un usuario nuevo ve un rectángulo negro sin explicación |
 | UIX-14 | **Indicador de carga del historial** | ⚠️ solo texto de estado (`:393`) | ❌ nada | ❌ nada |
-| UIX-15 | **`.NET` usa `MessageBox` para errores recuperables** | estado inline ✅ | mixto: inline + 7 `QMessageBox` | ❌ **10 `MessageBox` modales**, incluido "sin red" (`ChatWindow.xaml.cs:153,543,546,547,663,674,719,723,739,747`) |
+| UIX-15 | **`.NET` usa `MessageBox` para errores recuperables** | estado inline ✅ | mixto: inline + 7 `QMessageBox` | ✅ Avisos y errores inline; se conservan solo las 3 confirmaciones de salida |
 | UIX-16 | **Anclaje de scroll al "cargar anteriores"** | ❌ | ⚠️ `setValue(anterior + 50)` — **+50 filas fijas y codificadas** (`:881`) | ⚠️ `ScrollIntoView(first)` |
 
 ### 3.3 Accesibilidad
@@ -248,6 +299,16 @@ Estos no son deuda estética: son comportamientos que el usuario no pidió y no 
 | UIX-23 | **Escala de tipografía / DPI** | Java: `-fx-font-size: 13px` fijo en 4 CSS y **el UA stylesheet de AtlantaFX se sobrescribe con `setAll`** (`ClienteApp.java:38` vs `:121`), lo que mata su escalado · Python: ~25 `setStyleSheet("font-size: Npx")` inline, ninguno derivado de la fuente de la app · .NET: sin `FontSize` global ni manifiesto DPI |
 | UIX-24 | **Foco inicial en el login de .NET** | ❌ ninguna llamada a `requestFocus`; el usuario tiene que hacer clic. Java ✅ y Python ✅ |
 
+> **Lote G (2026-10-06):** `UIX-17` ✅ (claro `chat-claro.css:56`
+> `#5A686E` 5.22:1, `:96-99` `#57676E` 5.88:1; `tema.py:58,60-61` fecha
+> `#57676E` 5.88:1 y visto_pendiente `#5B6B73` 5.53:1 — el `prompt #7A8A99`
+> citado arriba ya no existe en `tema.py`, eran estos los que fallaban),
+> `UIX-18` ✅ (`Themes/TemaOscuro.xaml:22-25` `#FFA8B8C1`,
+> `Themes/TemaClaro.xaml:22-25` `#FF57676E`), `UIX-19` ✅ solo .NET
+> (5 `AutomationProperties.Name` en `Views/ChatWindow.xaml:96,97,100,110,137`;
+> `LoginWindow.xaml` no tiene botones solo-icono; Python pendiente),
+> `UIX-24` ✅ (`Views/LoginWindow.xaml.cs:32-33` `Loaded → txtCodigo.Focus()`).
+
 ### 3.4 Errores de tematización
 
 | ID | Bug | Evidencia |
@@ -257,6 +318,15 @@ Estos no son deuda estética: son comportamientos que el usuario no pidió y no 
 | UIX-27 | Cambiar de tema **reconstruye toda la lista** de mensajes en .NET | `ChatWindow.xaml.cs:249-250` — el propio comentario lo admite |
 | UIX-28 | .NET usa `StaticResource` en `App.xaml:24-25` pero **reasigna por reflexión** | `Tema.cs:89-96`; el comentario en `:87-88` admite *"los recursos XAML están congelados"* |
 | UIX-29 | Python arranca en tema claro mientras `tema.py:7-9` dice oscuro por defecto | `main.py:20` |
+
+> **Lote G (2026-10-06):** `UIX-29` ✅ (`main.py:20-23` arranca en
+> `Theme.DARK` con acento `#7B61B8`). `UIX-28` 🔴 bloqueado: el arreglo
+> normal (meter `AppSurfaceBrush`/`AppTextBrush` en `Themes/*.xaml` y tipar el
+> `ThemesDictionary` de WPF-UI) excede la lista permitida del lote
+> (`Themes/*.xaml` solo UIX-18, `App.xaml` fuera de alcance); quitar las
+> líneas 62-71 sin esas claves rompería los `DynamicResource`. Además la
+> referencia de líneas (~89-96) está obsoleta: el fichero tiene 74 líneas, el
+> comentario "congelados" está en `:62-63` y la reflexión en `:36-48`.
 
 ## 4. Arquitectura de presentación y patrones
 
@@ -288,20 +358,23 @@ No hay forma de inyectar un ViewModel porque no existe.
 | Patrón | Java | Python | .NET |
 |---|---|---|---|
 | **Fachada** | `FachadaCliente.java:41` | `fachada_cliente.py:31` | `FachadaCliente.cs:20` + `IFachadaCliente` |
-| **Observer / eventos** | `ReceptorMensajes.java:9-22` + `FachadaCliente.java:698-776` | 4 callbacks (`fachada_cliente.py:38-41`), cableados en `chat_window.py:236-239` | 4 `event Action` (`FachadaCliente.cs:38-41`), `+=` en `ChatWindow.xaml.cs:114-116` |
+| **Observer / eventos** | `ReceptorMensajes.java:9-22` + `FachadaCliente.java` (5 callbacks) | 5 callbacks en `fachada_cliente.py`, cableados en `chat_window.py` | 5 `event Action` en `FachadaCliente.cs`, `+=` en `ChatWindow.xaml.cs` |
 | **Adapter (transporte)** | `ConexionCliente.java:330-345` + `TramaCodec` | `transversal/protocolo.py` | `Componentes/TramaCodec.cs` |
 | **Adapter (TLS)** | `ConexionCliente.java:62` vs `:69-99` | `conexion_red.py:48-65` + `tls.py` | `ConexionRed.cs:36-52` |
 | **Repository** | `InterfazHistorialLocal` + `HistorialLocal.java:19` | ❌ **sin interfaz**, acceso directo con SQL SQLite *inline* | `IHistorialLocal` + `HistorialLocal.cs:12` |
 | **Strategy** | ⚠️ solo un `ThreadFactory` inyectable (`:83`) | ❌ | ✅ `ConexionRed.cs:24 ValidarCertificado` — nadie lo asigna |
 | **Command** | ❌ en la capa de cliente (sí en el servidor: 15 clases) | ❌ | ❌ |
 
-### 4.3 Los 6 patrones que faltan, con el dolor que justifican
+### 4.3 Los patrones que faltan, con el dolor que los justifican
+
+> **Actualizado 2026-10-05:** el "Observer del estado de conexión" está **hecho** (`PAT-03`) y de
+> paso cerró `UIX-00a` y `UIX-00c`. Los otros 5 siguen pendientes.
 
 | Patrón | Dolor concreto que lo justifica |
 |---|---|
 | **MVVM** (ViewModel + binding) | `ChatController.java` mezcla vista + estado + paginación + MIME + caché de imagen; se modifica desde 9 sitios distintos (`:129,135,139,143,169,235,285,315,458,462,464`) con **1** `bind()`. `chat_window.py` tiene 20 atributos mutables y un despachador `if/elif` de 100 líneas que *es* un presenter sin tipar (`:536-661`). .NET ya va ⅓: `UsuarioVM` (`:21-31`) **no notifica** y `AplicarFiltro` hace `Clear()` + re-`Add()` en cada tecla (`:195-196,202`) — el síntoma clásico de no tener filtro observable. |
 | **Command / ICommand** | 3 implementaciones duplicadas de "puedo enviar": `ChatController.java:174-176`, `chat_window.py:937-939`, `ChatWindow.xaml.cs:572-575`. Con `CanExecute` desaparece la terna y `IsEnabled` pasa a ser declarativo. |
-| **Observer del estado de conexión** | Es la causa directa de `UIX-00a`: Java **sondea** `conectado()` cada 30 s (`RESPALDO_SEGUNDOS=30`, `:57`) porque `alDesconexion` está vacío; Python solo cambia el banner ámbar dentro del resultado de `directorio` (`:583-585`), no en `_procesar_desconexion` (`:1181-1182`); .NET no tiene suscripción. **Un solo `EstadoConexion` observable lo arregla en los 3.** |
+| ~~**Observer del estado de conexión**~~ | ✅ **Resuelto 2026-10-05 (`PAT-03`).** Era la causa directa de `UIX-00a`: Java sondeaba `conectado()` cada 30 s porque `alDesconexion` estaba vacío; Python solo cambiaba el banner dentro del resultado de `directorio`; .NET no tenía suscripción. Ahora los 3 publican `EstadoConexion` (4 estados) y la vista se suscribe. Detalle en `ESTADO_ROADMAP.md` §6.1. |
 | **Composition root con inyección real** | Java: `ClienteMain.java:20-45` es un root legítimo, pero lo destruye un localizador estático (`ClienteApp.java:20,29-34`) → `ChatController` **no se puede construir en un test**. Python: `main.py:23` `FachadaCliente()` sin argumentos, 6 colaboradores cableados con defaults `or` (`:35-56`), y el grafo **cambia de forma en runtime** (`:87-88`). .NET: layed el grafo dentro de `ConectarAsync` con un truco de campos `readonly` (`:104,112-115`); el ctor con DI existe (`:52-61`) y solo lo usan los tests. |
 | **Adapter del almacén local** | El esquema SQL **sí** es compartido (3 copias), los **puertos no**: Java dice "el motor es intercambiable" (`InterfazHistorialLocal.java:10-13`) pero solo existe H2 (`LocalStore.java:107`, con `MERGE INTO … KEY(...)` exclusivo de H2 en `:186-190,228-230`); Python no tiene interfaz y usa `ON CONFLICT` *inline*; .NET tiene interfaz pero SQL de SQLite. Existe ya la forma **portable** documentada (`HistorialLocal.java:17`: upsert con `DELETE + INSERT`, sin sintaxis de motor) y **no se usa en Python ni en .NET**. |
 | **Adapter de transporte (TCP vs TLS)** | Tres implementaciones con tres estrategias distintas, y **validación TLS inconsistente**: Python valida fail-fast (`tls.py:17-45`, llamado en `conexion_red.py:44-45`); Java **no valida en ningún sitio**; .NET sustituye el puerto en silencio cuando `TlsPuerto == 0` (`ConexionRed.cs:43`) y nunca lee `tls.confianza`. |
@@ -359,7 +432,9 @@ proyecto es para una comunidad académica **hispanohablante** y el enunciado no 
 
 ## 6. Estado de los diagramas
 
-Resumen del problema, con el detalle en [`DIAGRAMAS/README.md`](DIAGRAMAS/README.md).
+El inventario siguiente registra el problema encontrado en la auditoría del 2026-10-05; sus
+conteos y ausencias quedaron **superados por DIAG-07/08**. El índice canónico actual está en
+[`DIAGRAMAS/README.md`](DIAGRAMAS/README.md).
 
 - **37 `.mmd` repartidos en 3 carpetas** con solapamiento pesado. `DIAGRAMAS/` gana en todo lo
   duplicado (18 `.mmd` derivados del código y los `.sql` reales; versiones ENTRAGAs y FINALES
@@ -380,15 +455,34 @@ Resumen del problema, con el detalle en [`DIAGRAMAS/README.md`](DIAGRAMAS/README
   `DIAGRAMAS_ENTREGA` y `DIAGRAMAS_FINALES` **no se regeneran**. Y **no hay `mmdc`, `plantuml`
   ni `node` instalados en este entorno**, así que los `.png` nuevos están pendientes.
 
+> **Lote G (2026-10-06, DIAG-07/08):** migración ejecutada (5 clases + 4 de
+> entrega + 7 mockups en `DIAGRAMAS/`, `$anchos` ampliado, índice actualizado);
+> `mmdc` 12 + `node` disponibles; el reporte de esa ejecución registró 46 `.mmd` renderizados con 0 FALLO.
+> El inventario físico posterior cuenta 45 fuentes Mermaid en `DIAGRAMAS/` (ver índice actual) y
+> revisión visual; `render.ps1` devuelve `exit 1` si hay FALLO (más
+> `Invoke-Nativo` contra el stderr del shim npm en PS 5.1). Las carpetas
+> viejas **no se borraron**: retienen 8+22 archivos con veredicto
+> Retirar/Fusionar (`DIAGRAMAS/README.md` §3.2). Incompatibilidades de `mmdc`
+> 12 halladas al renderizar: no existe `usecaseDiagram` (los 3 `uc-*` ahora
+> son `flowchart`), no valen notas multilínea (`note ... end note`) ni
+> `note "x" as N1` en `classDiagram-v2`, y en `flowchart` las etiquetas
+> `[...]` con `"`, `(...)`, `;` o `<` deben entrecomillarse.
+
+**Estado posterior (2026-10-06):** `DIAGRAMAS/` contiene 45 fuentes Mermaid, cada una con render
+PNG y SVG en el inventario actual; se conservan 15 fuentes `.excalidraw` con PNG. `mmdc`/Node
+están disponibles en el entorno documentado. Los 10 fuentes Mermaid que permanecen en
+`DIAGRAMAS_ENTREGA/` y `DIAGRAMAS_FINALES/` y los mockups duplicados no se eliminaron; requieren
+revisión de cobertura/versión antes de archivarlos. Ver `DIAGRAMAS/README.md` §3.
+
 ## 7. Índice de hallazgos
 
 | Familia | Cantidad | IDs | Bloquea producción |
 |---|---|---|---|
-| Seguridad | 1 P0 + 3 P1 | `SEC-05`, `SEG-01..04` | **Sí: SEC-05** |
-| Código muerto | 38 items | `MUERT-01..38` | No, pero entorpece todo lo demás |
-| Bugs de UI | 6 P0 + 16 P1 + 13 P2 | `UIX-00a..29` | Los 6 P0, sí |
-| Patrones de cliente | 6 | `PAT-01..06` | No |
-| Diagramas | 6 grupos | `DIAG-01..06` | No |
+| Seguridad | 1 P0 + 3 P1 | `SEC-05`, `SEG-01..04` | **Cerrado el P0** 2026-10-05 |
+| Código muerto | 38 items | `MUERT-01..38` | `MUERTE-1..5` aplicados; 3 conservados (B2/B5) |
+| Bugs/mejoras de UI | Inventario original: 6 P0 + 16 P1 + 13 P2 | `UIX-00a..29` | Los P0 y varios P1/P2 están cerrados; el roadmap enumera los pendientes actuales |
+| Patrones de cliente | 6 | `PAT-01..06` | `PAT-02`, `PAT-03` y `PAT-06` **cerrados**; `PAT-01`, `PAT-VM`, `PAT-CMD`, `PAT-04`, `PAT-05` siguen |
+| Diagramas | 10 tareas | `DIAG-01..10` | Renders Mermaid disponibles; `DIAG-09` y la reconciliación del legado siguen pendientes |
 
 ## 8. Referencias
 

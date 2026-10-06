@@ -13,5 +13,5 @@ if not exist "client.properties" (
     exit /b 1
 )
 
-java --module-path "javafx" --add-modules javafx.controls,javafx.fxml -cp "client-app.jar;lib/*" universidad.mensajeria.cliente.ClienteMain
+java --enable-native-access=javafx.graphics --module-path "javafx" --add-modules javafx.controls,javafx.fxml -cp "client-app.jar;lib/*" universidad.mensajeria.cliente.ClienteMain
 if errorlevel 1 pause

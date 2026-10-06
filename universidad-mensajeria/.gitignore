@@ -16,4 +16,5 @@ __pycache__/
 config/keystore.p12
 .env.prod
 # Salidas de distribucion local (DIST-02): se regeneran con los scripts.
-dist/
+dist/*
+!dist/*.cmd

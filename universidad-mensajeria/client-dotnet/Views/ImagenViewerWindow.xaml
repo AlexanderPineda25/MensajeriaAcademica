@@ -1,0 +1,25 @@
+<Window x:Class="Mensajeria.Views.ImagenViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Imagen" Height="760" Width="940"
+        MinHeight="300" MinWidth="400" WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource WindowBgBrush}">
+    <!-- UIX-08: visor con zoom y pan en vez de ventana fija. -->
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6">
+            <Button Content="−" Click="BtnAlejar_Click" Width="40" ToolTipService.ToolTip="Alejar"/>
+            <Button Content="0" Click="BtnEncajar_Click" Width="40" Margin="6,0" ToolTipService.ToolTip="Tamaño original (F)"/>
+            <Button Content="+" Click="BtnAcercar_Click" Width="40" ToolTipService.ToolTip="Acercar"/>
+            <TextBlock x:Name="txtZoom" Foreground="{DynamicResource MutedBrush}" FontSize="11"
+                       VerticalAlignment="Center" Margin="12,0,0,0"/>
+        </StackPanel>
+        <ScrollViewer x:Name="visorScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="Visor_PreviewMouseWheel"
+                      PreviewMouseLeftButtonDown="Visor_PreviewMouseDown"
+                      PreviewMouseMove="Visor_PreviewMouseMove"
+                      PreviewMouseLeftButtonUp="Visor_PreviewMouseUp">
+            <Image x:Name="imgGrande" Stretch="None" Cursor="Hand"
+                   ToolTipService.ToolTip="Rueda = zoom · arrastrar = mover · Esc = cerrar"/>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

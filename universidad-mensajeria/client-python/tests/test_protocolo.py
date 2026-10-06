@@ -34,8 +34,6 @@ class ServidorStub(threading.Thread):
         self.srv.bind(('127.0.0.1', 0))
         self.srv.listen(1)
         self.puerto = self.srv.getsockname()[1]
-        self.recibidos = []
-        self.empujes = []
         self.conn = None
 
     def run(self):
@@ -44,7 +42,6 @@ class ServidorStub(threading.Thread):
         try:
             while True:
                 req = _leer_trama(self.conn)
-                self.recibidos.append(req)
                 tipo = req.get('tipo')
                 if tipo == 'LOGIN':
                     self._responder({'tipo': 'LOGIN_RESPUESTA', 'id': req.get('id'),

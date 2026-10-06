@@ -6,33 +6,62 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.PasswordField?>
 <?import javafx.scene.control.ProgressIndicator?>
+<?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.TextField?>
-<?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
 
-<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+<ScrollPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
       fx:controller="universidad.mensajeria.cliente.presentacion.LoginController"
-      spacing="0" alignment="CENTER" stylesheets="@../estilos/login.css">
-    <padding><Insets top="18" right="18" bottom="18" left="18"/></padding>
-    <VBox styleClass="login-card" spacing="10" maxWidth="380">
+      fitToWidth="true" fitToHeight="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED"
+      pannable="false" styleClass="login-scroll">
+  <content>
+    <StackPane styleClass="login-shell" alignment="CENTER" minHeight="660">
+    <VBox styleClass="login-card" spacing="10" maxWidth="420">
         <VBox styleClass="login-header" spacing="2">
             <Label text="UNIVERSIDAD" styleClass="login-eyebrow"/>
             <Label text="Mensajería Académica" styleClass="login-title"/>
             <Label text="Iniciar sesión" styleClass="login-subtitle" wrapText="true"/>
         </VBox>
         <Label text="Código universitario" styleClass="login-field-label"/>
-        <TextField fx:id="campoCodigo" promptText="A001234567" styleClass="login-field"/>
+        <TextField fx:id="campoCodigo" promptText="160004726" styleClass="login-field"/>
         <Label text="Contraseña" styleClass="login-field-label"/>
-        <PasswordField fx:id="campoContrasena" promptText="••••••••••" styleClass="login-field" onAction="#alEntrar"/>
-        <GridPane hgap="8" vgap="6">
-            <Label text="Servidor" GridPane.rowIndex="0" GridPane.columnIndex="0" styleClass="login-server"/>
-            <TextField fx:id="campoHost" GridPane.rowIndex="1" GridPane.columnIndex="0" styleClass="login-field" prefWidth="200" editable="false" focusTraversable="false"/>
-            <Label text="Puerto" GridPane.rowIndex="0" GridPane.columnIndex="1" styleClass="login-server"/>
-            <TextField fx:id="campoPuerto" GridPane.rowIndex="1" GridPane.columnIndex="1" styleClass="login-field" prefWidth="90" editable="false" focusTraversable="false"/>
-            <Label text="Tema" GridPane.rowIndex="2" GridPane.columnIndex="0" GridPane.columnSpan="2" styleClass="login-server"/>
-            <ComboBox fx:id="comboTema" GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="2" maxWidth="Infinity" styleClass="filter-select"/>
-        </GridPane>
+        <HBox spacing="6" alignment="CENTER_LEFT" styleClass="password-row">
+            <StackPane HBox.hgrow="ALWAYS">
+                <PasswordField fx:id="campoContrasena" promptText="••••••••••"
+                               styleClass="login-field" onAction="#alEntrar"/>
+                <TextField fx:id="campoContrasenaVisible" promptText="Contraseña"
+                           styleClass="login-field" onAction="#alEntrar"
+                           visible="false" managed="false"/>
+            </StackPane>
+            <Button fx:id="botonMostrarContrasena" text="◉" onAction="#alternarContrasena"
+                    styleClass="password-toggle" accessibleText="Mostrar contraseña"
+                    focusTraversable="false"/>
+        </HBox>
+        <HBox spacing="10">
+            <VBox spacing="5" HBox.hgrow="ALWAYS">
+                <Label text="Servidor" styleClass="login-server"/>
+                <HBox spacing="8" alignment="CENTER_LEFT" styleClass="server-chip" maxWidth="Infinity"
+                      accessibleText="Servidor configurado, solo informativo">
+                    <Circle radius="4" styleClass="server-dot" mouseTransparent="true"/>
+                    <Label fx:id="campoHost" styleClass="server-chip-value" maxWidth="Infinity"
+                           mouseTransparent="true" focusTraversable="false"/>
+                </HBox>
+            </VBox>
+            <VBox spacing="5" HBox.hgrow="ALWAYS">
+                <Label text="Puerto" styleClass="login-server"/>
+                <HBox spacing="8" alignment="CENTER_LEFT" styleClass="server-chip" maxWidth="Infinity"
+                      accessibleText="Puerto configurado, solo informativo">
+                    <Circle radius="4" styleClass="server-dot" mouseTransparent="true"/>
+                    <Label fx:id="campoPuerto" styleClass="server-chip-value" maxWidth="Infinity"
+                           mouseTransparent="true" focusTraversable="false"/>
+                </HBox>
+            </VBox>
+        </HBox>
+        <Label text="Tema" styleClass="login-server"/>
+        <ComboBox fx:id="comboTema" maxWidth="Infinity" styleClass="filter-select"/>
         <HBox spacing="10" alignment="CENTER">
             <Button fx:id="botonEntrar" text="Iniciar sesión →" onAction="#alEntrar" defaultButton="true" styleClass="login-button" prefWidth="220"/>
             <ProgressIndicator fx:id="spinner" prefWidth="26" prefHeight="26" visible="false" managed="false"/>
@@ -42,4 +71,6 @@
         <!-- Fase 10.2 (P2): sin «Crear cuenta»: los usuarios solo se crean en
              usuarios_iniciales.csv (registro por red deshabilitado en el servidor). -->
     </VBox>
-</VBox>
+    </StackPane>
+  </content>
+</ScrollPane>

@@ -6,12 +6,16 @@ import org.junit.jupiter.api.Test;
 import universidad.mensajeria.common.codec.TramaCodec;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
+import universidad.mensajeria.cliente.transversal.records.TipoMensajeCliente;
 
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -30,7 +34,7 @@ class ConexionRedTest {
     private ServerSocket escucha;
     private ServidorStub stub;
     private ConexionCliente conexion;
-    private final List<Mensaje> recibidos = new CopyOnWriteArrayList<>();
+    private final List<RespuestaRed> recibidos = new CopyOnWriteArrayList<>();
 
     @BeforeEach
     void montar() throws IOException {
@@ -40,12 +44,12 @@ class ConexionRedTest {
         conexion = new ConexionCliente("127.0.0.1", escucha.getLocalPort());
         conexion.suscribir(new ReceptorMensajes() {
             @Override
-            public void alRecibir(Mensaje mensaje) {
+            public void alRecibir(RespuestaRed mensaje) {
                 recibidos.add(mensaje);
             }
 
             @Override
-            public void alCierre(Mensaje aviso) {
+            public void alCierre(RespuestaRed aviso) {
                 recibidos.add(aviso);
             }
 
@@ -68,26 +72,26 @@ class ConexionRedTest {
 
     @Test
     void loginYEnvioCorrelacionanPorId() throws Exception {
-        Mensaje login = conexion.login("A001", "Secreta123");
-        assertEquals(TipoMensaje.LOGIN_RESPUESTA, login.tipo());
+        RespuestaRed login = conexion.login("A001", "Secreta123");
+        assertEquals(TipoMensajeCliente.LOGIN_RESPUESTA, login.tipo());
         assertTrue(login.exito());
 
-        Mensaje ack = conexion.enviarTexto("A001", "B002", "hola");
-        assertEquals(TipoMensaje.ACK, ack.tipo());
+        RespuestaRed ack = conexion.enviarTexto("A001", "B002", "hola");
+        assertEquals(TipoMensajeCliente.ACK, ack.tipo());
         assertTrue(ack.exito());
     }
 
     @Test
     void textoEImagenConservanElIdLocalEnLaTramaTcp() throws Exception {
         String idTexto = "texto-local-1";
-        Mensaje ackTexto = conexion.enviarTexto(idTexto, "A001", "B002", "hola");
-        assertEquals(TipoMensaje.ACK, ackTexto.tipo());
+        RespuestaRed ackTexto = conexion.enviarTexto(idTexto, "A001", "B002", "hola");
+        assertEquals(TipoMensajeCliente.ACK, ackTexto.tipo());
         assertEquals(idTexto, stub.idsEnvios.poll(5, TimeUnit.SECONDS));
 
         String idImagen = "imagen-local-2";
-        Mensaje ackImagen = conexion.enviarImagen(idImagen, "A001", "B002", "foto.png",
+        RespuestaRed ackImagen = conexion.enviarImagen(idImagen, "A001", "B002", "foto.png",
                 "image/png", "AQID");
-        assertEquals(TipoMensaje.IMAGE_FILTERED_RESULT, ackImagen.tipo());
+        assertEquals(TipoMensajeCliente.IMAGE_FILTERED_RESULT, ackImagen.tipo());
         assertEquals(idImagen, stub.idsEnvios.poll(5, TimeUnit.SECONDS));
     }
 
@@ -98,22 +102,22 @@ class ConexionRedTest {
                 .id("empuje-1").fechaHora(LocalDateTime.now().toString())
                 .remitente("C").contenido("aviso").build());
 
-        Mensaje ack = conexion.enviarTexto("A001", "B002", "hola");
-        assertEquals(TipoMensaje.ACK, ack.tipo());
+        RespuestaRed ack = conexion.enviarTexto("A001", "B002", "hola");
+        assertEquals(TipoMensajeCliente.ACK, ack.tipo());
 
         long limite = System.currentTimeMillis() + 5000;
-        while (recibidos.stream().noneMatch(m -> m.tipo() == TipoMensaje.BROADCAST)
+        while (recibidos.stream().noneMatch(m -> m.tipo() == TipoMensajeCliente.BROADCAST)
                 && System.currentTimeMillis() < limite) {
             Thread.sleep(50);
         }
-        assertTrue(recibidos.stream().anyMatch(m -> m.tipo() == TipoMensaje.BROADCAST
+        assertTrue(recibidos.stream().anyMatch(m -> m.tipo() == TipoMensajeCliente.BROADCAST
                 && "aviso".equals(m.contenido())));
     }
 
     @Test
     void listarDevuelveConectados() throws Exception {
-        Mensaje respuesta = conexion.listarConectados();
-        assertEquals(TipoMensaje.LISTAR_CONECTADOS_RESPUESTA, respuesta.tipo());
+        RespuestaRed respuesta = conexion.listarConectados();
+        assertEquals(TipoMensajeCliente.LISTAR_CONECTADOS_RESPUESTA, respuesta.tipo());
         assertEquals(List.of("A001", "B002"), respuesta.usuariosConectados());
     }
 
@@ -123,17 +127,27 @@ class ConexionRedTest {
                 .fechaHora(LocalDateTime.now().toString()).mensajeError("kick").build());
 
         long limite = System.currentTimeMillis() + 5000;
-        while (recibidos.stream().noneMatch(m -> m.tipo() == TipoMensaje.CLOSE_NOTICE)
+        while (recibidos.stream().noneMatch(m -> m.tipo() == TipoMensajeCliente.CLOSE_NOTICE)
                 && System.currentTimeMillis() < limite) {
             Thread.sleep(50);
         }
-        assertTrue(recibidos.stream().anyMatch(m -> m.tipo() == TipoMensaje.CLOSE_NOTICE));
+        assertTrue(recibidos.stream().anyMatch(m -> m.tipo() == TipoMensajeCliente.CLOSE_NOTICE));
     }
 
     @Test
     void sinConexionPedirFallaRapido() {
         conexion.desconectar();
         assertFalse(conexion.conectado());
+    }
+
+    @Test
+    void tiposDeAplicacionCubrenTodoElCatalogoDelProtocolo() {
+        Set<String> tiposProtocolo = Arrays.stream(TipoMensaje.values())
+                .map(Enum::name).collect(java.util.stream.Collectors.toSet());
+        Set<String> tiposCliente = Arrays.stream(TipoMensajeCliente.values())
+                .map(Enum::name).collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(tiposProtocolo, tiposCliente);
     }
 
     /** Stub mínimo del wire protocol: responde guionado + cola de empujes. */

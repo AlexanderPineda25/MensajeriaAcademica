@@ -5,57 +5,47 @@ title: "Casos de uso — SISTEMA completo (los 2 actores y el cruce)"
 %% poder mostrar en una sola pagina "quien hace que" sin abrir 2 archivos.
 %% Los detalles estan en uc-cliente.mmd (RF-C*) y uc-servidor.mmd (RF-S*).
 %% El actor que NO esta es un third: no hay registro por red ni por UI.
-usecaseDiagram
-    actor U as Usuario académico
-    actor A as Administrador
+%% NOTA DE FORMATO: mermaid no tiene diagrama de casos de uso, asi que los
+%% actores son elipses, los casos son rectangulos y las inclusiones son
+%% flechas punteadas. Mismo contenido, sintaxis renderizable.
+flowchart TB
+    U(["Usuario academico"])
+    A(["Administrador"])
 
-    rectangle "Mensajería académica — cliente/servidor TCP" {
-        usecase (AUT) Autenticarse con código y contraseña
-        usecase (DIR) Ver quién está conectado
-        usecase (ENV) Enviar texto, imagen o archivo
-        usecase (RESP) Responder un mensaje concreto
-        usecase (HIST) Consultar el historial local
-        usecase (IMG) Ver y descargar imágenes
-        usecase (LEER) Marcar mensajes como leídos
-        usecase (SALIR) Cerrar la sesión propia
-        usecase (DIF) Difundir a toda la comunidad
-        usecase (CERRAR) Cerrar las conexiones de un usuario
-        usecase (INF) Consultar los 4 informes
-        usecase (POOL) Supervisar el pool de trabajadores
-    }
+    subgraph SIS["Mensajeria academica — cliente/servidor TCP"]
+        AUT["AUT — Autenticarse con codigo y contrasena"]
+        DIR["DIR — Ver quien esta conectado"]
+        ENV["ENV — Enviar texto, imagen o archivo"]
+        RESP["RESP — Responder un mensaje concreto"]
+        HIST["HIST — Consultar el historial local"]
+        IMG["IMG — Ver y descargar imagenes"]
+        LEER["LEER — Marcar mensajes como leidos"]
+        SALIR["SALIR — Cerrar la sesion propia"]
+        DIF["DIF — Difundir a toda la comunidad"]
+        CERRAR["CERRAR — Cerrar las conexiones de un usuario"]
+        INF["INF — Consultar los 4 informes"]
+        POOL["POOL — Supervisar el pool de trabajadores"]
+    end
 
-    U -- AUT
-    U -- DIR
-    U -- ENV
-    U -- RESP
-    U -- HIST
-    U -- IMG
-    U -- LEER
-    U -- SALIR
+    U --> AUT
+    U --> DIR
+    U --> ENV
+    U --> RESP
+    U --> HIST
+    U --> IMG
+    U --> LEER
+    U --> SALIR
 
-    A -- DIF
-    A -- CERRAR
-    A -- INF
-    A -- POOL
+    A --> DIF
+    A --> CERRAR
+    A --> INF
+    A --> POOL
 
-    %% El cruce que importa: los informes del servidor se alimentan
-    %% de lo que hacen los usuarios.
-    AUT ..> INF : "accesos y sesiones vivas"
-    ENV ..> INF : "mensajes enviados con detalle"
-    LEER ..> INF : "auditoria de lectura"
-    SALIR ..> INF : "evento de cierre"
-    ENV ..> DIR : "el destino debe estar en el directorio"
+    AUT -. "accesos y sesiones vivas" .-> INF
+    ENV -. "mensajes enviados con detalle" .-> INF
+    LEER -. "auditoria de lectura" .-> INF
+    SALIR -. "evento de cierre" .-> INF
+    ENV -. "el destino debe estar en el directorio" .-> DIR
 
-    note "Ver NOTA 1 al pie" as N1
-        NO tiene: registrarse,
-        dar de alta usuarios,
-        ver la base de datos,
-        entrar a la consola.
-    end note
-
-    note "Ver NOTA 2 al pie" as N2
-        NO tiene: enviar mensajes
-        individuales desde la
-        consola como usuario.
-        Difunde a todos o nada.
-    end note
+    N1["NOTA 1:<br/>NO tiene: registrarse,<br/>dar de alta usuarios,<br/>ver la base de datos,<br/>entrar a la consola."]
+    N2["NOTA 2:<br/>NO tiene: enviar mensajes<br/>individuales desde la<br/>consola como usuario.<br/>Difunde a todos o nada."]

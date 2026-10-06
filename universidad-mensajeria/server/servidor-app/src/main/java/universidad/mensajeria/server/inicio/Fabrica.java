@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import universidad.mensajeria.colas.InterfazGestorMensajes;
 import universidad.mensajeria.colas.ProveedorGestorMensajes;
-import universidad.mensajeria.common.interno.EventoEtapa;
 import universidad.mensajeria.common.interno.LimitesDTO;
 import universidad.mensajeria.common.interno.UsuarioDTO;
 import universidad.mensajeria.protocolo.ConfigRed;

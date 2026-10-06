@@ -47,6 +47,27 @@ class TestHistorial(unittest.TestCase):
         self.assertEqual(self.h.contar_conversacion("A", "B"), 2)
         self.assertEqual(self.h.contar_conversacion("A", "C"), 1)
 
+    def test_buscar_encuentra_por_texto_ignorando_mayusculas(self):
+        # UIX-06: mismo contrato que buscar (Java) y BuscarEnConversacion (.NET).
+        self.h.guardar_mensaje("m4", "B", "A", "MENSAJE_TEXTO", "HOLA de vuelta",
+                               "2026-01-01T10:06:00")
+        hallados = self.h.buscar_en_conversacion("A", "B", "HOLA")
+
+        self.assertEqual([m["id_mensaje"] for m in hallados], ["m4", "m1"])
+        # Otra conversación no se mezcla.
+        self.assertEqual([], self.h.buscar_en_conversacion("A", "C", "hola"))
+
+    def test_buscar_trata_comodines_como_literales(self):
+        self.h.guardar_mensaje("m5", "A", "B", "MENSAJE_TEXTO", "100% seguro_hola",
+                               "2026-01-01T10:07:00")
+
+        self.assertEqual(["m5"], [m["id_mensaje"]
+                                  for m in self.h.buscar_en_conversacion("A", "B", "100%")])
+        self.assertEqual(["m5"], [m["id_mensaje"]
+                                  for m in self.h.buscar_en_conversacion("A", "B", "seguro_hola")])
+        self.assertEqual([], self.h.buscar_en_conversacion("A", "B", "inexistente"))
+        self.assertEqual([], self.h.buscar_en_conversacion("A", "B", "  "))
+
     def test_upsert_sobreescribe_mismo_id(self):
         self.h.guardar_mensaje("m1", "A", "B", "MENSAJE_TEXTO", "editado",
                                "2026-01-01T10:00:00")

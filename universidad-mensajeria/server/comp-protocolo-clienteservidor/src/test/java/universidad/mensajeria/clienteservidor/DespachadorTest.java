@@ -1,6 +1,9 @@
 package universidad.mensajeria.clienteservidor;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import universidad.mensajeria.clienteservidor.impl.CommandHandler;
 import universidad.mensajeria.clienteservidor.impl.Despachador;
 import universidad.mensajeria.clienteservidor.impl.FabricaDelDespachador;
 import universidad.mensajeria.common.interno.IdSesion;
@@ -10,13 +13,22 @@ import universidad.mensajeria.common.tipos.TipoMensaje;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Despacho por tipo con salida falsa: validacion y ruteo sin red ni Spring. */
 class DespachadorTest {
+
+    /**
+     * SEC-05: unicos tipos que pueden responder sin LOGIN. CommandHandler
+     * {@code requiereAutenticacion()} vale true por defecto (fallo cerrado), asi
+     * que abrir uno nuevo es una decision explicita y esta lista la vigila.
+     */
+    private static final Set<String> TIPOS_PUBLICOS = Set.of("LOGIN");
 
     static final class SalidaFalsa implements SalidaClienteServidor.FachadaSalida {
         final List<String> llamadas = new ArrayList<>();
@@ -228,5 +240,72 @@ class DespachadorTest {
     @Test
     void constructorRechazaVacioYDuplicados() {
         assertThrows(IllegalStateException.class, () -> new Despachador(List.of()));
+    }
+
+    // ---------------------------------------------------------------- SEC-05
+
+    /**
+     * Origen de datos del test parametrizado: TODOS los comandos registrados
+     * que declaran exigir autenticacion. Se lee del despachador real, no de una
+     * lista escrita a mano, asi que un comando nuevo entra solo en el test.
+     */
+    static List<String> comandosProtegidos() {
+        List<String> protegidos = FabricaDelDespachador.crear(new SalidaFalsa()).comandos().values()
+                .stream()
+                .filter(CommandHandler::requiereAutenticacion)
+                .map(CommandHandler::tipo)
+                .sorted()
+                .toList();
+        assertFalse(protegidos.isEmpty(), "el catalogo debe traer comandos protegidos");
+        return protegidos;
+    }
+
+    /**
+     * SEC-05: sin LOGIN, la unica respuesta admisible es ERROR y ninguna salida
+     * de negocio se toca. Esto es lo que impidio que el hueco volviera.
+     */
+    @ParameterizedTest(name = "{0} sin sesion -> ERROR y nada mas")
+    @MethodSource("comandosProtegidos")
+    void sesionAnonimaNoEntraEnNingunComandoProtegido(String tipo) {
+        SalidaFalsa salida = new SalidaFalsa();
+        Despachador despachador = FabricaDelDespachador.crear(salida);
+
+        despachador.procesar(Mensaje.builder().tipo(TipoMensaje.valueOf(tipo))
+                .id("sin-auth").build(), IdSesion.anonima("127.0.0.1"));
+
+        assertEquals(List.of("error:autenticate primero con LOGIN"), salida.llamadas,
+                tipo + " respondio algo distinto de la guarda de autenticacion");
+        assertEquals(1, salida.errores.size());
+        assertEquals(TipoMensaje.ERROR, salida.errores.get(0).tipo());
+        assertEquals("sin-auth", salida.errores.get(0).id(), "el ERROR se correlaciona por id");
+    }
+
+    /** El otro lado: solo LOGIN puede faltar, y abrirlo exige tocar TIPOS_PUBLICOS. */
+    @Test
+    void soloLosTiposDeclaradosPublicosQuedanSinGuarda() {
+        Set<String> abiertos = FabricaDelDespachador.crear(new SalidaFalsa()).comandos().values()
+                .stream()
+                .filter(comando -> !comando.requiereAutenticacion())
+                .map(CommandHandler::tipo)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(TIPOS_PUBLICOS, abiertos,
+                "un comando se ha marcado publico fuera de TIPOS_PUBLICOS");
+    }
+
+    /** Y con sesion autenticada, LOGOUT/LISTAR_* siguen llegando a la Fachada. */
+    @Test
+    void conSesionAutenticadaLogoutYListarSiguenDelegando() {
+        SalidaFalsa salida = new SalidaFalsa();
+        Despachador despachador = FabricaDelDespachador.crear(salida);
+        IdSesion yo = sesion("A001");
+
+        despachador.procesar(Mensaje.builder().tipo(TipoMensaje.LOGOUT).build(), yo);
+        despachador.procesar(Mensaje.builder().tipo(TipoMensaje.LISTAR_CONECTADOS).build(), yo);
+        despachador.procesar(Mensaje.builder().tipo(TipoMensaje.LISTAR_USUARIOS).build(), yo);
+
+        assertTrue(salida.llamadas.containsAll(List.of("cerrar", "listar", "usuarios")),
+                "la guarda no puede cerrar el camino autenticado: " + salida.llamadas);
+        assertTrue(salida.errores.isEmpty(), "con LOGIN no debe haber ERROR: " + salida.errores);
     }
 }

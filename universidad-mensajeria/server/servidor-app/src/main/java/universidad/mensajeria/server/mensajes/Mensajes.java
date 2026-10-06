@@ -4,9 +4,11 @@ import com.google.gson.Gson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import universidad.mensajeria.common.interno.ArchivoDTO;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.EventoEtapa;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
 import universidad.mensajeria.common.interno.MensajeResumenDTO;
+import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.interno.ResultadoMensajeDTO;
 import universidad.mensajeria.common.interno.UsuarioNoEncontradoException;
 import universidad.mensajeria.common.interno.UsuarioDTO;
@@ -58,6 +60,21 @@ public class Mensajes implements InterfazMensajes {
                                                                 String codigoDestinatario,
                                                                 String contenido,
                                                                 String ipRemitente) {
+        return procesarTexto(codigoRemitente, codigoDestinatario, contenido, ipRemitente,
+                null, null);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarTexto(String codigoRemitente,
+            String codigoDestinatario, String contenido, String ipRemitente, String idCliente) {
+        return procesarTexto(codigoRemitente, codigoDestinatario, contenido, ipRemitente,
+                null, idCliente);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarTexto(String codigoRemitente,
+            String codigoDestinatario, String contenido, String ipRemitente,
+            String ipDestinatario, String idCliente) {
         return CompletableFuture.supplyAsync(() -> {
             if (contenido == null || contenido.isBlank()) {
                 throw new IllegalArgumentException("el contenido de texto no puede estar vacio");
@@ -79,7 +96,8 @@ public class Mensajes implements InterfazMensajes {
                 List<String> rutas = almacenar.promocionarAUploads(hash, original,
                         "original.txt", carpetaPropietario, "textos");
                 long id = almacenar.guardarMensajeTexto(codigoRemitente, codigoDestinatario,
-                        contenido, hash, caracteres, palabras, ipRemitente);
+                        contenido, hash, caracteres, palabras, ipRemitente, ipDestinatario,
+                        idCliente);
                 limpiar(carpeta);
                 return new ResultadoMensajeDTO(id, hash, caracteres, palabras,
                         rutas, null, aEventos(resultado));
@@ -98,6 +116,22 @@ public class Mensajes implements InterfazMensajes {
                                                                  String nombreOriginal,
                                                                  String mime,
                                                                  String ipRemitente) {
+        return procesarImagen(codigoRemitente, codigoDestinatario, bytesImagen,
+                nombreOriginal, mime, ipRemitente, null, null);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarImagen(String codigoRemitente,
+            String codigoDestinatario, byte[] bytesImagen, String nombreOriginal,
+            String mime, String ipRemitente, String idCliente) {
+        return procesarImagen(codigoRemitente, codigoDestinatario, bytesImagen,
+                nombreOriginal, mime, ipRemitente, null, idCliente);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarImagen(String codigoRemitente,
+            String codigoDestinatario, byte[] bytesImagen, String nombreOriginal,
+            String mime, String ipRemitente, String ipDestinatario, String idCliente) {
         return CompletableFuture.supplyAsync(() -> {
             if (bytesImagen == null || bytesImagen.length == 0) {
                 throw new IllegalArgumentException("los bytes de la imagen no pueden estar vacios");
@@ -135,7 +169,7 @@ public class Mensajes implements InterfazMensajes {
                         rutas.get(0), bytesImagen.length, mime, hash, codigoRemitente);
                 long id = almacenar.guardarMensajeImagen(codigoRemitente, codigoDestinatario,
                         archivo.nombre(), archivo.ruta(), archivo.tamano(), archivo.tipo(),
-                        archivo.mime(), hash, etapasJson, ipRemitente);
+                        archivo.mime(), hash, etapasJson, ipRemitente, ipDestinatario, idCliente);
                 return new ResultadoMensajeDTO(id, hash, null, null,
                         rutas, archivo.id(), aEventos(resultado));
             } catch (RuntimeException e) {
@@ -153,6 +187,22 @@ public class Mensajes implements InterfazMensajes {
                                                                   String nombreOriginal,
                                                                   String mime,
                                                                   String ipRemitente) {
+        return procesarArchivo(codigoRemitente, codigoDestinatario, bytesArchivo,
+                nombreOriginal, mime, ipRemitente, null, null);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarArchivo(String codigoRemitente,
+            String codigoDestinatario, byte[] bytesArchivo, String nombreOriginal,
+            String mime, String ipRemitente, String idCliente) {
+        return procesarArchivo(codigoRemitente, codigoDestinatario, bytesArchivo,
+                nombreOriginal, mime, ipRemitente, null, idCliente);
+    }
+
+    @Override
+    public CompletableFuture<ResultadoMensajeDTO> procesarArchivo(String codigoRemitente,
+            String codigoDestinatario, byte[] bytesArchivo, String nombreOriginal,
+            String mime, String ipRemitente, String ipDestinatario, String idCliente) {
         return CompletableFuture.supplyAsync(() -> {
             if (bytesArchivo == null || bytesArchivo.length == 0) {
                 throw new IllegalArgumentException("los bytes del archivo no pueden estar vacios");
@@ -183,7 +233,7 @@ public class Mensajes implements InterfazMensajes {
                         rutas.get(0), bytesArchivo.length, "ARCHIVO", mime, hash, codigoRemitente);
                 long id = almacenar.guardarMensajeArchivo(codigoRemitente, codigoDestinatario,
                         archivo.nombre(), archivo.ruta(), archivo.tamano(), archivo.tipo(),
-                        archivo.mime(), hash, ipRemitente);
+                        archivo.mime(), hash, ipRemitente, idCliente);
                 return new ResultadoMensajeDTO(id, hash, null, null,
                         rutas, archivo.id(), aEventos(resultado));
             } catch (RuntimeException e) {
@@ -212,6 +262,17 @@ public class Mensajes implements InterfazMensajes {
         // FASE 9 (§8): alimenta el Informe 3; la consulta JOIN FETCH vive en
         // AlmacenarInformacion (unico con acceso a persistencia).
         return almacenar.historicoMensajes(filtro);
+    }
+
+    @Override
+    public PaginaDTO<MensajeResumenDTO> paginaDetalleUsuario(String codigo,
+            boolean soloArchivos, int pagina, int tamano) {
+        return almacenar.paginaMensajesDeUsuario(codigo, soloArchivos, pagina, tamano);
+    }
+
+    @Override
+    public ActividadUsuarioDTO actividadUsuario(String codigo) {
+        return almacenar.actividadUsuario(codigo);
     }
 
     private static List<Map<String, Object>> traza(Tuberia.ResultadoTuberia resultado) {

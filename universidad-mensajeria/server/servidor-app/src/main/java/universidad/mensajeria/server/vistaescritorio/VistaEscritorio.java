@@ -10,9 +10,15 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Separator;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TableRow;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -22,13 +28,17 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import universidad.mensajeria.common.interno.InformeDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
+import universidad.mensajeria.common.interno.DetalleUsuarioDTO;
+import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.interno.MensajeResumenDTO;
+import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.interno.UsuarioResumen;
 import universidad.mensajeria.server.transversal.fachada.Fachada;
 import universidad.mensajeria.utilerias.imagen.Imagenes;
@@ -42,6 +52,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Vista Escritorio (JavaFX, diagrama A2.1): habla SOLO con Fachada para datos
@@ -57,6 +69,9 @@ public class VistaEscritorio extends Application {
     private Label estado;
     private TableView<UsuarioResumen> tabla;
     private ListView<String> conectados;
+    private ComboBox<String> objetivoDesconexion;
+    private Label estadoDesconexion;
+    private Button botonDesconexion;
 
     // FASE 9: pestaña Informes
     private Stage escenario;
@@ -77,21 +92,51 @@ public class VistaEscritorio extends Application {
     // Detalle de mensajes: dos instancias del mismo componente
     // (pestaña Mensajes y pestaña Informes cuando el tipo es mensajes).
     private Tab tabMensajes;
-    private TextField filtroCodigoMensaje;
+    private ComboBox<String> filtroCodigoMensaje;
     private ComboBox<String> comboTipoMensaje;
     private Label estadoMensajes;
     private TableView<MensajeResumenDTO> tablaMensajes;
     private DetalleMensaje detalleMensajes;
     private DetalleMensaje detalleInformes;
     private List<MensajeResumenDTO> mensajesInforme = List.of();
+    private Map<String, String> ipsActivasPorCodigo = Map.of();
+
+    // Ficha de usuario: una pestaña reusable, con historiales acotados a 50 filas.
+    private Tab tabDetalleUsuario;
+    private Label estadoAccionUsuario;
+    private Label tituloFichaUsuario;
+    private Label resumenFichaUsuario;
+    private Label resumenCabeceraFicha;
+    private Label estadoFichaUsuario;
+    private ListView<String> sesionesFichaUsuario;
+    private TableView<MensajeResumenDTO> tablaHistorialUsuario;
+    private TableView<MensajeResumenDTO> tablaArchivosUsuario;
+    private DetalleMensaje detalleArchivosUsuario;
+    private Label paginaHistorialUsuario;
+    private Label paginaArchivosUsuario;
+    private Button anteriorHistorialUsuario;
+    private Button siguienteHistorialUsuario;
+    private Button anteriorArchivosUsuario;
+    private Button siguienteArchivosUsuario;
+    private String codigoFichaUsuario;
+    private int paginaMensajesUsuario;
+    private int paginasMensajesUsuario;
+    private int paginaArchivosUsuarioActual;
+    private int paginasArchivosUsuario;
+    private static final int TAMANO_PAGINA_USUARIO = 50;
 
     // Pool (RF-S49): barras + etiquetas numericas, auto-refresco con Estado
     private javafx.scene.control.ProgressBar barraRed;
     private javafx.scene.control.ProgressBar barraFiltros;
     private Label estadoPool;
+    private Label resumenPoolRed;
+    private Label resumenPoolCola;
     private Label kpiEstado;
     private Label kpiConexiones;
     private Label kpiSistema;
+    private Label indicadorCabecera;
+    private Label ultimaActualizacion;
+    private Timeline refrescoAutomatico;
 
     // PLAN_MEJORAS §3: codigo -> "Nombres Apellidos [codigo]" para el detalle.
     private Map<String, String> nombresDirectorio = Map.of();
@@ -106,41 +151,57 @@ public class VistaEscritorio extends Application {
         }
     }
 
-    static void fachadaParaTests(Fachada fachadaLista) {
-        fachada = fachadaLista;
-    }
-
     @Override
     public void start(Stage escenario) {
         Fachada f = fachada;
         this.escenario = escenario;
-        escenario.setTitle("Mensajeria Academica - Servidor");
+        escenario.setTitle("Mensajería Académica · Administración del servidor");
 
         tabInformes = pestanaInformes(f);
         tabMensajes = pestanaMensajes();
-        tabs = new TabPane(
-                pestanaEstado(f),
-                pestanaConectados(f),
-                pestanaUsuarios(f),
-                tabMensajes,
-                tabInformes,
-                pestanaEventos(f),
-                pestanaPool(),
-                pestanaDifundir());
+        Tab tabUsuarios = pestanaUsuarios(f);
+        tabDetalleUsuario = crearPestanaDetalleUsuario();
+        tabDetalleUsuario.setDisable(true);
+        tabs = new TabPane(pestanaEstado(f), pestanaConectados(f), tabUsuarios,
+                tabDetalleUsuario, tabMensajes, tabInformes, pestanaEventos(f),
+                pestanaPool(), pestanaDifundir());
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getStyleClass().add("admin-tabs");
 
         BorderPane raiz = new BorderPane(tabs);
-        Label titulo = new Label("Mensajería Universidad — Servidor");
+        Label titulo = new Label("Centro de operaciones");
         titulo.getStyleClass().add("server-title");
-        HBox cabecera = new HBox(titulo);
+        Label subtitulo = new Label("Mensajería académica  ·  Administración del servidor");
+        subtitulo.getStyleClass().add("server-subtitle");
+        VBox identidad = new VBox(3, titulo, subtitulo);
+        Region separador = new Region();
+        HBox.setHgrow(separador, Priority.ALWAYS);
+        indicadorCabecera = new Label("COMPROBANDO");
+        indicadorCabecera.getStyleClass().addAll("status-pill", "status-checking");
+        HBox cabecera = new HBox(18, identidad, separador, indicadorCabecera);
+        cabecera.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         cabecera.getStyleClass().add("server-header");
-        raiz.setTop(cabecera);
-        HBox barra = new HBox(8,
-                boton("Iniciar", () -> ejecutarSeguro(f::iniciarServidor)),
-                boton("Detener", () -> ejecutarSeguro(f::detenerServidor)),
-                boton("Refrescar", this::refrescar));
-        barra.setStyle("-fx-padding: 8;");
-        raiz.setBottom(barra);
+        Button iniciar = boton("Iniciar servidor", () -> {
+            if (f != null) ejecutarSeguro(f::iniciarServidor);
+        });
+        iniciar.getStyleClass().add("action-primary");
+        Button detener = boton("Detener servidor", () -> {
+            if (f != null) ejecutarSeguro(f::detenerServidor);
+        });
+        detener.getStyleClass().add("action-danger");
+        Button actualizar = boton("Actualizar datos", this::refrescarSeguro);
+        actualizar.getStyleClass().add("action-secondary");
+        HBox barra = new HBox(8, iniciar, detener, actualizar);
+        barra.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        barra.getStyleClass().add("server-toolbar");
+        VBox cabeceraCompleta = new VBox(cabecera, barra);
+        raiz.setTop(cabeceraCompleta);
+
+        ultimaActualizacion = new Label("Esperando la primera actualización…");
+        ultimaActualizacion.getStyleClass().add("footer-note");
+        HBox pie = new HBox(ultimaActualizacion);
+        pie.getStyleClass().add("server-footer");
+        raiz.setBottom(pie);
 
         if (f != null) {
             f.suscribirEventos(linea -> Platform.runLater(() -> {
@@ -148,9 +209,14 @@ public class VistaEscritorio extends Application {
                     eventos.appendText(linea + "\n");
                 }
             }));
+        } else {
+            indicadorCabecera.setText("SIN FACHADA");
+            indicadorCabecera.getStyleClass().remove("status-checking");
+            indicadorCabecera.getStyleClass().add("status-offline");
+            ultimaActualizacion.setText("No se pudo conectar con la fachada del servidor.");
         }
 
-        Scene escena = new Scene(raiz, 1020, 660);
+        Scene escena = new Scene(raiz, 1280, 820);
         try {
             var css = getClass().getResource("/estilos/escritorio.css");
             if (css != null) {
@@ -160,174 +226,362 @@ public class VistaEscritorio extends Application {
             // sin CSS la vista sigue funcional
         }
         escenario.setScene(escena);
+        escenario.setMinWidth(1080);
+        escenario.setMinHeight(700);
+        escenario.setOnCloseRequest(evento -> {
+            Alert confirmacion = new Alert(Alert.AlertType.CONFIRMATION,
+                    "¿Deseas cerrar la vista administrativa del servidor? "
+                            + "El servicio y la consola JLine seguirán activos.",
+                    ButtonType.YES, ButtonType.NO);
+            confirmacion.setTitle("Cerrar vista del servidor");
+            confirmacion.setHeaderText("Salir de la vista administrativa");
+            confirmacion.initOwner(escenario);
+            if (confirmacion.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) {
+                evento.consume();
+            }
+        });
         escenario.show();
         refrescar();
 
         // Fase 10.4 (P1): auto-refresh cada 5 s de Estado/Usuarios/Conectados
         // (Eventos ya llega en vivo via suscribirEventos).
-        Timeline autoRefresh = new Timeline(new KeyFrame(Duration.seconds(5),
+        refrescoAutomatico = new Timeline(new KeyFrame(Duration.seconds(5),
                 evento -> refrescarSeguro()));
-        autoRefresh.setCycleCount(Timeline.INDEFINITE);
-        autoRefresh.play();
+        refrescoAutomatico.setCycleCount(Timeline.INDEFINITE);
+        refrescoAutomatico.play();
+        escenario.setOnHidden(evento -> refrescoAutomatico.stop());
     }
 
     private Tab pestanaEstado(Fachada f) {
         estado = new Label();
+        estado.setWrapText(true);
         kpiEstado = new Label();
-        kpiEstado.getStyleClass().add("kpi");
+        kpiEstado.getStyleClass().add("kpi-value");
         kpiConexiones = new Label();
-        kpiConexiones.getStyleClass().add("kpi");
+        kpiConexiones.getStyleClass().add("kpi-value");
         kpiSistema = new Label();
-        kpiSistema.getStyleClass().add("kpi");
-        HBox kpis = new HBox(8, kpiEstado, kpiConexiones, kpiSistema);
-        Label ayuda = new Label("Auto-refresco cada 5 s. "
-                + "MySQL y uploads deben estar en ●; SERVIDOR es el buzón del sistema.");
+        kpiSistema.getStyleClass().add("kpi-value");
+        VBox tarjetaEstado = tarjetaKpi("SERVIDOR", kpiEstado);
+        VBox tarjetaConexiones = tarjetaKpi("CONEXIONES", kpiConexiones);
+        VBox tarjetaMensajes = tarjetaKpi("MENSAJES", kpiSistema);
+        VBox kpis = new VBox(10, tarjetaEstado, tarjetaConexiones, tarjetaMensajes);
+        kpis.getStyleClass().add("kpi-list");
+        kpis.setFillWidth(true);
+        tarjetaEstado.setMaxWidth(Double.MAX_VALUE);
+        tarjetaConexiones.setMaxWidth(Double.MAX_VALUE);
+        tarjetaMensajes.setMaxWidth(Double.MAX_VALUE);
+        estado.getStyleClass().add("status-summary");
+        Label ayuda = new Label("Datos operativos del servidor. El panel se actualiza automáticamente cada 5 segundos.");
         ayuda.setWrapText(true);
-        VBox caja = new VBox(8, kpis, estado, ayuda);
-        caja.setStyle("-fx-padding: 12;");
-        Tab tab = new Tab("Estado", caja);
+        ayuda.getStyleClass().add("help-text");
+        VBox caja = new VBox(18, kpis, estado, ayuda);
+        caja.getStyleClass().add("page-content");
+        ScrollPane desplazamiento = new ScrollPane(caja);
+        desplazamiento.setFitToWidth(true);
+        desplazamiento.getStyleClass().add("page-scroll");
+        Tab tab = new Tab("Estado", desplazamiento);
         return tab;
+    }
+
+    private VBox tarjetaKpi(String titulo, Label valor) {
+        valor.setWrapText(true);
+        Label encabezado = new Label(titulo);
+        encabezado.getStyleClass().add("kpi-heading");
+        VBox tarjeta = new VBox(10, encabezado, valor);
+        tarjeta.getStyleClass().add("kpi-card");
+        return tarjeta;
     }
 
     /** Pool red + filtros (RF-S49): numerico + barra, paridad con consola. */
     private Tab pestanaPool() {
         barraRed = new javafx.scene.control.ProgressBar(0);
         barraRed.getStyleClass().add("pool-bar");
-        barraRed.setPrefWidth(420);
+        barraRed.setMaxWidth(Double.MAX_VALUE);
         barraFiltros = new javafx.scene.control.ProgressBar(0);
         barraFiltros.getStyleClass().add("pool-bar");
-        barraFiltros.setPrefWidth(420);
-        estadoPool = new Label("Sin datos: pulsa Refrescar.");
+        barraFiltros.setMaxWidth(Double.MAX_VALUE);
+        resumenPoolRed = new Label("Sin datos");
+        resumenPoolRed.getStyleClass().add("pool-stat");
+        resumenPoolCola = new Label("Sin datos");
+        resumenPoolCola.getStyleClass().add("pool-stat");
+        estadoPool = new Label("Las métricas se actualizan automáticamente cada 5 segundos.");
         estadoPool.setWrapText(true);
-        VBox caja = new VBox(8,
-                new Label("Pool red (trabajadores ocupados / total):"), barraRed,
-                new Label("Filtros (tareas activas estimadas):"), barraFiltros,
-                estadoPool);
-        caja.setStyle("-fx-padding: 12;");
-        return new Tab("Pool", caja);
+        estadoPool.setMinHeight(22);
+        estadoPool.getStyleClass().add("pool-stat");
+        estadoPool.setMinHeight(22);
+        estadoPool.getStyleClass().add("pool-stat");
+        Label tituloRed = new Label("POOL DE CONEXIONES");
+        tituloRed.getStyleClass().add("pool-heading");
+        Label tituloCola = new Label("COLA DE MENSAJES");
+        tituloCola.getStyleClass().add("pool-heading");
+        VBox tarjetaRed = new VBox(10, tituloRed,
+                new Label("Trabajadores ocupados / total"), resumenPoolRed, barraRed);
+        VBox tarjetaCola = new VBox(10, tituloCola,
+                new Label("Presión de cola (referencia visual: 20 mensajes)"),
+                resumenPoolCola, barraFiltros);
+        tarjetaRed.getStyleClass().add("pool-card");
+        tarjetaCola.getStyleClass().add("pool-card");
+        Label tituloResumen = new Label("RESUMEN OPERATIVO");
+        tituloResumen.getStyleClass().add("pool-heading");
+        VBox resumen = new VBox(10, tituloResumen, estadoPool);
+        resumen.getStyleClass().add("pool-summary");
+        VBox contenido = new VBox(14, tarjetaRed, tarjetaCola, resumen);
+        contenido.getStyleClass().add("pool-content");
+        ScrollPane desplazamiento = new ScrollPane(contenido);
+        desplazamiento.setFitToWidth(true);
+        desplazamiento.getStyleClass().add("page-scroll");
+        return new Tab("Pool", desplazamiento);
     }
-
-    // PLAN_MEJORAS §9: maestro-detalle de usuarios.
-    private Label detalleUsuarioTitulo;
-    private Label detalleUsuarioLineas;
-    private Label detalleUsuarioEstado;
 
     private Tab pestanaUsuarios(Fachada f) {
         tabla = new TableView<>();
         tabla.getColumns().addAll(
-                columna("Codigo", 110, u -> u.codigo()),
-                columna("Nombres", 130, u -> u.nombres()),
-                columna("Apellidos", 130, u -> u.apellidos()),
-                columna("Programa", 180, u -> u.programa()),
-                columna("Conectado", 90, u -> u.conectado() ? "Si" : "No"));
-        Label tituloDetalle = new Label("Detalle: selecciona un usuario");
-        tituloDetalle.setStyle("-fx-font-weight: bold;");
-        Label lineasDetalle = new Label(" ");
-        lineasDetalle.setWrapText(true);
-        Label estadoUsuario = new Label(" ");
-        detalleUsuarioTitulo = tituloDetalle;
-        detalleUsuarioLineas = lineasDetalle;
-        detalleUsuarioEstado = estadoUsuario;
-        Button cerrarSesiones = boton("Cerrar sesiones",
-                () -> ejecutarSeguro(() -> cerrarSesionesUsuario()));
-        Button verMensajes = boton("Ver mensajes",
-                () -> ejecutarSeguro(() -> verMensajesUsuario()));
-        HBox filaAcciones = new HBox(8, cerrarSesiones, verMensajes);
-        VBox detalle = new VBox(6, tituloDetalle, lineasDetalle, estadoUsuario, filaAcciones);
-        detalle.setStyle("-fx-padding: 8;");
-        tabla.getSelectionModel().selectedItemProperty().addListener(
-                (obs, ant, actual) -> mostrarDetalleUsuario(actual, tituloDetalle, lineasDetalle,
-                        estadoUsuario));
-        VBox caja = new VBox(tabla, detalle);
+                columna("Código", 120, UsuarioResumen::codigo),
+                columna("Nombres", 150, UsuarioResumen::nombres),
+                columna("Apellidos", 160, UsuarioResumen::apellidos),
+                columna("Programa", 220, UsuarioResumen::programa),
+                columna("Conectado", 105, u -> u.conectado() ? "Sí" : "No"));
+        tabla.setRowFactory(vista -> {
+            TableRow<UsuarioResumen> fila = new TableRow<>();
+            fila.setOnMouseClicked(evento -> {
+                if (evento.getClickCount() == 2 && !fila.isEmpty()) {
+                    abrirFichaUsuario(fila.getItem());
+                }
+            });
+            return fila;
+        });
+        Button abrir = boton("Abrir ficha", () -> {
+            UsuarioResumen seleccionado = tabla.getSelectionModel().getSelectedItem();
+            if (seleccionado != null) abrirFichaUsuario(seleccionado);
+        });
+        Button desconectar = boton("Desconectar usuario", this::cerrarSesionesUsuario);
+        desconectar.getStyleClass().add("action-danger");
+        Label ayuda = new Label("Doble clic sobre un usuario para abrir su ficha completa.");
+        ayuda.getStyleClass().add("help-text");
+        estadoAccionUsuario = new Label(" ");
+        HBox acciones = new HBox(10, abrir, desconectar, ayuda);
+        acciones.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        VBox caja = new VBox(10, tabla, acciones, estadoAccionUsuario);
         VBox.setVgrow(tabla, Priority.ALWAYS);
         return new Tab("Usuarios", caja);
     }
 
-    /** Maestro-detalle de usuarios: ficha + acciones sobre el seleccionado. */
-    private void mostrarDetalleUsuario(UsuarioResumen u, Label titulo, Label lineas, Label estado) {
+    private void abrirFichaUsuario(UsuarioResumen usuario) {
+        if (usuario == null || tabs == null) return;
+        if (tabDetalleUsuario == null) {
+            tabDetalleUsuario = crearPestanaDetalleUsuario();
+        }
+        tabDetalleUsuario.setDisable(false);
+        tabDetalleUsuario.setText("Ficha usuario");
+        codigoFichaUsuario = usuario.codigo();
+        paginaMensajesUsuario = 0;
+        paginaArchivosUsuarioActual = 0;
+        actualizarFichaUsuario();
+        tabs.getSelectionModel().select(tabDetalleUsuario);
+    }
+
+    private Tab crearPestanaDetalleUsuario() {
+        tituloFichaUsuario = new Label("Ficha del usuario");
+        tituloFichaUsuario.getStyleClass().add("detail-title");
+        resumenFichaUsuario = new Label(" ");
+        resumenFichaUsuario.setWrapText(true);
+        resumenFichaUsuario.getStyleClass().add("detail-summary");
+        resumenCabeceraFicha = new Label(" ");
+        resumenCabeceraFicha.setWrapText(true);
+        resumenCabeceraFicha.getStyleClass().add("detail-summary");
+        estadoFichaUsuario = new Label(" ");
+        sesionesFichaUsuario = new ListView<>();
+
+        VBox resumen = new VBox(10, new Label("Perfil y actividad"), resumenFichaUsuario);
+        resumen.getStyleClass().add("detail-section");
+        VBox conexiones = new VBox(10, new Label("Sesiones activas e IP"), sesionesFichaUsuario);
+        VBox.setVgrow(sesionesFichaUsuario, Priority.ALWAYS);
+        conexiones.getStyleClass().add("detail-section");
+
+        tablaHistorialUsuario = tablaHistorial(false);
+        paginaHistorialUsuario = new Label(" ");
+        anteriorHistorialUsuario = boton("Anterior", () -> {
+            if (paginaMensajesUsuario > 0) {
+                paginaMensajesUsuario--;
+                cargarPaginaUsuario(false);
+            }
+        });
+        siguienteHistorialUsuario = boton("Siguiente", () -> {
+            if (paginaMensajesUsuario + 1 < paginasMensajesUsuario) {
+                paginaMensajesUsuario++;
+                cargarPaginaUsuario(false);
+            }
+        });
+        VBox historial = new VBox(8, new Label("Mensajes enviados y recibidos"),
+                tablaHistorialUsuario,
+                new HBox(8, anteriorHistorialUsuario, paginaHistorialUsuario,
+                        siguienteHistorialUsuario));
+        VBox.setVgrow(tablaHistorialUsuario, Priority.ALWAYS);
+
+        tablaArchivosUsuario = tablaHistorial(true);
+        detalleArchivosUsuario = new DetalleMensaje();
+        tablaArchivosUsuario.getSelectionModel().selectedItemProperty().addListener(
+                (obs, anterior, actual) -> detalleArchivosUsuario.mostrar(actual));
+        paginaArchivosUsuario = new Label(" ");
+        anteriorArchivosUsuario = boton("Anterior", () -> {
+            if (paginaArchivosUsuarioActual > 0) {
+                paginaArchivosUsuarioActual--;
+                cargarPaginaUsuario(true);
+            }
+        });
+        siguienteArchivosUsuario = boton("Siguiente", () -> {
+            if (paginaArchivosUsuarioActual + 1 < paginasArchivosUsuario) {
+                paginaArchivosUsuarioActual++;
+                cargarPaginaUsuario(true);
+            }
+        });
+        VBox listaArchivos = new VBox(8, new Label("Archivos e imágenes compartidos"),
+                tablaArchivosUsuario,
+                new HBox(8, anteriorArchivosUsuario, paginaArchivosUsuario,
+                        siguienteArchivosUsuario));
+        VBox.setVgrow(tablaArchivosUsuario, Priority.ALWAYS);
+        SplitPane detalleArchivos = new SplitPane(listaArchivos, detalleArchivosUsuario.vista());
+        detalleArchivos.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        detalleArchivos.setDividerPositions(0.58);
+        VBox archivos = new VBox(8, detalleArchivos);
+        VBox.setVgrow(detalleArchivos, Priority.ALWAYS);
+
+        TabPane secciones = new TabPane(
+                new Tab("Resumen", resumen),
+                new Tab("Conexiones", conexiones),
+                new Tab("Mensajes", historial),
+                new Tab("Archivos", archivos));
+        secciones.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        VBox raiz = new VBox(12, tituloFichaUsuario, resumenCabeceraFicha, estadoFichaUsuario,
+                new Separator(), secciones);
+        VBox.setVgrow(secciones, Priority.ALWAYS);
+        raiz.getStyleClass().add("detail-page");
+        Tab tab = new Tab("Detalle usuario", raiz);
+        tab.setClosable(false);
+        return tab;
+    }
+
+    private TableView<MensajeResumenDTO> tablaHistorial(boolean soloArchivos) {
+        TableView<MensajeResumenDTO> tablaDetalle = new TableView<>();
+        if (soloArchivos) {
+            tablaDetalle.getColumns().addAll(
+                    colMensaje("Fecha", 170, m -> txt(m.fechaEnvio())),
+                    colMensaje("Nombre", 230, m -> txt(m.nombreArchivo())),
+                    colMensaje("Tipo", 100, m -> txt(m.tipo())),
+                    colMensaje("Formato", 150, m -> txt(m.mime())),
+                    colMensaje("Tamaño", 120, m -> m.tamanoArchivo() == null
+                            ? "-" : m.tamanoArchivo() + " bytes"),
+                    colMensaje("Remitente", 150, m -> nombreVisible(m.remitente())),
+                    colMensaje("Destinatario", 150, m -> nombreVisible(m.destinatario())));
+        } else {
+            tablaDetalle.getColumns().addAll(
+                    colMensaje("Fecha", 170, m -> txt(m.fechaEnvio())),
+                    colMensaje("Remitente", 170, m -> nombreVisible(m.remitente())),
+                    colMensaje("Destinatario", 170, m -> nombreVisible(m.destinatario())),
+                    colMensaje("Tipo", 100, m -> txt(m.tipo())),
+                    colMensaje("Contenido / archivo", 260,
+                            m -> txt(m.nombreArchivo() == null ? m.contenido() : m.nombreArchivo())));
+        }
+        return tablaDetalle;
+    }
+
+    private void actualizarFichaUsuario() {
+        actualizarFichaUsuario(true);
+    }
+
+    private void actualizarFichaUsuario(boolean recargarHistorial) {
         Fachada f = fachada;
-        if (u == null || f == null) {
-            titulo.setText("Detalle: selecciona un usuario");
-            lineas.setText(" ");
-            estado.setText(" ");
-            return;
-        }
-        String codigo = u.codigo();
-        String nombre = nombreVisible(codigo);
-        titulo.setText("Detalle: " + nombre);
-        InformeFiltroDTO filtro = new InformeFiltroDTO(null, null, codigo);
-        String registro = "-";
-        String ultima = "-";
-        String veces = "-";
-        String sesiones = "-";
+        if (f == null || codigoFichaUsuario == null || tabDetalleUsuario == null) return;
         try {
-            InformeDTO informe = f.informeUsuarios(filtro);
-            List<String> cols = informe.columnas();
-            for (List<String> fila : informe.filas()) {
-                if (fila.size() > 0 && codigo.equalsIgnoreCase(fila.get(0))) {
-                    registro = celda(fila, cols, "Registro");
-                    ultima = celda(fila, cols, "Ultima conexion");
-                    break;
-                }
+            DetalleUsuarioDTO ficha = f.detalleUsuario(codigoFichaUsuario);
+            tituloFichaUsuario.setText("Ficha · " + txt(ficha.nombres()) + " "
+                    + txt(ficha.apellidos()) + " [" + ficha.codigo() + "]");
+            resumenFichaUsuario.setText(String.join("\n", List.of(
+                    "Estado: " + (ficha.conectado() ? "En línea" : "Fuera de línea"),
+                    "Programa: " + txt(ficha.programa()),
+                    "Registro: " + txt(ficha.fechaRegistro()),
+                    "Última conexión: " + txt(ficha.ultimaConexion()),
+                    "Conexiones registradas: " + ficha.conexionesRegistradas(),
+                    "Sesiones activas: " + ficha.sesionesActivas(),
+                    "Mensajes enviados o recibidos: " + ficha.totalMensajes(),
+                    "Archivos compartidos: " + ficha.totalArchivos(),
+                    "Contacto principal: " + (ficha.contactoPrincipal() == null
+                            ? "Sin conversaciones" : nombreVisible(ficha.contactoPrincipal())
+                            + " · " + ficha.mensajesCompartidos() + " mensajes"))));
+            resumenCabeceraFicha.setText("Estado: "
+                    + (ficha.conectado() ? "En línea" : "Fuera de línea")
+                    + " · Programa: " + txt(ficha.programa()));
+            List<String> sesiones = f.sesionesActivas().stream()
+                    .filter(s -> codigoFichaUsuario.equalsIgnoreCase(s.codigo()))
+                    .map(s -> "Sesión " + s.id() + " · IP " + txt(s.direccionIp()))
+                    .toList();
+            sesionesFichaUsuario.getItems().setAll(sesiones.isEmpty()
+                    ? List.of("No hay sesiones activas para este usuario.") : sesiones);
+            if (recargarHistorial) {
+                estadoFichaUsuario.setText("Historial completo paginado de 50 registros por página.");
+                cargarPaginaUsuario(false);
+                cargarPaginaUsuario(true);
             }
         } catch (RuntimeException e) {
-            estado.setText("No se pudo cargar la ficha: " + e.getMessage());
-        }
-        try {
-            InformeDTO conexiones = f.informeConexiones(filtro);
-            if (!conexiones.filas().isEmpty()) {
-                List<String> fila = conexiones.filas().get(0);
-                List<String> cols = conexiones.columnas();
-                veces = celda(fila, cols, "Veces conectado");
-                sesiones = celda(fila, cols, "Sesiones vivas");
-            }
-        } catch (RuntimeException e) {
-            estado.setText("No se pudo cargar la ficha: " + e.getMessage());
-        }
-        lineas.setText("Programa: " + txt(u.programa())
-                + "  ·  Conectado: " + (u.conectado() ? "Si" : "No")
-                + "  ·  Registro: " + registro
-                + "  ·  Última conexión: " + ultima
-                + "  ·  Veces conectado: " + veces
-                + "  ·  Sesiones vivas: " + sesiones);
-        if (estado.getText() == null || estado.getText().isBlank()) {
-            estado.setText(" ");
+            estadoFichaUsuario.setText("No se pudo cargar la ficha: " + e.getMessage());
         }
     }
 
-    private static String celda(List<String> fila, List<String> columnas, String nombre) {
-        int i = columnas.indexOf(nombre);
-        if (i < 0 || i >= fila.size() || fila.get(i) == null || fila.get(i).isBlank()) {
-            return "-";
+    private void cargarPaginaUsuario(boolean soloArchivos) {
+        if (codigoFichaUsuario == null || fachada == null) return;
+        int paginaSolicitada = soloArchivos ? paginaArchivosUsuarioActual : paginaMensajesUsuario;
+        try {
+            PaginaDTO<MensajeResumenDTO> pagina = fachada.paginaMensajesUsuario(
+                    codigoFichaUsuario, soloArchivos, paginaSolicitada, TAMANO_PAGINA_USUARIO);
+            TableView<MensajeResumenDTO> tablaPagina = soloArchivos
+                    ? tablaArchivosUsuario : tablaHistorialUsuario;
+            tablaPagina.getItems().setAll(pagina.contenido());
+            int paginas = pagina.totalPaginas();
+            String estadoPagina = pagina.contenido().isEmpty()
+                    ? "Sin registros" : "Página " + (pagina.pagina() + 1) + " de " + paginas
+                            + " · " + pagina.contenido().size() + " registros";
+            if (soloArchivos) {
+                paginasArchivosUsuario = paginas;
+                paginaArchivosUsuario.setText(estadoPagina);
+                anteriorArchivosUsuario.setDisable(paginaArchivosUsuarioActual <= 0);
+                siguienteArchivosUsuario.setDisable(paginaArchivosUsuarioActual + 1 >= paginas);
+            } else {
+                paginasMensajesUsuario = paginas;
+                paginaHistorialUsuario.setText(estadoPagina);
+                anteriorHistorialUsuario.setDisable(paginaMensajesUsuario <= 0);
+                siguienteHistorialUsuario.setDisable(paginaMensajesUsuario + 1 >= paginas);
+            }
+        } catch (RuntimeException e) {
+            estadoFichaUsuario.setText("No se pudo cargar el historial: " + e.getMessage());
         }
-        return fila.get(i);
     }
 
     private void cerrarSesionesUsuario() {
         Fachada f = fachada;
-        UsuarioResumen u = tabla == null ? null : tabla.getSelectionModel().getSelectedItem();
-        if (f == null || u == null) {
-            return;
-        }
+        UsuarioResumen usuario = tabla == null ? null : tabla.getSelectionModel().getSelectedItem();
+        if (f == null || usuario == null) return;
         try {
-            int cerradas = f.cerrarConexionAdmin(u.codigo(), "cierre administrativo");
+            int cerradas = f.cerrarConexionAdmin(usuario.codigo(), "cierre administrativo");
             refrescarSeguro();
-            mostrarDetalleUsuario(u, detalleUsuarioTitulo, detalleUsuarioLineas,
-                    detalleUsuarioEstado);
-            detalleUsuarioEstado.setText("Cerradas " + cerradas + " sesiones de " + u.codigo() + ".");
+            if (codigoFichaUsuario != null && codigoFichaUsuario.equals(usuario.codigo())) {
+                actualizarFichaUsuario();
+                estadoFichaUsuario.setText("Desconectadas " + cerradas + " sesiones de "
+                        + usuario.codigo() + ".");
+            }
+            estadoAccionUsuario.setText("Desconectadas " + cerradas + " sesiones de "
+                    + usuario.codigo() + ".");
         } catch (RuntimeException e) {
-            detalleUsuarioEstado.setText("No se pudo cerrar: " + e.getMessage());
+            estadoAccionUsuario.setText("No se pudo desconectar: " + e.getMessage());
         }
     }
 
     private void verMensajesUsuario() {
-        UsuarioResumen u = tabla == null ? null : tabla.getSelectionModel().getSelectedItem();
-        if (u == null || tabs == null || tabMensajes == null) {
-            return;
-        }
+        UsuarioResumen usuario = tabla == null ? null : tabla.getSelectionModel().getSelectedItem();
+        if (usuario == null || tabs == null || tabMensajes == null) return;
         tabs.getSelectionModel().select(tabMensajes);
         if (filtroCodigoMensaje != null) {
-            filtroCodigoMensaje.setText(u.codigo());
+            filtroCodigoMensaje.setValue(usuario.codigo());
+            filtroCodigoMensaje.getEditor().setText(usuario.codigo());
         }
         ejecutarSeguro(this::actualizarMensajes);
     }
@@ -342,34 +596,44 @@ public class VistaEscritorio extends Application {
 
     private Tab pestanaConectados(Fachada f) {
         conectados = new ListView<>();
-        TextField objetivo = new TextField();
-        objetivo.setPromptText("codigo, id de sesion o *");
-        Label resultado = new Label(" ");
-        Button cerrar = boton("Cerrar seleccion", () -> {
-            String blanco = objetivo.getText() == null ? "" : objetivo.getText().trim();
-            if (blanco.isEmpty()) {
-                resultado.setText("Indica un codigo, un id de sesion o *.");
-                return;
-            }
-            try {
-                int cerradas = f.cerrarConexionAdmin(blanco, "cierre administrativo");
-                resultado.setText("Cerradas " + cerradas + " sesiones de " + blanco + ".");
-                refrescarSeguro();
-            } catch (RuntimeException e) {
-                resultado.setText("No se pudo cerrar: " + e.getMessage());
-            }
-        });
-        HBox barra = new HBox(8, new Label("Cerrar:"), objetivo, cerrar);
-        barra.setStyle("-fx-padding: 8;");
-        VBox caja = new VBox(8, conectados, barra, resultado);
+        objetivoDesconexion = new ComboBox<>();
+        objetivoDesconexion.setPromptText("No hay usuarios activos");
+        objetivoDesconexion.setMaxWidth(360);
+        estadoDesconexion = new Label("No hay usuarios activos");
+        botonDesconexion = boton("Desconectar usuario", this::desconectarUsuarioActivo);
+        botonDesconexion.getStyleClass().add("action-danger");
+        botonDesconexion.setDisable(true);
+        HBox barra = new HBox(10, new Label("Usuario activo:"), objetivoDesconexion,
+                botonDesconexion);
+        barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        barra.getStyleClass().add("disconnect-toolbar");
+        VBox caja = new VBox(10, conectados, barra, estadoDesconexion);
+        VBox.setVgrow(conectados, Priority.ALWAYS);
         return new Tab("Conectados", caja);
+    }
+
+    private void desconectarUsuarioActivo() {
+        Fachada f = fachada;
+        String codigo = objetivoDesconexion == null ? null : objetivoDesconexion.getValue();
+        if (f == null || codigo == null || codigo.isBlank()) return;
+        try {
+            int cerradas = f.cerrarConexionAdmin(codigo, "desconexión administrativa");
+            estadoDesconexion.setText("Desconectadas " + cerradas + " sesiones de " + codigo + ".");
+            refrescarSeguro();
+        } catch (RuntimeException e) {
+            estadoDesconexion.setText("No se pudo desconectar " + codigo + ": " + e.getMessage());
+        }
     }
 
     private Tab pestanaEventos(Fachada f) {
         eventos = new TextArea();
         eventos.setEditable(false);
         eventos.setPromptText("Eventos en vivo (Observer): conexiones, mensajes, cierres, logs.");
+        eventos.setPrefRowCount(30);
+        eventos.setWrapText(true);
         VBox caja = new VBox(eventos);
+        VBox.setVgrow(eventos, Priority.ALWAYS);
+        caja.getStyleClass().add("logs-content");
         return new Tab("Logs", caja);
     }
 
@@ -379,7 +643,7 @@ public class VistaEscritorio extends Application {
         campoDifundir.setPromptText("Mensaje para toda la comunidad (broadcast, sin destinatario unico)");
         estadoDifundir = new Label("La difusion llega a todos los usuarios registrados.");
         estadoDifundir.setWrapText(true);
-        Button difundir = boton("Difundir a todos", () -> ejecutarSeguro(() -> {
+        Button difundir = boton("Enviar difusión", () -> ejecutarSeguro(() -> {
             Fachada f = fachada;
             if (f == null) {
                 return;
@@ -414,14 +678,16 @@ public class VistaEscritorio extends Application {
     // ------------------------------------------------- Detalle de mensajes
 
     private Tab pestanaMensajes() {
-        filtroCodigoMensaje = new TextField();
-        filtroCodigoMensaje.setPromptText("codigo o SERVIDOR (vacio = todos)");
-        filtroCodigoMensaje.setPrefWidth(220);
+        filtroCodigoMensaje = new ComboBox<>();
+        filtroCodigoMensaje.setEditable(true);
+        filtroCodigoMensaje.setPromptText("Código o SERVIDOR (vacío = todos)");
+        filtroCodigoMensaje.setPrefWidth(280);
+        filtroCodigoMensaje.getEditor().setOnAction(evento -> ejecutarSeguro(this::actualizarMensajes));
         comboTipoMensaje = new ComboBox<>();
         comboTipoMensaje.getItems().setAll("Todos", "TEXTO", "IMAGEN", "ARCHIVO", "BROADCAST");
         comboTipoMensaje.setValue("Todos");
         Button actualizar = boton("Actualizar", () -> ejecutarSeguro(this::actualizarMensajes));
-        HBox filtros = new HBox(8, new Label("Codigo:"), filtroCodigoMensaje,
+        HBox filtros = new HBox(8, new Label("Código:"), filtroCodigoMensaje,
                 new Label("Tipo:"), comboTipoMensaje, actualizar);
         filtros.setStyle("-fx-padding: 8;");
 
@@ -432,15 +698,25 @@ public class VistaEscritorio extends Application {
                 colMensaje("Fecha", 130, m -> txt(m.fechaEnvio())),
                 colMensaje("Remitente", 150, m -> m.remitente()),
                 colMensaje("Destinatario", 150, m -> m.destinatario()),
+                colMensaje("IP remitente", 140, m -> txt(m.ipRemitente())),
+                colMensaje("IP destinatario", 160, m -> txt(m.ipDestinatario())),
                 colMensaje("Tipo", 90, m -> txt(m.tipo())),
                 colMensaje("Hash", 120, m -> corto(m.hashSha256())));
-        tablaMensajes.setPrefHeight(220);
+        tablaMensajes.setMinHeight(130);
+        tablaMensajes.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         tablaMensajes.getSelectionModel().selectedItemProperty().addListener(
                 (obs, ant, actual) -> mostrarDetalle(actual));
 
         detalleMensajes = new DetalleMensaje();
-        VBox caja = new VBox(8, filtros, estadoMensajes, tablaMensajes, detalleMensajes.vista());
+        VBox lista = new VBox(4, filtros, estadoMensajes, tablaMensajes);
+        lista.setMinHeight(160);
         VBox.setVgrow(tablaMensajes, Priority.ALWAYS);
+        SplitPane contenido = new SplitPane(lista, detalleMensajes.vista());
+        contenido.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        contenido.setDividerPositions(0.42);
+        contenido.setStyle("-fx-padding: 4 8 8 8;");
+        VBox caja = new VBox(contenido);
+        VBox.setVgrow(contenido, Priority.ALWAYS);
         return new Tab("Mensajes", caja);
     }
 
@@ -457,7 +733,11 @@ public class VistaEscritorio extends Application {
         if (f == null) {
             return;
         }
-        String codigo = filtroCodigoMensaje.getText() == null ? "" : filtroCodigoMensaje.getText().trim();
+        String codigo = filtroCodigoMensaje.getEditor().getText() == null
+                ? "" : filtroCodigoMensaje.getEditor().getText().trim();
+        if (codigo.isEmpty() && filtroCodigoMensaje.getValue() != null) {
+            codigo = filtroCodigoMensaje.getValue().trim();
+        }
         String tipo = comboTipoMensaje.getValue();
         InformeFiltroDTO filtro = new InformeFiltroDTO(null, null, codigo);
         List<MensajeResumenDTO> todos;
@@ -487,6 +767,12 @@ public class VistaEscritorio extends Application {
         }
     }
 
+    private String ipDestinatarioActual(String codigo) {
+        if (codigo == null || codigo.isBlank()) return "No disponible";
+        return ipsActivasPorCodigo.getOrDefault(
+                codigo.trim().toUpperCase(java.util.Locale.ROOT), "No disponible");
+    }
+
     /** "Nombres Apellidos [codigo]" o el codigo si no esta en el directorio. */
     private String nombreVisible(String codigo) {
         if (codigo == null || codigo.isBlank()) {
@@ -511,7 +797,9 @@ public class VistaEscritorio extends Application {
         private final ComboBox<String> filtros = new ComboBox<>();
         private final Label estado =
                 new Label("Filtros de previsualizacion (no reescriben uploads).");
+        private final VBox cajaFiltros;
         private final VBox caja;
+        private final ScrollPane desplazamiento;
         private MensajeResumenDTO seleccionado;
         private byte[] bytesImagen;
         private String nombreImagen = "";
@@ -520,11 +808,12 @@ public class VistaEscritorio extends Application {
             titulo.setStyle("-fx-font-weight: bold;");
             contenido.setEditable(false);
             contenido.setWrapText(true);
-            contenido.setPrefRowCount(4);
+            contenido.setPrefRowCount(3);
             contenido.setPromptText("El contenido del texto aparece aqui (no solo hash/metricas).");
             meta.setWrapText(true);
-            vista.setFitWidth(340);
-            vista.setFitHeight(240);
+            meta.getStyleClass().add("message-meta-list");
+            vista.setFitWidth(380);
+            vista.setFitHeight(200);
             vista.setPreserveRatio(true);
             vista.setSmooth(true);
             filtros.getItems().setAll(
@@ -534,14 +823,24 @@ public class VistaEscritorio extends Application {
             Button aplicar = boton("Previsualizar filtro", () -> ejecutarSeguro(this::aplicarFiltro));
             Button descargar = boton("Descargar archivo", () -> ejecutarSeguro(this::descargar));
             HBox fila = new HBox(8, new Label("Filtro:"), filtros, aplicar, descargar);
-            VBox cajaFiltros = new VBox(6, vista, fila, estado);
-            HBox detalle = new HBox(12, new VBox(6, titulo, contenido, meta), cajaFiltros);
-            HBox.setHgrow(detalle.getChildren().get(0), Priority.ALWAYS);
+            cajaFiltros = new VBox(6, vista, fila, estado);
+            cajaFiltros.setMinWidth(260);
+            cajaFiltros.widthProperty().addListener((obs, anterior, actual) ->
+                    vista.setFitWidth(Math.max(120, Math.min(560, actual.doubleValue() - 12))));
+            cajaFiltros.setVisible(false);
+            cajaFiltros.setManaged(false);
+            VBox detalle = new VBox(8, titulo, cajaFiltros, contenido, meta);
             caja = new VBox(detalle);
+            caja.setFillWidth(true);
+            desplazamiento = new ScrollPane(caja);
+            desplazamiento.setFitToWidth(true);
+            desplazamiento.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+            desplazamiento.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+            desplazamiento.setMinHeight(150);
         }
 
-        VBox vista() {
-            return caja;
+        ScrollPane vista() {
+            return desplazamiento;
         }
 
         void mostrar(MensajeResumenDTO m) {
@@ -553,34 +852,26 @@ public class VistaEscritorio extends Application {
                 titulo.setText("Detalle: selecciona un mensaje");
                 contenido.clear();
                 meta.setText(" ");
+                cajaFiltros.setVisible(false);
+                cajaFiltros.setManaged(false);
                 estado.setText("Filtros de previsualizacion (no reescriben uploads).");
                 return;
             }
             titulo.setText("Detalle #" + m.id() + " " + txt(m.tipo())
                     + " " + nombreVisible(m.remitente()) + " -> " + nombreVisible(m.destinatario()));
             String tipo = m.tipo() == null ? "" : m.tipo().toUpperCase();
-            StringBuilder metaTxt = new StringBuilder();
-            metaTxt.append("Hash: ").append(txt(m.hashSha256()));
-            if (m.numCaracteres() != null || m.numPalabras() != null) {
-                metaTxt.append(" · ").append(m.numCaracteres()).append(" car. · ")
-                        .append(m.numPalabras()).append(" pal.");
-            }
-            if (m.nombreArchivo() != null) {
-                metaTxt.append(" · Archivo: ").append(m.nombreArchivo());
-            }
-            if (m.tamanoArchivo() != null) {
-                metaTxt.append(" (").append(m.tamanoArchivo()).append(" bytes)");
-            }
-            if (m.etapasFiltrado() != null && !m.etapasFiltrado().isBlank()) {
-                metaTxt.append("\nFiltros aplicados: ").append(resumirEtapas(m.etapasFiltrado()));
-            }
-            meta.setText(metaTxt.toString());
+            actualizarMeta(m);
 
             if ("TEXTO".equals(tipo) || "BROADCAST".equals(tipo)) {
+                cajaFiltros.setVisible(false);
+                cajaFiltros.setManaged(false);
                 contenido.setText(m.contenido() == null ? "(sin contenido)" : m.contenido());
                 estado.setText("El texto no admite filtros visuales.");
                 return;
             }
+            cajaFiltros.setVisible(true);
+            cajaFiltros.setManaged(true);
+            filtros.setDisable(!"IMAGEN".equals(tipo));
             // IMAGEN / ARCHIVO: contenido es null en BD; se muestra nombre + preview si hay bytes.
             StringBuilder cuerpo = new StringBuilder();
             if (m.nombreArchivo() != null) {
@@ -592,37 +883,87 @@ public class VistaEscritorio extends Application {
             cuerpo.append("\n(hash ").append(txt(m.hashSha256())).append(")");
             contenido.setText(cuerpo.toString());
             if (m.archivoId() == null) {
-                estado.setText("Sin archivoId: trae el historial remoto o revisa uploads.");
+                estado.setText("No hay archivo disponible para mostrar. Intenta actualizar el mensaje.");
                 return;
             }
-            try {
-                Fachada f = fachada;
-                if (f == null) {
-                    return;
-                }
-                byte[] bytes = f.bytesArchivoParaVista(m.archivoId());
-                nombreImagen = m.nombreArchivo() == null ? "archivo" : m.nombreArchivo();
-                if (esImagen(bytes, m.mime(), nombreImagen)) {
-                    bytesImagen = bytes.clone();
-                    // La vista la decodifica JavaFX (tolera formatos que ImageIO no);
-                    // los filtros usan ImageIO aparte y avisan si no pueden.
-                    vista.setImage(new Image(new ByteArrayInputStream(bytesImagen)));
-                    if (vista.getImage().isError()) {
-                        estado.setText("Vista previa no disponible para este formato.");
-                    } else if (decodificableParaFiltros(bytesImagen)) {
-                        estado.setText("Imagen cargada: elige un filtro y pulsa Previsualizar."
-                                + " La descarga guardará el filtro elegido.");
-                    } else {
-                        estado.setText("Vista cargada, pero este formato no admite"
-                                + " previsualizar filtros (solo descarga).");
+            Fachada f = fachada;
+            if (f == null) return;
+            long idSeleccionado = m.id();
+            nombreImagen = m.nombreArchivo() == null ? "archivo" : m.nombreArchivo();
+            String nombreParaCarga = nombreImagen;
+            estado.setText("Cargando archivo para la vista previa…");
+            Thread carga = new Thread(() -> {
+                byte[] bytes = null;
+                Image imagenCargada = null;
+                RuntimeException fallo = null;
+                try {
+                    bytes = f.bytesArchivoParaVista(m.archivoId());
+                    if (bytes != null && esImagen(bytes, m.mime(), nombreParaCarga)) {
+                        imagenCargada = new Image(new ByteArrayInputStream(bytes),
+                                560, 360, true, true);
                     }
-                } else {
-                    estado.setText("Archivo no imagen (" + bytes.length
-                            + " bytes): metadatos arriba, descarga abajo.");
+                } catch (RuntimeException e) {
+                    fallo = e;
                 }
-            } catch (RuntimeException e) {
-                estado.setText("No se pudo cargar el archivo: " + e.getMessage());
+                byte[] resultado = bytes;
+                RuntimeException error = fallo;
+                Image imagenLista = imagenCargada;
+                Platform.runLater(() -> {
+                    if (seleccionado == null || seleccionado.id() != idSeleccionado) return;
+                    if (error != null) {
+                        estado.setText("No se pudo cargar el archivo. Intenta actualizar o descargarlo.");
+                        return;
+                    }
+                    if (resultado == null || resultado.length == 0) {
+                        estado.setText("El archivo no está disponible para la vista previa.");
+                        return;
+                    }
+                    if (!esImagen(resultado, m.mime(), nombreImagen)) {
+                        estado.setText("Archivo no visualizable como imagen (" + resultado.length
+                                + " bytes): puedes descargarlo.");
+                        return;
+                    }
+                    bytesImagen = resultado.clone();
+                    // JavaFX decodifica y escala en segundo plano; el tamaño es
+                    // un límite de presentación y siempre conserva la proporción.
+                    if (imagenLista == null || imagenLista.isError()) {
+                        estado.setText("No se pudo decodificar esta imagen; puedes descargar el archivo.");
+                        return;
+                    }
+                    vista.setImage(imagenLista);
+                    estado.setText(decodificableParaFiltros(bytesImagen)
+                            ? "Imagen cargada. Selecciona un filtro para previsualizarlo."
+                            : "Vista previa cargada; este formato no admite filtros visuales.");
+                });
+            }, "vista-previa-mensaje-" + idSeleccionado);
+            carga.setDaemon(true);
+            carga.start();
+        }
+
+        private void actualizarMeta(MensajeResumenDTO m) {
+            StringBuilder metaTxt = new StringBuilder();
+            metaTxt.append("Hash: ").append(txt(m.hashSha256()))
+                    .append("\nCaracteres: ").append(m.numCaracteres() == null
+                            ? "No aplica" : m.numCaracteres())
+                    .append("\nPalabras: ").append(m.numPalabras() == null
+                            ? "No aplica" : m.numPalabras())
+                    .append("\nIP remitente (histórica): ").append(txt(m.ipRemitente()))
+                    .append("\nIP destinatario (histórica): ")
+                    .append(txt(m.ipDestinatario()));
+            if (m.nombreArchivo() != null) {
+                metaTxt.append("\nArchivo: ").append(m.nombreArchivo());
             }
+            if (m.tamanoArchivo() != null) {
+                metaTxt.append(" · ").append(m.tamanoArchivo()).append(" bytes");
+            }
+            if (m.etapasFiltrado() != null && !m.etapasFiltrado().isBlank()) {
+                metaTxt.append("\nFiltros aplicados: ").append(resumirEtapas(m.etapasFiltrado()));
+            }
+            meta.setText(metaTxt.toString());
+        }
+
+        void actualizarIpDestinatario() {
+            if (seleccionado != null) actualizarMeta(seleccionado);
         }
 
         /** Descarga lo mostrado: bytes del archivo o .txt con el contenido. */
@@ -830,6 +1171,14 @@ public class VistaEscritorio extends Application {
         tablaInformes.getSelectionModel().selectedItemProperty().addListener(
                 (obs, ant, actual) -> mostrarDetalleInforme(actual));
         detalleInformes = new DetalleMensaje();
+        detalleInformes.vista().setVisible(false);
+        detalleInformes.vista().setManaged(false);
+        comboTipo.valueProperty().addListener((obs, anterior, tipo) -> {
+            boolean mostrar = "mensajes".equals(tipo);
+            detalleInformes.vista().setVisible(mostrar);
+            detalleInformes.vista().setManaged(mostrar);
+            if (!mostrar) detalleInformes.mostrar(null);
+        });
         VBox caja = new VBox(8, filtros, estadoInforme, tablaInformes, detalleInformes.vista());
         VBox.setVgrow(tablaInformes, javafx.scene.layout.Priority.ALWAYS);
         return new Tab("Informes", caja);
@@ -963,40 +1312,103 @@ public class VistaEscritorio extends Application {
             return;
         }
         var e = f.estadoServidor();
-        String base = (e.activo() ? "ACTIVO" : "DETENIDO")
-                + "  ·  puerto " + e.puerto()
-                + "  ·  usuarios " + e.usuariosConectados()
-                + "  ·  sesiones " + e.sesionesActivas() + "/" + e.maxConexiones()
-                + "  ·  pool " + e.trabajadoresOcupados() + "/"
-                + e.trabajadoresTotal() + " (libres " + e.trabajadoresDisponibles() + ")"
-                + "  ·  procesados " + e.mensajesProcesados()
-                + "  ·  cola " + e.mensajesEnCola();
-        estado.setText(base);
+        estado.setText(String.join("\n", List.of(
+                "Estado: " + (e.activo() ? "Activo" : "Detenido"),
+                "Puerto: " + e.puerto(),
+                "Pool de red: " + e.trabajadoresOcupados() + "/"
+                        + e.trabajadoresTotal() + " ocupados",
+                "Trabajadores disponibles: " + e.trabajadoresDisponibles())));
+        if (indicadorCabecera != null) {
+            indicadorCabecera.setText(e.activo() ? "●  EN LÍNEA" : "○  DETENIDO");
+            indicadorCabecera.getStyleClass().removeAll("status-online", "status-offline", "status-checking");
+            indicadorCabecera.getStyleClass().add(e.activo() ? "status-online" : "status-offline");
+        }
+        if (ultimaActualizacion != null) {
+            ultimaActualizacion.setText("Actualizado a las "
+                    + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+                    + "  ·  refresco automático cada 5 s");
+        }
         if (kpiEstado != null) {
-            kpiEstado.setText((e.activo() ? "● EN LÍNEA :" : "○ DETENIDO :") + e.puerto());
-            kpiConexiones.setText(e.usuariosConectados() + "/" + e.maxConexiones()
-                    + " conect · " + e.sesionesActivas() + " sesiones · "
-                    + e.mensajesProcesados() + " msgs");
-            kpiSistema.setText("MySQL ● · uploads ● · auto-refresco ●");
+            kpiEstado.setText(e.activo() ? "En línea · puerto " + e.puerto() : "Detenido");
+            kpiConexiones.setText(e.usuariosConectados() + " usuarios · "
+                    + e.sesionesActivas() + "/" + e.maxConexiones() + " sesiones");
+            kpiSistema.setText(e.mensajesProcesados() + " procesados · "
+                    + e.mensajesEnCola() + " en cola");
         }
         if (barraRed != null && estadoPool != null) {
             double total = Math.max(1, e.trabajadoresTotal());
             barraRed.setProgress(e.trabajadoresOcupados() / total);
             barraFiltros.setProgress(Math.min(1.0, e.mensajesEnCola() / 20.0));
-            estadoPool.setText("Pool red " + e.trabajadoresOcupados() + "/"
-                    + e.trabajadoresTotal() + " (libres " + e.trabajadoresDisponibles() + ")"
-                    + " · cola " + e.mensajesEnCola() + " · procesados "
-                    + e.mensajesProcesados() + ".");
+            resumenPoolRed.setText(e.trabajadoresOcupados() + " ocupados · "
+                    + e.trabajadoresDisponibles() + " libres · " + e.trabajadoresTotal()
+                    + " totales");
+            resumenPoolCola.setText(e.mensajesEnCola() + " en cola · "
+                    + e.mensajesProcesados() + " procesados");
+            estadoPool.setText("Conexiones: " + e.usuariosConectados() + " usuarios · "
+                    + e.sesionesActivas() + "/" + e.maxConexiones() + " sesiones activas.");
         }
-        tabla.getItems().setAll(f.usuariosRegistrados());
+        List<UsuarioResumen> usuarios = f.usuariosRegistrados();
+        tabla.getItems().setAll(usuarios);
         Map<String, String> nombres = new HashMap<>();
-        for (UsuarioResumen u : f.usuariosRegistrados()) {
+        for (UsuarioResumen u : usuarios) {
             String nombre = ((u.nombres() == null ? "" : u.nombres()) + " "
                     + (u.apellidos() == null ? "" : u.apellidos())).trim();
             nombres.put(u.codigo(), nombre.isEmpty() ? u.codigo() : nombre + " [" + u.codigo() + "]");
         }
         nombresDirectorio = Map.copyOf(nombres);
-        conectados.getItems().setAll(f.usuariosConectados());
+        if (filtroCodigoMensaje != null) {
+            String escrito = filtroCodigoMensaje.getEditor().getText();
+            if ((escrito == null || escrito.isBlank()) && filtroCodigoMensaje.getValue() != null) {
+                escrito = filtroCodigoMensaje.getValue();
+            }
+            List<String> codigos = new ArrayList<>(usuarios.stream()
+                    .map(UsuarioResumen::codigo).toList());
+            if (usuarios.stream().noneMatch(u -> "SERVIDOR".equalsIgnoreCase(u.codigo()))) {
+                codigos.add("SERVIDOR");
+            }
+            filtroCodigoMensaje.getItems().setAll(codigos);
+            filtroCodigoMensaje.getEditor().setText(escrito == null ? "" : escrito);
+        }
+        List<String> activos = f.usuariosConectados();
+        conectados.getItems().setAll(activos);
+        if (objetivoDesconexion != null) {
+            String anterior = objetivoDesconexion.getValue();
+            objetivoDesconexion.getItems().setAll(activos);
+            if (activos.isEmpty()) {
+                objetivoDesconexion.setValue(null);
+                objetivoDesconexion.setPromptText("No hay usuarios activos");
+                botonDesconexion.setDisable(true);
+                estadoDesconexion.setText("No hay usuarios activos");
+            } else {
+                objetivoDesconexion.setPromptText("Selecciona un código activo");
+                objetivoDesconexion.setValue(anterior != null && activos.contains(anterior)
+                        ? anterior : activos.get(0));
+                botonDesconexion.setDisable(false);
+                estadoDesconexion.setText(activos.size() + " usuario(s) activo(s).");
+            }
+        }
+        Map<String, List<String>> ips = new HashMap<>();
+        List<IdSesion> sesiones = f.sesionesActivas();
+        for (IdSesion sesion : sesiones) {
+            if (sesion.codigo() == null || sesion.direccionIp() == null
+                    || sesion.direccionIp().isBlank()) continue;
+            String codigo = sesion.codigo().trim().toUpperCase(java.util.Locale.ROOT);
+            List<String> direcciones = ips.computeIfAbsent(codigo, ignorado -> new ArrayList<>());
+            if (!direcciones.contains(sesion.direccionIp())) direcciones.add(sesion.direccionIp());
+        }
+        Map<String, String> ipResumen = new HashMap<>();
+        ips.forEach((codigo, direcciones) -> ipResumen.put(codigo,
+                String.join(", ", direcciones)));
+        ipsActivasPorCodigo = Map.copyOf(ipResumen);
+        // Las columnas usan valores calculados, no propiedades observables: hay
+        // que repintar las celdas y el detalle tras cada lectura de sesiones.
+        if (tablaMensajes != null) tablaMensajes.refresh();
+        if (detalleMensajes != null) detalleMensajes.actualizarIpDestinatario();
+        if (detalleInformes != null) detalleInformes.actualizarIpDestinatario();
+        if (detalleArchivosUsuario != null) detalleArchivosUsuario.actualizarIpDestinatario();
+        if (tabDetalleUsuario != null && tabs.getSelectionModel().getSelectedItem() == tabDetalleUsuario) {
+            actualizarFichaUsuario(false);
+        }
     }
 
     private void refrescarSeguro() {
@@ -1009,7 +1421,14 @@ public class VistaEscritorio extends Application {
                 actualizarInforme();
             }
         } catch (RuntimeException e) {
-            // la vista no tumba: el error ya queda en logs
+            if (indicadorCabecera != null) {
+                indicadorCabecera.setText("ESTADO NO DISPONIBLE");
+                indicadorCabecera.getStyleClass().removeAll("status-online", "status-offline", "status-checking");
+                indicadorCabecera.getStyleClass().add("status-offline");
+            }
+            if (ultimaActualizacion != null) {
+                ultimaActualizacion.setText("No se pudo actualizar. Revisa Eventos/Logs y vuelve a intentarlo.");
+            }
         }
     }
 

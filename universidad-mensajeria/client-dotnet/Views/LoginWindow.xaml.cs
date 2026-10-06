@@ -1,7 +1,9 @@
 using System.ComponentModel;
-using System.IO;
+using System.Diagnostics;
 using System.Windows;
+using System.Windows.Input;
 using Mensajeria.Fachada;
+using Mensajeria.Transversal;
 
 namespace Mensajeria.Views
 {
@@ -26,6 +28,19 @@ namespace Mensajeria.Views
         {
             _fachada = fachada;
             InitializeComponent();
+            PreviewKeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter && btnEntrar.IsEnabled
+                    && (txtCodigo.IsKeyboardFocusWithin || txtContrasena.IsKeyboardFocusWithin))
+                {
+                    e.Handled = true;
+                    btnEntrar.RaiseEvent(new RoutedEventArgs(
+                        System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                }
+            };
+            // UIX-24: foco inicial en el campo de codigo (Java y Python ya
+            // lo tienen). En Loaded, cuando el visual esta listo.
+            this.Loaded += (s, e) => txtCodigo.Focus();
             CargarServidor();
             cmbTema.SelectedIndex = Temas.Tema.Leer() == Temas.Tema.Claro ? 1 : 0;
             if (!string.IsNullOrWhiteSpace(aviso))
@@ -37,28 +52,12 @@ namespace Mensajeria.Views
 
         private void CargarServidor()
         {
-            try
-            {
-                string host = "localhost";
-                string puerto = "5000";
-                string ruta = "client.properties";
-                if (File.Exists(ruta))
-                {
-                    foreach (var linea in File.ReadAllLines(ruta))
-                    {
-                        var t = linea.Trim();
-                        if (t.StartsWith("host=")) host = t.Substring(5).Trim();
-                        if (t.StartsWith("puerto=")) puerto = t.Substring(7).Trim();
-                    }
-                }
-                txtHost.Text = host;
-                txtPuerto.Text = puerto;
-            }
-            catch
-            {
-                txtHost.Text = "localhost";
-                txtPuerto.Text = "5000";
-            }
+            // Mismo lector que la fachada (MUERTE-5): antes este metodo solo
+            // leia host/puerto del directorio de trabajo, asi que el login
+            // podia mostrar un servidor distinto del que luego se usaba.
+            txtHost.Text = ClienteConfig.Valor("host", ClienteConfig.HostPorDefecto);
+            txtPuerto.Text = ClienteConfig.Entero("puerto",
+                    ClienteConfig.PuertoPorDefecto, 1, 65535).ToString();
         }
 
         private void CmbTema_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -82,8 +81,10 @@ namespace Mensajeria.Views
             btnEntrar.IsEnabled = false;
             try
             {
-                txtError.Text = "Conectando…";
-                bordeError.Visibility = Visibility.Visible;
+                // UIX-00f: "Conectando…" va a su propia etiqueta en gris neutro.
+                // Escribirlo en txtError lo pintaba dentro de la caja roja.
+                txtCargando.Text = EstadoConexionTexto.Texto(EstadoConexion.Conectando);
+                txtCargando.Visibility = Visibility.Visible;
                 await _fachada.ConectarAsync();
 
                 bool ok = await _fachada.LoginAsync(txtCodigo.Text.Trim(), txtContrasena.Password);
@@ -96,18 +97,20 @@ namespace Mensajeria.Views
                 }
                 else
                 {
-                    txtError.Text = "✖ Usuario no registrado o datos incorrectos.";
+                    txtError.Text = "✖ " + MensajesUsuario.CredencialesInvalidas;
                     bordeError.Visibility = Visibility.Visible;
                     _fachada.Desconectar();
                 }
             }
             catch (System.Exception ex)
             {
-                txtError.Text = "✖ No se pudo conectar (" + ex.GetType().Name + "): " + ex.Message;
+                Trace.TraceError("Fallo durante el inicio de sesión: {0}", ex);
+                txtError.Text = "✖ " + MensajesUsuario.Conexion(ex);
                 bordeError.Visibility = Visibility.Visible;
             }
             finally
             {
+                txtCargando.Visibility = Visibility.Collapsed;
                 btnEntrar.IsEnabled = true;
             }
         }

@@ -72,8 +72,8 @@ académica (texto, imágenes o archivos), sobre **TCP-IP**, con capas y componen
 
 ### Tecnologías
 
-- **Servidor**: Java 21+ (probado en 25), JavaFX 25.0.1 (VistaEscritorio) + consola CLI. Multi-módulo Maven (§2.4). Spring Boot 3.5.7 (solo `data-jpa`, `validation`) + Flyway 11.14.1 **confinados a `servidor-app`** para la persistencia; los componentes son Java puro y la inyección de dependencias es manual con `Fabrica`.
-- **Cliente Java (principal)**: Java 21+, JavaFX 25.0.1, **H2** local.
+- **Servidor**: Java 21+ (probado en JDK 25.0.1), JavaFX Graphics 21.0.6 para `VistaEscritorio` y JLine para consola. La vista administrativa ofrece Estado, Conectados, Usuarios, Mensajes, Informes, Logs, Pool y Difundir; Usuarios abre ficha reutilizable con paginación de 50. La consola conserva sus comandos y jerarquía visual. Multi-módulo Maven (§2.4). Spring Boot 3.5.7 (solo `data-jpa`, `validation`) + Flyway 11.14.1 **confinados a `servidor-app`** para la persistencia; los componentes son Java puro y la inyección de dependencias es manual con `Fabrica`.
+- **Cliente Java (principal)**: Java 21+, JavaFX 22.0.2 + AtlantaFX 2.1.0, **H2** local.
 - **Cliente Python (espejo)**: Python 3.13, **PySide6 + QFluentWidgets** para UI, **Pillow** para preview/decodificación de imágenes, `sqlite3` (stdlib). Dependencias fijadas en `client-python/requirements.txt`. Sin frameworks web.
 - **Cliente C# (espejo)**: .NET 8, **WPF (XAML)** para UI, **Microsoft.Data.Sqlite 8.0.10 (fijado)** local, `System.Text.Json`. La suite de tests apunta a `net10.0` (requiere SDK 10); la app sigue en `net8.0-windows`.
 - **MySQL 8** principal (servidor, vía Flyway); **PostgreSQL 16 y Oracle 23** opcionales
@@ -749,10 +749,11 @@ ordenada por actividad con restauración del último chat (`Preferences`); pagin
 `↑ Cargar anteriores`; presencia en vivo (push `PRESENCIA` + sondeo 5 s) y checks de
 estado `ENVIADO→ENTREGADO→LEIDO` (§4.0).
 
-**Módulos Maven del cliente Java:** igual que el servidor, `client-interfaces` (componente
-«Interfaces» del cliente: `InterfazAutenticacion`, `InterfazConexionRed`, `InterfazHistorialLocal`,
-`InterfazCacheUsuarios`; sin dependencias) y `client-app` (resto de capas en paquetes). Los espejos
-Python y C# reflejan `client-interfaces` como paquete/namespace propio.
+**Módulos Maven del cliente Java:** `client-interfaces` contiene los puertos de autenticación,
+conexión, historial local, caché, eventos, login/chat, adjuntos/historial y traducción de respuestas,
+además de los records compartidos; depende del módulo de DTO del protocolo. `client-app` contiene
+la composición y las implementaciones en los paquetes ya existentes. Los espejos Python y C#
+reflejan `client-interfaces` como paquete/namespace propio.
 
 ### 7.2 Cliente Python (ESPEJO funcional) — mismas capas, PySide6 + QFluentWidgets
 
@@ -983,8 +984,8 @@ Arquitectura cliente servidor/     ← raíz de documentación y guías de despl
 │   └── servidor-app/              ← ensambla todo (jar-with-dependencies + metaInf-services)
 │       └── src/main/java/universidad/mensajeria/server/
 │           ├── inicio/             ← InicioServidor + Fabrica (ÚNICO lugar que construye; comp-* vía ServiceLoader) + lectura de config + SemillaUsuarios (CSV, P2)
-│           ├── vistaconsola/       ← VistaConsola (CLI: `estado/conectados/usuarios/cola/informe …`; eventos push en vivo)
-│           ├── vistaescritorio/    ← VistaEscritorio (JavaFX: pestañas Estado/Usuarios/Conectados/Eventos/Informes; auto-refresco §12 F10.4)
+│           ├── vistaconsola/       ← VistaConsola/JLine (conserva comandos y eventos push en vivo)
+│           ├── vistaescritorio/    ← VistaEscritorio (JavaFX: Estado/Conectados/Usuarios/Mensajes/Informes/Logs/Pool/Difundir; auto-refresco §12 F10.4)
 │           ├── fachadadeservicios/ ← FachadaDeServicios (implementa `Fachada`; mediador) + casosdeuso/ (una clase por operación)
 │           ├── mensajes/           ← InterfazMensajes + Mensajes (único que invoca las tuberías)
 │           ├── logdeeventos/       ← InterfazLogDeEventos + LogDeEventos (Observer)
@@ -998,13 +999,14 @@ Arquitectura cliente servidor/     ← raíz de documentación y guías de despl
 │      y el `DiagramaFidelidadTest` (§13.16) los exige así.
 ├── client/                        ← CLIENTE JAVA (PRINCIPAL, Maven multi-módulo, capas §7.1)
 │   ├── pom.xml                    ← padre
-│   ├── client-interfaces/         ← módulo «Interfaces»: Interfaz Autenticacion/ConexionRed/HistorialLocal/CacheUsuarios
+│   ├── client-interfaces/         ← módulo «Interfaces»: puertos de autenticación, chat, fachada,
+│   │                                  eventos, adjuntos/historial, red, historial local, caché y mapeo de respuestas
 │   │                                  + records compartidos (EstadoMensaje, RecienteChat)
 │   └── client-app/src/main/java/  ← resto de capas, en paquetes:
-│       ├── presentacion/          ← ClienteApp, LoginController, ChatController (+ celdas/ UsuarioCell, MensajeCell);
+│       ├── presentacion/          ← ClienteApp, LoginController, ChatController, GestorAdjuntosChat (+ celdas);
 │       │                              RegistroController+registro.fxml OCULTOS (registro solo CSV, P2)
 │       ├── fachada/               ← FachadaCliente (las UI solo llaman aquí)
-│       ├── componentes/           ← autenticacion/, conexion/, historial/, cache/ (interfaces en client-interfaces)
+│       ├── componentes/           ← autenticacion/, conexion/, historial/, cache/, protocolo/ (adaptador JSON)
 │       ├── persistencia/          ← H2 (historial_local, cache, pendientes_envio) [solo vía componentes]
 │       └── transversal/           ← config/ (ClienteConfig), utilerias/ (ValidacionCliente, preview)
 │   └── client-app/src/main/resources/vistas/ ← login.fxml, chat.fxml, registro.fxml + estilos/chat.css
@@ -1222,13 +1224,14 @@ deuda:
 
 | | JavaFX | PySide6 | WPF |
 |---|---|---|---|
-| ViewModel / Presenter | ninguno | ninguno | parcial (`MensajeVM` solo) |
-| Frontera de vista | **localizador estático** (`ClienteApp.fachada()`) | **parcheo en runtime** (`setattr` sobre la fachada) + `getattr`/`hasattr` | `IFachadaCliente` inyectada |
-| Archivo mayor | `ChatController.java` 774 líneas | `chat_window.py` 1 322 líneas | `ChatWindow.xaml.cs` 790 líneas |
+| ViewModel / Presenter | parcial (`ChatViewModel` centraliza estado conversacional básico y delega operaciones; controlador aún coordina UI) | ninguno | parcial (`MensajeVM` solo) |
+| Frontera de vista | **inyección por constructor** desde `FabricaControladores`, vía puertos `InterfazInicioSesion` / `InterfazChatCliente` | **parcheo en runtime** (`setattr` sobre la fachada) + `getattr`/`hasattr` | `IFachadaCliente` inyectada |
+| Archivo mayor | `ChatController.java` 910 líneas (medición 2026-10-06) | `chat_window.py` 1 322 líneas | `ChatWindow.xaml.cs` 790 líneas |
 | Bindings reales | 1 | 0 | `INotifyPropertyChanged` en un VM |
 
-Detalle y evidencia completa en `ANALISIS_TECNICO.md` §4. El plan de corrección, con fases y
-criterios medibles, está en [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md).
+Detalle y evidencia histórica en `ANALISIS_TECNICO.md` §4. `PAT-01` ya elimina el localizador en
+Java; composición equivalente para Python/.NET y el resto de patrones siguen en el roadmap. El
+plan con fases y criterios medibles está en [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md).
 
 ### 14.2 Patrones que se añaden al cliente
 
@@ -1238,7 +1241,7 @@ Se añadieron con `PD-09` a `PD-13` en [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md) 
 |---|---|---|
 | **MVVM** (`PD-09`) | `ChatViewModel` observable en los 3 toolkit | La presentación mezcla vista, estado, paginación y red. Métrica de aceptación: **0** métodos privados llamados desde tests |
 | **Command** (`PD-10`) | `Command`/`ICommand` para enviar, adjuntar, responder, cargar anteriores, salir | "Puedo enviar" está implementado 3 veces; en WPF hay 0 `ICommand` |
-| **Composition root sin estático** (`PD-11`) | Las vistas reciben la fachada por constructor | Hoy `ChatController` no se puede construir en un test |
+| **Composition root sin estático** (`PD-11`) | `FabricaCliente` compone el runtime Java; `FabricaControladores` inyecta el puerto de fachada y navegación a los controladores | Java ya no usa localizador estático; composición pendiente en Python/.NET |
 | **Adapter de transporte** (`PD-12`) | `TcpTransporte` / `TlsTransporte` tras un contrato único | 3 implementaciones con 3 estrategias; la validación TLS es inconsistente |
 | **Repository con puerto** (`PD-13`) | `HistorialLocal` declarado + upsert **portable** `DELETE + INSERT` | Python no tiene interfaz y la vista la salta; el `CASE`/`ON CONFLICT` duplicado por dialecto |
 

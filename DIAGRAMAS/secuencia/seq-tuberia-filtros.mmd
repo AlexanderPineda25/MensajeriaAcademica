@@ -61,11 +61,4 @@ sequenceDiagram
 
     F ->> F: guardar en uploads/<nombre [codigo]>/<hash>/
 
-    note over T,CT
-        Cada filtro es Strategy sin estado:
-        se prueba aislado y es sustituible (LSP).
-        El evento por etapa alimenta la consola
-        sin sacar el pipeline de su hilo.
-        Etapa_FILTRADO queda FUERA del ACK a proposito
-        (medicion de PERF-02: no hizo falta incluirlo).
-    end note
+    Note over T,CT: Cada filtro es Strategy sin estado:<br/>se prueba aislado y es sustituible (LSP).<br/>El evento por etapa alimenta la consola<br/>sin sacar el pipeline de su hilo.<br/>Etapa_FILTRADO queda FUERA del ACK a proposito<br/>(medicion de PERF-02: no hizo falta incluirlo).

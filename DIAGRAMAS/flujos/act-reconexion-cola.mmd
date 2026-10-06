@@ -9,7 +9,7 @@ title: "Actividad — reconexión y reintento de la cola local sin duplicar"
 %% Correspondencia: ConexionCliente/ConexionRed/conexion_red (bucle de lectura),
 %% FachadaCliente (bucle de flush), HistorialLocal / historial_local / HistorialLocal.cs.
 flowchart TD
-    U([Cliente loses la conexion]) --> NOTIF[Evento de desconexion]
+    U([Cliente pierde la conexion]) --> NOTIF[Evento de desconexion]
 
     NOTIF --> ESTADO[EstadoConexion = SinRed<br/>banner visible]
     ESTADO --> PERSIST[El historial local<br/>sigue intacto y legible]
@@ -19,7 +19,7 @@ flowchart TD
     %% ---------- camino 1: cola de envios ----------
     QUE -->|envios sin confirmar| COLA[Leer pendientes_envio<br/>en orden de fecha_creado]
 
-    COLA --> INTENTOS{intentos < limite?}
+    COLA --> INTENTOS{"intentos menor que limite?"}
     INTENTOS -->|no| DESCARTAR[Marcar el registro como fallido<br/>y avisar al usuario]
     INTENTOS -->|si| REINTENTAR[Reenviar el envio]
 
@@ -56,9 +56,9 @@ flowchart TD
 
     note1[Regla dura, verificada en los 3 clientes:<br/>al recibir MENSAJE_LEIDO o MENSAJE_ENTREGADO<br/>el cliente NO emite un SEGUNDO acuse.<br/>Sin esta regla, dos clientes que se ven<br/>mutuamente se realimentan sin parar.]
 
-    note2[Los acuses pendientes se conservan y reintentan<br/>tras recuperar la conexion, SIN realimentar<br/>otros acuses (RF-C20).]
+    note2["Los acuses pendientes se conservan y reintentan<br/>tras recuperar la conexion, SIN realimentar<br/>otros acuses (RF-C20)."]
 
-    note3[Cadencia: hay 2 relojes distintos y no deben fusionarse.<br/>- flush de acuses cada 30 s (solo si hay algo)<br/>- reconexion por evento, no por sondeo]
+    note3["Cadencia: hay 2 relojes distintos y no deben fusionarse.<br/>- flush de acuses cada 30 s (solo si hay algo)<br/>- reconexion por evento, no por sondeo"]
 
     ESCR[Nota: en Java el banner se detecta por sondeo<br/>cada 30 s porque alDesconexion esta vacio.<br/>PAT-03 lo resuelve en los 3.]
     ESTADO -.-> ESCR

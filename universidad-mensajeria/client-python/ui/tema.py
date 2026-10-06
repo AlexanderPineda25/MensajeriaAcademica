@@ -21,8 +21,6 @@ TOKENS = {
         "cabecera": "#1F3A5F",
         "texto": "#E8EEF2",
         "texto_suave": "#A8B8C1",
-        "prompt": "#7A8A99",
-        "campo": "#243447",
         "lista": "#0E1621",
         "burbuja_propia": "#7B61B8",
         "burbuja_propia_borde": "#6A4FA3",
@@ -41,7 +39,6 @@ TOKENS = {
         "preview_fondo": "#243447",
         "preview_borde": "#2A3B4D",
         "preview_thumb_fondo": "#0E1621",
-        "boton_enviar": "primary",
     },
     MODO_CLARO: {
         "ventana": "#EEF1F6",
@@ -50,8 +47,6 @@ TOKENS = {
         "cabecera": "#1F3A5F",
         "texto": "#202124",
         "texto_suave": "#61717F",
-        "prompt": "#7A8A99",
-        "campo": "#FFFFFF",
         "lista": "#F4F7F7",
         "burbuja_propia": "#E1F5FE",
         "burbuja_propia_borde": "#B3E5FC",
@@ -60,9 +55,13 @@ TOKENS = {
         "remitente": "#17635B",
         "cuerpo_propia": "#24383D",
         "cuerpo_ajena": "#24383D",
-        "fecha": "#687A80",
+        "fecha": "#57676E",
         "visto_leido": "#1E88E5",
-        "visto_pendiente": "#8A9BA8",
+        # UIX-17: visto_pendiente #8A9BA8 daba 2.86:1 sobre blanco y fecha
+        # #687A80 daba 4.48:1. Ambos oscuros a >= 5.5:1 (AA). El token
+        # 'prompt' #7A8A99 citado en el analisis ya no existe en este
+        # archivo (tokens muertos retirados); estos eran los que fallaban.
+        "visto_pendiente": "#5B6B73",
         "visto_otro": "#61717F",
         "cita_fondo": "#E6F4F2",
         "cita_borde": "#147D73",
@@ -70,13 +69,44 @@ TOKENS = {
         "preview_fondo": "#F0F4F4",
         "preview_borde": "#DCE4E5",
         "preview_thumb_fondo": "#FFFFFF",
-        "boton_enviar": "primary",
     },
 }
 
 
 def tokens(modo):
     return TOKENS[normalizar(modo)]
+
+
+def modo_por_indice(indice):
+    """Indice del combo -> modo, con oscuro como defecto."""
+    return MODOS[indice] if 0 <= indice < len(MODOS) else MODO_OSCURO
+
+
+def modo_guardado(fachada):
+    """Modo persistido en client.properties (oscuro si no se puede leer).
+
+    La implementacion vivia duplicada byte a byte en ChatWindow y LoginWindow
+    (MUERTE-5): un arreglo en una ventana no llegaba a la otra.
+    """
+    try:
+        config = getattr(fachada, "config", None)
+        if config is not None:
+            return normalizar(config.get("tema", MODO_OSCURO))
+    except Exception:
+        pass
+    return MODO_OSCURO
+
+
+def guardar_modo(fachada, modo):
+    """Persiste el modo; si el config no sabe escribir, se ignora."""
+    try:
+        config = getattr(fachada, "config", None)
+        if config is not None and hasattr(config, "set"):
+            config.set("tema", normalizar(modo))
+            if hasattr(config, "save"):
+                config.save()
+    except Exception:
+        pass
 
 
 def estilo_tarjeta(t):

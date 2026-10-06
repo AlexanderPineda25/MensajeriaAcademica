@@ -1,5 +1,4 @@
 import datetime
-import uuid
 
 class Autenticacion:
     def __init__(self, conexion):

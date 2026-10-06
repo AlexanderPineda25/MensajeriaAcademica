@@ -46,6 +46,11 @@ el cliente descarga la imagen bajo demanda con `archivoId`.
 | Cliente Python | `MensajeriaPython\` sin `.venv`, con `requirements.txt` y esquema local | Python 3.13 recomendado; crear venv e instalar requirements |
 | Cliente .NET | `dist\MensajeriaWPF\` (salida de `dotnet publish`) | Windows; self-contained incluye runtime .NET |
 
+Si el servidor imprime `sun.misc.Unsafe::allocateMemory` desde `com.sun.marlin.OffHeapArray`,
+consulta la sección [Advertencia de JavaFX](universidad-mensajeria/server/servidor-app/README.md#advertencia-de-javafx-y-sunmiscunsafe).
+La dependencia actual es JavaFX Graphics 21.0.6; la traza identifica una advertencia de su
+renderizador. No confundas ese aviso con que el listener TCP haya fallado.
+
 Los cuatro scripts que arman esas carpetas están en *Instaladores nativos (DIST-2)*,
 más abajo.
 

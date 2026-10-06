@@ -9,15 +9,15 @@ title: "Actividad — envío de mensaje (texto, imagen o ambos) y acuses"
 flowchart TD
     U([Usuario escribe]) --> DEST{Hay destinatario<br/>seleccionado?}
 
-    DEST -->|no| E1[Error: "elige un destinatario"]
+    DEST -->|no| E1[Error: 'elige un destinatario']
     E1 --> FIN([No se envia])
     DEST -->|si| CONT{Codigo quien escribe<br/>coincide con la sesion?}
 
-    CONT -->|no| E2[Error: "el remitente debe ser<br/>tu codigo logueado"]
+    CONT -->|no| E2[Error: 'el remitente debe ser<br/>tu codigo logueado']
     E2 --> FIN
 
     CONT -->|si| TEXTO{Tiene texto?}
-    TEXTO -->|vacio| E3[Error: "el contenido no puede<br/>estar vacio"]
+    TEXTO -->|vacio| E3[Error: 'el contenido no puede<br/>estar vacio']
     E3 --> FIN
 
     TEXTO -->|no| IMG{Tiene adjunto?}
@@ -41,15 +41,15 @@ flowchart TD
     ENV --> ACK{ACK en 15 s?}
     ACK -->|si| E1b[estado ENVIADO]
     E1b --> DEL{Gestor de entregas}
-    DEL -->|destinatario conectado| D1[estado ENTREGADO<br/>+ "el servidor lo tiene"]
+    DEL -->|destinatario conectado| D1[estado ENTREGADO<br/>+ 'el servidor lo tiene']
     D1 --> LEE[Remitente recibe MENSAJE_LEIDO<br/>estado LEIDO]
     LEE --> FIN2([Fin])
 
-    ACK -->|no| ERR[estado ERROR<br/>"No se pudo enviar"]
+    ACK -->|no| ERR[estado ERROR<br/>'No se pudo enviar']
     ERR --> RE[Permitir reintentar]
 
     RED -->|no| COLA[Guardar en pendientes_envio<br/>con el payload completo]
-    COLA --> INFO[EstadoSinRed:<br/>"Sin red: guardado para<br/>reintentar"]
+    COLA --> INFO[EstadoSinRed:<br/>'Sin red: guardado para<br/>reintentar']
     INFO --> ESPERA[Esperar reconexion]
     ESPERA --> COLA
 
@@ -62,11 +62,11 @@ flowchart TD
     LEE --> NOACUSE[Regla dura:<br/>el cliente NO reemite un<br/>segundo acuse al recibir<br/>MENSAJE_LEIDO o MENSAJE_ENTREGADO]
     NOACUSE --> FIN2
 
-    note1[Al hacer doble clic en cualquier mensaje,<br/>la respuesta viaja como TEXTO ORDINARIO con el prefijo:<br/>Respuesta a Nombre CODIGO: "..."<br/>No hay vinculo estructurado ni cambio de protocolo.]
+    note1[Al hacer doble clic en cualquier mensaje,<br/>la respuesta viaja como TEXTO ORDINARIO con el prefijo:<br/>Respuesta a Nombre CODIGO: '...'<br/>No hay vinculo estructurado ni cambio de protocolo.]
     DOS -.-> note1
 
     note2[La respuesta a una imagen cita el nombre del archivo,<br/>no la imagen.]
     DOS -.-> note2
 
-    note3[Transicion de estados (es la misma en los 3 clientes,<br/>y esta escrita como un CASE SQL duplicado 3 veces:<br/>ver VIS-02 en PLAN_PATRONES_UI.md)]
+    note3["Transicion de estados (es la misma en los 3 clientes,<br/>y esta escrita como un CASE SQL duplicado 3 veces:<br/>ver VIS-02 en PLAN_PATRONES_UI.md)"]
     E1b -.-> note3

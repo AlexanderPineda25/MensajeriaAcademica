@@ -112,6 +112,23 @@ public final class HistorialLocal implements InterfazHistorialLocal {
             SELECT COUNT(*) FROM historial_local
             WHERE origen = ? AND destino = ? AND enviado = 0 AND estado <> 'LEIDO'""";
 
+    // UIX-06: búsqueda en el historial. LOWER en ambos lados porque H2 LIKE es
+    // sensible a mayúsculas (SQLite no, para ASCII) y los 3 deben coincidir.
+    // %, _ y \ del patrón se escapan para que busquen literal.
+    private static final String BUSCAR_EN_CONVERSACION = """
+            SELECT id_mensaje, origen, destino, tipo,
+                   CASE WHEN tipo = 'MENSAJE_IMAGEN' THEN NULL ELSE contenido END,
+                   hash_sha256, num_caracteres, num_palabras, nombre_archivo,
+                   ruta_archivo, tamano_archivo, fecha_envio, enviado, descargado,
+                   estado, archivo_id
+            FROM historial_local
+            WHERE ((origen = ? AND destino = ?)
+                OR (origen = ? AND destino = ?))
+              AND (LOWER(contenido) LIKE ? ESCAPE '\\'
+                OR LOWER(nombre_archivo) LIKE ? ESCAPE '\\')
+            ORDER BY fecha_envio DESC
+            LIMIT ?""";
+
     // HISTORIAL_LOCAL.md §4-5
     private static final String LISTAR_PENDIENTES = """
             SELECT id, tipo, origen, destino, contenido, nombre_archivo, payload,
@@ -149,6 +166,14 @@ public final class HistorialLocal implements InterfazHistorialLocal {
         try (Connection conn = store.abrir();
              PreparedStatement borrar = conn.prepareStatement(BORRAR_MENSAJE);
              PreparedStatement insertar = conn.prepareStatement(INSERTAR_MENSAJE)) {
+            String estadoGuardar = mensaje.estado() == null ? "ENVIADO" : mensaje.estado();
+            try (PreparedStatement anterior = conn.prepareStatement(
+                    "SELECT estado FROM historial_local WHERE id_mensaje = ?")) {
+                anterior.setString(1, mensaje.idMensaje());
+                try (ResultSet rs = anterior.executeQuery()) {
+                    if (rs.next()) estadoGuardar = conservarEstado(rs.getString(1), estadoGuardar);
+                }
+            }
             borrar.setString(1, mensaje.idMensaje());
             borrar.executeUpdate();
             insertar.setString(1, mensaje.idMensaje());
@@ -165,10 +190,18 @@ public final class HistorialLocal implements InterfazHistorialLocal {
             insertar.setString(12, mensaje.fechaEnvio());
             insertar.setInt(13, mensaje.enviado() ? 1 : 0);
             insertar.setInt(14, mensaje.descargado() ? 1 : 0);
-            insertar.setString(15, mensaje.estado() != null ? mensaje.estado() : "ENVIADO");
+            insertar.setString(15, estadoGuardar);
             insertar.setString(16, mensaje.archivoId());
             insertar.executeUpdate();
         }
+    }
+
+    private static String conservarEstado(String anterior, String nuevo) {
+        if ("LEIDO".equals(anterior) || "LEIDO".equals(nuevo)) return "LEIDO";
+        if ("ENTREGADO".equals(anterior)
+                && ("PENDIENTE".equals(nuevo) || "ENVIADO".equals(nuevo))) return "ENTREGADO";
+        if ("ENVIADO".equals(anterior) && "PENDIENTE".equals(nuevo)) return "ENVIADO";
+        return nuevo;
     }
 
     @Override
@@ -200,6 +233,30 @@ public final class HistorialLocal implements InterfazHistorialLocal {
             try (ResultSet rs = q.executeQuery()) {
                 return rs.next() ? Optional.ofNullable(rs.getString(1)) : Optional.empty();
             }
+        }
+    }
+
+    @Override
+    public List<MensajeLocal> buscar(String remitente, String destinatario,
+                                     String patron, int limite) throws Exception {
+        String like = "%" + patron.replace("\\", "\\\\").replace("%", "\\%")
+                .replace("_", "\\_").toLowerCase(java.util.Locale.ROOT) + "%";
+        try (Connection conn = store.abrir();
+              PreparedStatement q = conn.prepareStatement(BUSCAR_EN_CONVERSACION)) {
+            q.setString(1, remitente);
+            q.setString(2, destinatario);
+            q.setString(3, destinatario);
+            q.setString(4, remitente);
+            q.setString(5, like);
+            q.setString(6, like);
+            q.setInt(7, limite);
+            List<MensajeLocal> filas = new ArrayList<>();
+            try (ResultSet rs = q.executeQuery()) {
+                while (rs.next()) {
+                    filas.add(leerMensaje(rs));
+                }
+            }
+            return filas;
         }
     }
 

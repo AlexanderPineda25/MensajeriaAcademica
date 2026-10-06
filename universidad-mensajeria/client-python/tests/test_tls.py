@@ -16,7 +16,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from componentes.conexion_red import ConexionRed
-from transversal.tls import TLS_PUERTO_DEFECTO, crear_contexto, validar_tls
+from transversal.tls import crear_contexto, validar_tls
 
 try:
     from cryptography import x509

@@ -125,6 +125,9 @@ public class VistaConsola {
 
     void informe(String tipo) {
         List<String> lineas = renderInforme(tipo);
+        System.out.println();
+        System.out.println("INFORME · " + tipo.toUpperCase(Locale.ROOT));
+        System.out.println("=".repeat(64));
         paginar(lineas);
         String pedido = tipo;
         vistaActiva = () -> renderInforme(pedido);
@@ -152,28 +155,42 @@ public class VistaConsola {
 
     private void cabecera() {
         EstadoServidor e = fachada.estadoServidor();
-        System.out.println("=== Mensajeria Academica | TCP " + e.puerto() + " | "
-                + (e.activo() ? "ACTIVO" : "DETENIDO") + " ===");
+        System.out.println();
+        System.out.println("╔══════════════════════════════════════════════════════════════╗");
+        System.out.println("║             MENSAJERÍA ACADÉMICA · SERVIDOR                ║");
+        System.out.println("╚══════════════════════════════════════════════════════════════╝");
+        System.out.println("Estado: " + (e.activo() ? "ACTIVO" : "DETENIDO")
+                + " · TCP: " + e.puerto());
+        System.out.println("Usuarios: " + e.usuariosConectados()
+                + " · Sesiones: " + e.sesionesActivas());
+        System.out.println("Pool: " + e.trabajadoresOcupados() + " ocupados / "
+                + e.trabajadoresDisponibles() + " libres");
+        System.out.println("Cola: " + e.mensajesEnCola()
+                + " · Mensajes procesados: " + e.mensajesProcesados());
+        System.out.println("Escribe 'ayuda' para ver los comandos disponibles.");
     }
 
     private void menu() {
-        System.out.println("------------------------------------------------------------");
-        System.out.println(" 1 Estado        2 Conectados      3 Usuarios       4 Cola");
-        System.out.println(" 5 Difundir      6 IP local        7 Iniciar        8 Detener");
-        System.out.println(" 9 Informe       0 Ayuda           10 Salir        11 Cerrar");
-        System.out.println("------------------------------------------------------------");
+        System.out.println();
+        System.out.println("PANEL DE CONTROL");
+        System.out.println("  1 Estado        2 Conectados       3 Usuarios       4 Cola");
+        System.out.println("  5 Difundir      6 IP local         7 Iniciar        8 Detener");
+        System.out.println("  9 Informe       0 Ayuda           10 Salir         11 Cerrar");
+        System.out.println("  También: informe <tipo> · cerrar <código|sesión|*> · auto <on|off>");
     }
 
     private void ayuda() {
-        System.out.println("Opciones: 1 estado, 2 conectados, 3 usuarios, 4 cola, "
-                + "5 difundir, 6 ip, 7 iniciar, 8 detener, 9 informe, 10 salir, 11 cerrar. "
-                + "Tambien admite: estado, usuarios, conectados, cola, informe <tipo>, difundir, "
-                + "cerrar <codigo|id-sesion|*> [motivo], auto <on|off>.");
+        System.out.println("COMANDOS DISPONIBLES");
+        System.out.println("  estado | conectados | usuarios | cola | ip");
+        System.out.println("  iniciar | detener | difundir | salir");
+        System.out.println("  informe <usuarios|conexiones|mensajes|auditoria>");
+        System.out.println("  cerrar <código|id-sesión|*> [motivo]");
+        System.out.println("  auto <on|off>  controla el refresco de la vista tras eventos.");
     }
 
     private void estado() {
         List<String> lineas = lineasEstado();
-        lineas.forEach(System.out::println);
+        imprimirPanel("ESTADO DEL SERVIDOR", lineas);
         vistaActiva = this::lineasEstado;
     }
 
@@ -194,9 +211,9 @@ public class VistaConsola {
     private void conectados() {
         List<String> lista = fachada.usuariosConectados();
         if (lista.isEmpty()) {
-            System.out.println("No hay usuarios conectados.");
+            imprimirPanel("USUARIOS CONECTADOS", List.of("No hay usuarios conectados."));
         } else {
-            System.out.println("Conectados (" + lista.size() + "): ");
+            System.out.println("USUARIOS CONECTADOS · " + lista.size());
             paginar(lista);
         }
         vistaActiva = () -> {
@@ -208,7 +225,7 @@ public class VistaConsola {
 
     private void usuarios() {
         List<String> filas = filasUsuarios();
-        System.out.println("Usuarios registrados (" + filas.size() + "):");
+        System.out.println("USUARIOS REGISTRADOS · " + filas.size());
         paginar(filas);
         vistaActiva = () -> {
             List<String> actual = filasUsuarios();
@@ -229,9 +246,17 @@ public class VistaConsola {
     }
 
     private void cola() {
-        System.out.println("Mensajes en cola de procesamiento: " + fachada.mensajesEnCola());
+        imprimirPanel("COLA DE PROCESAMIENTO", List.of(
+                "Mensajes pendientes: " + fachada.mensajesEnCola()));
         vistaActiva = () -> List.of(
                 "Mensajes en cola de procesamiento: " + fachada.mensajesEnCola());
+    }
+
+    private void imprimirPanel(String titulo, List<String> lineas) {
+        System.out.println();
+        System.out.println(titulo);
+        System.out.println("─".repeat(Math.max(24, Math.min(64, titulo.length() + 8))));
+        lineas.forEach(linea -> System.out.println("  " + linea));
     }
 
     /** Cierre administrativo de cualquier sesion (req. #10): codigo, id o "*". */
@@ -297,11 +322,17 @@ public class VistaConsola {
 
     private void paginar(List<String> lineas) {
         LineReader actual = lector;
+        if (lineas.isEmpty()) {
+            System.out.println("  Sin resultados.");
+            return;
+        }
+        int totalPaginas = (lineas.size() + FILAS_POR_PAGINA - 1) / FILAS_POR_PAGINA;
         for (int inicio = 0; inicio < lineas.size(); inicio += FILAS_POR_PAGINA) {
             int fin = Math.min(inicio + FILAS_POR_PAGINA, lineas.size());
             lineas.subList(inicio, fin).forEach(System.out::println);
             if (fin < lineas.size() && actual != null) {
-                String seguir = pedir("-- Enter: siguiente pagina; q: terminar -- ");
+                String seguir = pedir("Página " + ((inicio / FILAS_POR_PAGINA) + 1) + "/"
+                        + totalPaginas + " · Enter siguiente · q salir: ");
                 if (seguir.equalsIgnoreCase("q")) return;
             }
         }
@@ -323,7 +354,7 @@ public class VistaConsola {
                 }
             }
         } else {
-            System.out.println("[INFO] " + linea);
+            System.out.println("[EVENTO] " + linea);
         }
     }
 

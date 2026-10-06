@@ -46,8 +46,16 @@
                 </ComboBox>
                 <ui:Button x:Name="btnEntrar" Content="Iniciar sesión →" Appearance="Primary"
                            Click="BtnEntrar_Click" MinHeight="40" HorizontalAlignment="Stretch"
-                           HorizontalContentAlignment="Center"/>
+                           HorizontalContentAlignment="Center" IsDefault="True"/>
                 <!-- Fase 10.2 (P2): sin «Crear cuenta»: el alta es solo por archivo plano (CSV). -->
+
+                <!-- UIX-00f: "Conectando…" es un estado de carga, no un error. Antes
+                     se escribia en txtError y se hacia visible bordeError, que es
+                     rojo (#FDECEA / #B91C1C): pareceria una caída. Ahora el aviso de
+                     carga tiene su propia etiqueta en gris neutro. -->
+                <TextBlock x:Name="txtCargando" Foreground="{DynamicResource MutedBrush}"
+                           FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"
+                           Visibility="Collapsed"/>
 
                 <Border x:Name="bordeError" Background="#FDECEA" BorderBrush="#F1A9A5" BorderThickness="1"
                         CornerRadius="8" Padding="9" Margin="0,12,0,0" Visibility="Collapsed">

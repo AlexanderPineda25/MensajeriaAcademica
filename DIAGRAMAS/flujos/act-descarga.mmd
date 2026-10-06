@@ -30,14 +30,14 @@ flowchart TD
 
     ESCR --> ES[Escribir en disco]
     ES --> OKH{Escritura correcta?}
-    OKH -->|si| FIN([Mostrar "Descarga completa"])
-    OKH -->|no| E1[Mostrar "No se pudo descargar"<br/>y NO borrar el temporal]
+    OKH -->|si| FIN([Mostrar 'Descarga completa'])
+    OKH -->|no| E1[Mostrar 'No se pudo descargar'<br/>y NO borrar el temporal]
 
     %% ---------- fallos que importan ----
-    ID{El cliente tiene<br/>archivoId?} -->|no| E2[Error: "imagen no encontrada en el historial"]
+    ID{El cliente tiene<br/>archivoId?} -->|no| E2[Error: 'imagen no encontrada en el historial']
     ID -->|si| PET[Solicitar DESCARGA al servidor]
     PET --> ESP{Respuesta?}
-    ESP -->|no en 15 s| E3[Error: "sin respuesta del servidor"]
+    ESP -->|no en 15 s| E3[Error: 'sin respuesta del servidor']
     ESP -->|ruta inexistente| E4[Error: el servidor no entrego<br/>el identificador del archivo]
     ESP -->|ok| URL
 
@@ -46,8 +46,8 @@ flowchart TD
     note1[Las 5 derivadas las genera el servidor al procesar,<br/>NO el cliente: por eso un filtro siempre<br/>da el mismo resultado en los 3.]
     DERIV -.-> note1
 
-    note2[Regla de fidelidad:<br/>la descarga es perezosa: se pide al<br/>hacerse visible la imagen, con<br/>cache y deduplicacion, y los listados<br/>no leen blobs innecesarios (RF-C18).]
+    note2["Regla de fidelidad:<br/>la descarga es perezosa: se pide al<br/>hacerse visible la imagen, con<br/>cache y deduplicacion, y los listados<br/>no leen blobs innecesarios (RF-C18)."]
     FUENTE -.-> note2
 
-    note3[Las rutas historicas siguen siendo descargables:<br/>uploads/Nombre Apellido CODIGO/hash/.<br/>Si se cambia el nombre del propietario<br/>en el archivo plano, la ruta vieja no se rompe (RF-S20).]
+    note3["Las rutas historicas siguen siendo descargables:<br/>uploads/Nombre Apellido CODIGO/hash/.<br/>Si se cambia el nombre del propietario<br/>en el archivo plano, la ruta vieja no se rompe (RF-S20)."]
     ORIG -.-> note3

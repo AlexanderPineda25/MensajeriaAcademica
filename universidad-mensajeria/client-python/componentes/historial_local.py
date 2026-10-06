@@ -88,6 +88,29 @@ class HistorialLocal:
                    'BROADCAST', 'SYNC_LOGIN')
             """, (estado, otro, yo))
 
+    def buscar_en_conversacion(self, user1, user2, patron, limite=200):
+        """UIX-06: mensajes con el patrón en texto o nombre de archivo.
+
+        Mismo contrato que `buscar` (Java) y `BuscarEnConversacion` (.NET):
+        insensible a mayúsculas, `%`/`_`/`\\` literales, de más nuevo a más
+        viejo. La UI salta entre los ids.
+        """
+        if not patron or not patron.strip():
+            return []
+        like = "%" + patron.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with self.db.conexion() as conn:
+            return [dict(row) for row in conn.execute(
+                """SELECT id_mensaje, origen, destino, tipo, contenido,
+                          fecha_envio, estado, nombre_archivo, archivo_id
+                   FROM historial_local
+                   WHERE ((origen = ? AND destino = ?)
+                       OR (origen = ? AND destino = ?))
+                     AND (LOWER(contenido) LIKE LOWER(?) ESCAPE '\\'
+                       OR LOWER(nombre_archivo) LIKE LOWER(?) ESCAPE '\\')
+                   ORDER BY fecha_envio DESC
+                   LIMIT ?""",
+                (user1, user2, user2, user1, like, like, limite)).fetchall()]
+
     def buscar_equivalente(self, origen, destino, tipo, hash_sha256="",
                              contenido="", fecha_envio="", ventana_seg=300):
         """Id local de un mensaje ya conocido (vivo) igual al remoto.

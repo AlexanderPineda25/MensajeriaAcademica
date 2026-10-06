@@ -216,42 +216,14 @@ classDiagram
     Tema ..> Themes.TemaOscuro : ThemeIndex
     Tema ..> Themes.TemaClaro : ThemeIndex
 
-    note for MensajeVM
-        UNICO ViewModel real de los 3
-        clientes: notifica cambios.
-    end note
+    note for MensajeVM "UNICO ViewModel real de los 3<br/>clientes: notifica cambios."
 
-    note for UsuarioVM
-        POCO SIN INotifyPropertyChanged.
-        Por eso el filtro hace Clear() y
-        re-Add() en cada tecla.
-        Arreglo previsto: UIX-02 / PAT-VM.
-    end note
+    note for UsuarioVM "POCO SIN INotifyPropertyChanged.<br/>Por eso el filtro hace Clear() y<br/>re-Add() en cada tecla.<br/>Arreglo previsto: UIX-02 / PAT-VM."
 
-    note for FachadaCliente
-        Dos constructores: sin args
-        (el que usa App) y con inyeccion
-        (el que solo usan los tests).
-        El grafo se arma DENTRO de
-        ConectarAsync. Arreglo: PAT-01.
-    end note
+    note for FachadaCliente "Dos constructores: sin args<br/>(el que usa App) y con inyeccion<br/>(el que solo usan los tests).<br/>El grafo se arma DENTRO de<br/>ConectarAsync. Arreglo: PAT-01."
 
-    note for LocalStore
-        fallbackSchema (3a copia del DDL)
-        es inalcanzable: el .sql se copia
-        por el csproj. Ademas hay dos
-        migradores para lo mismo.
-    end note
+    note for LocalStore "fallbackSchema (3a copia del DDL)<br/>es inalcanzable: el .sql se copia<br/>por el csproj. Ademas hay dos<br/>migradores para lo mismo."
 
-    note for IConexionRed
-        OnDesconectado existe y se
-        invoca, pero NINGUNA vista se
-        suscribe: la perdida de conexion
-        es invisible. Arreglo: UIX-00a.
-    end note
+    note for IConexionRed "OnDesconectado existe y se<br/>invoca, pero NINGUNA vista se<br/>suscribe: la perdida de conexion<br/>es invisible. Arreglo: UIX-00a."
 
-    note for TipoMensaje
-        REGISTRO, REGISTRO_RESPUESTA y
-        LISTAR_USUARIOS_RESPUESTA son
-        constantes muertas (MUERT-29).
-    end note
+    note for TipoMensaje "REGISTRO, REGISTRO_RESPUESTA y<br/>LISTAR_USUARIOS_RESPUESTA son<br/>constantes muertas (MUERT-29)."

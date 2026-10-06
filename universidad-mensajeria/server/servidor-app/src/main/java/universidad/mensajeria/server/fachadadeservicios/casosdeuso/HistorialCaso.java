@@ -65,7 +65,10 @@ public final class HistorialCaso {
     /** Resumen de un mensaje SIN bytes de imagen (historial ligero, sin lazy). */
     static Map<String, Object> aResumen(MensajeResumenDTO m) {
         Map<String, Object> fila = new LinkedHashMap<>();
-        fila.put("id", m.id());
+        // El id numérico es interno de la base; los clientes usan su UUID local
+        // también para acuses de lectura. Los mensajes históricos antiguos caen
+        // al id numérico y siguen siendo consultables.
+        fila.put("id", m.idCliente() == null ? Long.toString(m.id()) : m.idCliente());
         fila.put("remitente", m.remitente());
         fila.put("destinatario", m.destinatario());
         fila.put("tipo", m.tipo());

@@ -30,4 +30,10 @@ public final class LoginCommand implements CommandHandler {
     public String tipo() {
         return "LOGIN";
     }
+
+    /** Unico tipo publico del catalogo: es el que autentica (SEC-05). */
+    @Override
+    public boolean requiereAutenticacion() {
+        return false;
+    }
 }

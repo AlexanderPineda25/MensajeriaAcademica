@@ -23,6 +23,14 @@ public interface InterfazHistorialLocal {
 
     int contar(String remitente, String destinatario) throws Exception;
 
+    /**
+     * UIX-06: mensajes de la conversación cuyo texto o nombre de archivo
+     * contienen el patrón (insensible a mayúsculas). Devuelve hasta
+     * {@code limite}, de más nuevo a más viejo. La UI salta entre ellos.
+     */
+    List<MensajeLocal> buscar(String remitente, String destinatario, String patron, int limite)
+            throws Exception;
+
     void marcarDescargado(String idMensaje, String rutaArchivo) throws Exception;
 
     void marcarEstado(String idMensaje, String estado) throws Exception;

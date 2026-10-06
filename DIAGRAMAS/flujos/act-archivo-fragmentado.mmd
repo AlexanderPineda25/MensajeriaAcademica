@@ -19,7 +19,7 @@ flowchart TD
     EST --> TIEMPO[Se imprime el tiempo restante<br/>en la barra de progreso]
 
     TIEMPO --> RED{Hay red?}
-    RED -->|no| COLAQ[Queda en la cola.<br/>El usuario ve "Sin red:<br/>guardado para reintentar"]
+    RED -->|no| COLAQ[Queda en la cola.<br/>El usuario ve 'Sin red:<br/>guardado para reintentar']
     COLAQ --> ESP[Esperar reconexion]
     ESP --> RED
 
@@ -50,5 +50,5 @@ flowchart TD
     note1[Trampa real, ya corregida:<br/>N copias del mismo texto desde el mismo<br/>remitente comparten hash y ruta final en uploads/,<br/>y varias tareas de poolFiltros hacian Files.move<br/>sobre el MISMO archivo. En Windows se perdian copias.<br/>Corregido con candado POR RUTA en AlmacenarInformacion<br/>y cubierto por difusionDelMismoTextoEnParaleloNoPierdeCopias.]
     OK -.-> note1
 
-    note2[El cliente puede enviar solo imagen o solo archivo;<br/>el boton Enviar es uno solo y siempre hace el envio<br/>de lo que haya (RF-C09..RF-C13).]
+    note2["El cliente puede enviar solo imagen o solo archivo -<br/>el boton Enviar es uno solo y siempre hace el envio<br/>de lo que haya (RF-C09..RF-C13)."]
     META -.-> note2

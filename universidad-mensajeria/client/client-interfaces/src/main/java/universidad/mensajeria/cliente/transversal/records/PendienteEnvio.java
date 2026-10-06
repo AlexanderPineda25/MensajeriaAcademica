@@ -12,4 +12,9 @@ public record PendienteEnvio(
         String fechaCreado,
         int intentos,
         String ultimoError) {
+
+    /** Alias de compatibilidad con la API de reintentos del cliente. */
+    public byte[] bytes() {
+        return payload;
+    }
 }

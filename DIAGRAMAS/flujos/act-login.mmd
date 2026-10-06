@@ -22,19 +22,19 @@ flowchart TD
     E2 --> HALT
     E3 --> HALT
 
-    CON -->|error de red| ER[Mostrar: "No se pudo conectar<br/>(motivo real)"]
+    CON -->|error de red| ER["Mostrar: 'No se pudo conectar<br/>(motivo real)'"]
     ER --> HALT
     CON -->|ok| SES[Conexion abierta<br/>IdSesion ANONIMA]
 
     SES --> ENVIO[Enviar trama LOGIN<br/>codigo + contrasena]
     ENVIO --> ESP{Respuesta en 15 s?}
 
-    ESP -->|timeout| ET[Error: "sin respuesta del servidor"]
+    ESP -->|timeout| ET[Error: 'sin respuesta del servidor']
     ET --> HALT
 
     ESP -->|respuesta| VAL{Resultado}
 
-    VAL -->|error: no registrado o datos incorrectos| EB[Burbuja roja exacta:<br/>"Usuario no registrado o<br/>datos incorrectos."]
+    VAL -->|error: no registrado o datos incorrectos| EB[Burbuja roja exacta:<br/>'Usuario no registrado o<br/>datos incorrectos.']
     EB --> REIN[No abrir el chat.<br/>Desconectar limpio.]
     REIN --> HALT
 
@@ -72,5 +72,5 @@ flowchart TD
     note1[Nota de fidelidad:<br/>LOGIN incrementa ACCESOS.<br/>Las acciones de chat no.<br/>Presencia = sesion viva:<br/>se apaga al cerrar la ultima.]
     AUD -.-> note1
 
-    note2[Distinguir:<br/>un LOGIN cuenta 1 acceso.<br/>"Salir en todos" cierra<br/>las otras sesiones del mismo<br/>codigo, no todas las cuentas.]
+    note2[Distinguir:<br/>un LOGIN cuenta 1 acceso.<br/>'Salir en todos' cierra<br/>las otras sesiones del mismo<br/>codigo, no todas las cuentas.]
     LK -.-> note2

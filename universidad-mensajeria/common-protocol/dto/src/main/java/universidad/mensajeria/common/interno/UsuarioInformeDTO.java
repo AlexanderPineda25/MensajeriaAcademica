@@ -8,9 +8,4 @@ package universidad.mensajeria.common.interno;
 public record UsuarioInformeDTO(String codigo, String nombres, String apellidos,
                                 String programa, String fechaRegistro,
                                 String fechaUltimaConexion, boolean conectado) {
-
-    public UsuarioInformeDTO conConectado(boolean valor) {
-        return new UsuarioInformeDTO(codigo, nombres, apellidos, programa,
-                fechaRegistro, fechaUltimaConexion, valor);
-    }
 }

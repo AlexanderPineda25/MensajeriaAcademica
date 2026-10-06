@@ -1,6 +1,7 @@
 package universidad.mensajeria.server.almacenarinformacion;
 
 import universidad.mensajeria.common.interno.ArchivoDTO;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.AuditoriaInformeDTO;
 import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
@@ -44,13 +45,57 @@ public interface InterfazAlmacenarInformacion {
     long guardarMensajeTexto(String remitente, String destinatario, String contenido,
                              String hash, int caracteres, int palabras, String ip);
 
+    default long guardarMensajeTexto(String remitente, String destinatario, String contenido,
+                                     String hash, int caracteres, int palabras, String ip,
+                                     String idCliente) {
+        return guardarMensajeTexto(remitente, destinatario, contenido, hash, caracteres,
+                palabras, ip, null, idCliente);
+    }
+
+    default long guardarMensajeTexto(String remitente, String destinatario, String contenido,
+                                     String hash, int caracteres, int palabras, String ip,
+                                     String ipDestinatario, String idCliente) {
+        return guardarMensajeTexto(remitente, destinatario, contenido, hash, caracteres,
+                palabras, ip);
+    }
+
     long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
                               String rutaRelativa, long tamano, String tipo, String mime,
                               String hash, String etapasJson, String ip);
 
+    default long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
+                                      String rutaRelativa, long tamano, String tipo, String mime,
+                                      String hash, String etapasJson, String ip, String idCliente) {
+        return guardarMensajeImagen(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, etapasJson, ip, null, idCliente);
+    }
+
+    default long guardarMensajeImagen(String remitente, String destinatario, String nombreArchivo,
+                                      String rutaRelativa, long tamano, String tipo, String mime,
+                                      String hash, String etapasJson, String ip,
+                                      String ipDestinatario, String idCliente) {
+        return guardarMensajeImagen(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, etapasJson, ip);
+    }
+
     long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
                                String rutaRelativa, long tamano, String tipo, String mime,
                                String hash, String ip);
+
+    default long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
+                                       String rutaRelativa, long tamano, String tipo, String mime,
+                                       String hash, String ip, String idCliente) {
+        return guardarMensajeArchivo(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, ip, null, idCliente);
+    }
+
+    default long guardarMensajeArchivo(String remitente, String destinatario, String nombreArchivo,
+                                       String rutaRelativa, long tamano, String tipo, String mime,
+                                       String hash, String ip,
+                                       String ipDestinatario, String idCliente) {
+        return guardarMensajeArchivo(remitente, destinatario, nombreArchivo, rutaRelativa, tamano,
+                tipo, mime, hash, ip);
+    }
 
     PaginaDTO<MensajeResumenDTO> paginaConversacion(String codigoA, String codigoB,
                                                     int pagina, int tamano);
@@ -95,6 +140,13 @@ public interface InterfazAlmacenarInformacion {
 
     /** Informe 3: historico global de mensajes con detalle. */
     List<MensajeResumenDTO> historicoMensajes(InformeFiltroDTO filtro);
+
+    /** Historial de mensajes enviados o recibidos, paginado para la ficha administrativa. */
+    PaginaDTO<MensajeResumenDTO> paginaMensajesDeUsuario(String codigo, boolean soloArchivos,
+                                                          int pagina, int tamano);
+
+    /** Totales y contacto más frecuente (intercambio en ambas direcciones). */
+    ActividadUsuarioDTO actividadUsuario(String codigo);
 
     /** Informe 4: bitacora de auditoria (misma fuente que logs/server.log). */
     List<AuditoriaInformeDTO> auditoriaInforme(InformeFiltroDTO filtro);

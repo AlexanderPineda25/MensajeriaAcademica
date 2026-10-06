@@ -4,6 +4,14 @@
     -fx-background-color: #EEF1F6;
 }
 
+.login-scroll { -fx-background-color: #EEF1F6; }
+.login-scroll > .viewport { -fx-background-color: transparent; }
+
+.login-shell {
+    -fx-background-color: transparent;
+    -fx-padding: 28px;
+}
+
 .login-card {
     -fx-background-color: white;
     -fx-background-radius: 12px;
@@ -55,6 +63,38 @@
     -fx-background-color: white;
     -fx-border-color: #2456A6;
 }
+
+.server-chip {
+    -fx-background-color: #F7F9FC;
+    -fx-background-radius: 999px;
+    -fx-border-color: #B9C4D4;
+    -fx-border-radius: 999px;
+    -fx-padding: 8px 12px;
+    -fx-min-height: 38px;
+}
+
+.server-dot {
+    -fx-fill: #2456A6;
+}
+
+.server-chip-value {
+    -fx-text-fill: #202124;
+}
+
+.password-row { -fx-alignment: center-left; }
+
+.password-toggle {
+    -fx-background-color: #F7F9FC;
+    -fx-background-radius: 8px;
+    -fx-border-color: #B9C4D4;
+    -fx-border-radius: 8px;
+    -fx-text-fill: #202124;
+    -fx-font-size: 15px;
+    -fx-min-width: 40px;
+    -fx-min-height: 36px;
+    -fx-cursor: hand;
+}
+.password-toggle:hover { -fx-background-color: #E6EDF6; }
 
 .login-button {
     -fx-background-color: #2456A6;

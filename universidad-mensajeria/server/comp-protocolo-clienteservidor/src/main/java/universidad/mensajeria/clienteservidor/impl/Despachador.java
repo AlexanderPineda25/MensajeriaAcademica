@@ -9,7 +9,6 @@ import universidad.mensajeria.common.interno.IdSesion;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 

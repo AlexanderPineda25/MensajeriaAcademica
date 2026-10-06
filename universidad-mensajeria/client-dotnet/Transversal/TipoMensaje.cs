@@ -1,4 +1,3 @@
-using System;
 
 namespace Mensajeria.Transversal
 {
@@ -6,8 +5,6 @@ namespace Mensajeria.Transversal
     {
         public const string LOGIN = "LOGIN";
         public const string LOGIN_RESPUESTA = "LOGIN_RESPUESTA";
-        public const string REGISTRO = "REGISTRO";
-        public const string REGISTRO_RESPUESTA = "REGISTRO_RESPUESTA";
         public const string LOGOUT = "LOGOUT";
         public const string CLOSE_NOTICE = "CLOSE_NOTICE";
         public const string KICK = "KICK";
@@ -25,7 +22,6 @@ namespace Mensajeria.Transversal
         public const string LISTAR_CONECTADOS = "LISTAR_CONECTADOS";
         public const string LISTAR_CONECTADOS_RESPUESTA = "LISTAR_CONECTADOS_RESPUESTA";
         public const string LISTAR_USUARIOS = "LISTAR_USUARIOS";
-        public const string LISTAR_USUARIOS_RESPUESTA = "LISTAR_USUARIOS_RESPUESTA";
         public const string HISTORIAL_REQ = "HISTORIAL_REQ";
         public const string HISTORIAL_PAGE = "HISTORIAL_PAGE";
         public const string DESCARGAR_ARCHIVO = "DESCARGAR_ARCHIVO";

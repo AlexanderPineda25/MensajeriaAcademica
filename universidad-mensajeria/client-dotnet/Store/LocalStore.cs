@@ -9,6 +9,9 @@ namespace Mensajeria.Store
     {
         private readonly SqliteConnection _conn;
         public string DbPath { get; }
+        // SqliteConnection se comparte entre la UI y el lector de red; los DAO
+        // usan este candado común para serializar cualquier acceso al handle.
+        public object SyncRoot { get; } = new();
 
         public LocalStore(string dbPath)
         {
@@ -78,7 +81,6 @@ namespace Mensajeria.Store
             if (!File.Exists(leg)) return;
             string? dir = Path.GetDirectoryName(cta);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            bool cuentaExistia = File.Exists(cta);
 
             using var connLeg = new SqliteConnection($"Data Source={leg};Mode=ReadOnly;Default Timeout=30");
             connLeg.Open();
@@ -106,7 +108,10 @@ namespace Mensajeria.Store
             {
                 cmd.CommandText = "PRAGMA busy_timeout=5000;"; try { cmd.ExecuteNonQuery(); } catch { }
             }
-            AsegurarColumnas(connCta);
+            // Una sola migracion para las dos rutas (MUERTE-5): antes habia
+            // dos copias del mismo "anade estado + archivo_id si falta". Aqui
+            // se mantiene el silencio que tenia la ruta de legado.
+            try { MigrarHistorial(connCta); } catch { }
 
             // Lee legado.
             var filas = new List<Dictionary<string, object?>>();
@@ -243,7 +248,6 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
                 }
             }
             catch { }
-            _ = cuentaExistia;
         }
 
         private static bool TablaExiste(SqliteConnection conn, string tabla)
@@ -254,26 +258,33 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
             try { return Convert.ToInt32(cmd.ExecuteScalar()) > 0; } catch { return false; }
         }
 
-        private static void AsegurarColumnas(SqliteConnection conn)
+        /// Unica migracion "anade estado + archivo_id si falta" (MUERTE-5).
+        /// Antes existian dos copias: AsegurarColumnas (migracion de legado,
+        /// sin transaccion y con los errores tragados) y MigrarHistorial
+        /// (arranque, con transaccion). Mismo SQL, dos fuentes de verdad.
+        private static void MigrarHistorial(SqliteConnection conn, SqliteTransaction? tx = null)
         {
-            var cols = new HashSet<string>();
+            var columnas = new HashSet<string>();
             using (var cmd = conn.CreateCommand())
             {
+                cmd.Transaction = tx;
                 cmd.CommandText = "PRAGMA table_info(historial_local)";
-                using var r = cmd.ExecuteReader();
-                while (r.Read()) cols.Add(r.GetString(1));
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read()) columnas.Add(reader.GetString(1));
             }
-            if (!cols.Contains("estado"))
+            if (!columnas.Contains("estado"))
             {
                 using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
                 cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN estado TEXT NOT NULL DEFAULT 'ENVIADO'";
-                try { cmd.ExecuteNonQuery(); } catch { }
+                cmd.ExecuteNonQuery();
             }
-            if (!cols.Contains("archivo_id"))
+            if (!columnas.Contains("archivo_id"))
             {
                 using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
                 cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN archivo_id TEXT";
-                try { cmd.ExecuteNonQuery(); } catch { }
+                cmd.ExecuteNonQuery();
             }
         }
 
@@ -292,99 +303,38 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
 
         private void Inicializar()
         {
+            // El DDL tiene UNA sola copia: Store/schema-local.sql, que
+            // Mensajeria.csproj copia al salida (MUERTE-5). Antes existia una
+            // tercera copia incrustada aqui como "fallback" que era
+            // inalcanzable y, si se hubiera alcanzado, habria creado un
+            // esquema divergent sin avisar. Ahora, si falta, se dice.
             string schemaPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Store", "schema-local.sql");
-            if (File.Exists(schemaPath))
+            if (!File.Exists(schemaPath))
             {
-                string schema = File.ReadAllText(schemaPath);
-                using var cmd = _conn.CreateCommand();
+                throw new FileNotFoundException(
+                    "Falta schema-local.sql junto al ejecutable; no se puede crear el historial local",
+                    schemaPath);
+            }
+            string schema = File.ReadAllText(schemaPath);
+            using (var cmd = _conn.CreateCommand())
+            {
                 cmd.CommandText = schema;
                 cmd.ExecuteNonQuery();
             }
-            else
+            using (var tx = _conn.BeginTransaction())
             {
-                // Fallback si no está el archivo (para cumplir con la instrucción de schema-local.sql)
-                string fallbackSchema = @"
-CREATE TABLE IF NOT EXISTS historial_local (
-    id_mensaje     TEXT PRIMARY KEY,
-    origen         TEXT NOT NULL,
-    destino        TEXT NOT NULL,
-    tipo           TEXT NOT NULL,
-    contenido      TEXT,
-    hash_sha256    TEXT,
-    num_caracteres INTEGER,
-    num_palabras   INTEGER,
-    nombre_archivo TEXT,
-    archivo_id     TEXT,
-    ruta_archivo   TEXT,
-    tamano_archivo INTEGER,
-    fecha_envio    TEXT NOT NULL,
-    enviado        INTEGER NOT NULL DEFAULT 0,
-    descargado     INTEGER NOT NULL DEFAULT 0,
-    estado         TEXT NOT NULL DEFAULT 'ENVIADO'
-);
-CREATE INDEX IF NOT EXISTS idx_hist_conv ON historial_local (origen, destino, fecha_envio);
-CREATE TABLE IF NOT EXISTS cache_usuarios (
-    codigo         TEXT PRIMARY KEY,
-    nombres        TEXT NOT NULL,
-    apellidos      TEXT NOT NULL,
-    programa       TEXT,
-    conectado      INTEGER NOT NULL DEFAULT 0,
-    fecha_registro TEXT,
-    actualizado    TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS pendientes_envio (
-    id             TEXT PRIMARY KEY,
-    tipo           TEXT NOT NULL,
-    origen         TEXT NOT NULL,
-    destino        TEXT NOT NULL,
-    contenido      TEXT,
-    nombre_archivo TEXT,
-    payload        BLOB,
-    fecha_creado   TEXT NOT NULL,
-    intentos       INTEGER NOT NULL DEFAULT 0,
-    ultimo_error   TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_pend_destino ON pendientes_envio (destino, fecha_creado);
-";
-                using var cmd = _conn.CreateCommand();
-                cmd.CommandText = fallbackSchema;
-                cmd.ExecuteNonQuery();
+                MigrarHistorial(_conn, tx);
+                tx.Commit();
             }
-            MigrarHistorial();
-        }
-
-        private void MigrarHistorial()
-        {
-            using var tx = _conn.BeginTransaction();
-            var columnas = new HashSet<string>();
-            using (var cmd = _conn.CreateCommand())
-            {
-                cmd.Transaction = tx;
-                cmd.CommandText = "PRAGMA table_info(historial_local)";
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read()) columnas.Add(reader.GetString(1));
-            }
-            if (!columnas.Contains("estado"))
-            {
-                using var cmd = _conn.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN estado TEXT NOT NULL DEFAULT 'ENVIADO'";
-                cmd.ExecuteNonQuery();
-            }
-            if (!columnas.Contains("archivo_id"))
-            {
-                using var cmd = _conn.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN archivo_id TEXT";
-                cmd.ExecuteNonQuery();
-            }
-            tx.Commit();
         }
 
         public void Dispose()
         {
-            _conn.Close();
-            _conn.Dispose();
+            lock (SyncRoot)
+            {
+                _conn.Close();
+                _conn.Dispose();
+            }
         }
     }
 }

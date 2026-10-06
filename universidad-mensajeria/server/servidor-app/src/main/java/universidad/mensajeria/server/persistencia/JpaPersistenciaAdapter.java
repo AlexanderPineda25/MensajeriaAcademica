@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import universidad.mensajeria.common.interno.ArchivoDTO;
 import universidad.mensajeria.common.interno.ArchivoGuardarDTO;
+import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.AuditoriaInformeDTO;
 import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
@@ -134,14 +135,17 @@ public class JpaPersistenciaAdapter implements PersistenciaPort {
         Mensaje mensaje = switch (tipo) {
             case TEXTO -> Mensaje.deTexto(remitente, destinatario, datos.contenido(),
                     datos.hashSha256(), requerido(datos.numCaracteres(), "numCaracteres"),
-                    requerido(datos.numPalabras(), "numPalabras"), datos.ipRemitente());
+                    requerido(datos.numPalabras(), "numPalabras"), datos.ipRemitente(),
+                    datos.ipDestinatario());
             case IMAGEN -> Mensaje.deImagen(remitente, destinatario,
                     archivoRequerido(requerido(datos.archivoId(), "archivoId")),
-                    datos.hashSha256(), datos.etapasFiltrado(), datos.ipRemitente());
+                    datos.hashSha256(), datos.etapasFiltrado(), datos.ipRemitente(),
+                    datos.ipDestinatario());
             case ARCHIVO -> Mensaje.deArchivo(remitente, destinatario,
                     archivoRequerido(requerido(datos.archivoId(), "archivoId")),
-                    datos.hashSha256(), datos.ipRemitente());
+                    datos.hashSha256(), datos.ipRemitente(), datos.ipDestinatario());
         };
+        mensaje.setIdCliente(datos.idCliente());
         return aResumen(mensajes.save(mensaje));
     }
 
@@ -256,6 +260,36 @@ public class JpaPersistenciaAdapter implements PersistenciaPort {
 
     @Override
     @Transactional(readOnly = true)
+    public PaginaDTO<MensajeResumenDTO> paginaMensajesDeUsuario(String codigo,
+            boolean soloArchivos, int pagina, int tamano) {
+        String cuenta = codigo == null ? "" : codigo.trim();
+        if (cuenta.isEmpty()) {
+            throw new IllegalArgumentException("El codigo de usuario es obligatorio");
+        }
+        return pagina(mensajes.paginaHistorialUsuario(cuenta, soloArchivos,
+                page(pagina, tamano)), JpaPersistenciaAdapter::aResumen);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ActividadUsuarioDTO actividadUsuario(String codigo) {
+        String cuenta = codigo == null ? "" : codigo.trim();
+        if (cuenta.isEmpty()) {
+            throw new IllegalArgumentException("El codigo de usuario es obligatorio");
+        }
+        List<Object[]> contactos = mensajes.contarMensajesPorContacto(cuenta);
+        if (contactos.isEmpty()) {
+            return new ActividadUsuarioDTO(mensajes.contarMensajesDeUsuario(cuenta),
+                    mensajes.contarArchivosDeUsuario(cuenta), null, 0);
+        }
+        Object[] principal = contactos.get(0);
+        return new ActividadUsuarioDTO(mensajes.contarMensajesDeUsuario(cuenta),
+                mensajes.contarArchivosDeUsuario(cuenta), (String) principal[0],
+                ((Number) principal[1]).longValue());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<FechasUsuarioDTO> fechasUsuarios() {
         return usuarios.findAllByOrderByApellidosAsc().stream()
                 .map(usuario -> new FechasUsuarioDTO(usuario.getCodigo(),
@@ -301,7 +335,8 @@ public class JpaPersistenciaAdapter implements PersistenciaPort {
                 archivo == null ? null : archivo.getId(), archivo == null ? null : archivo.getMime(),
                 mensaje.getEtapasFiltrado(), texto(mensaje.getFechaEnvio()),
                 mensaje.getRemitente().getNombres(), mensaje.getRemitente().getApellidos(),
-                mensaje.getDestinatario().getNombres(), mensaje.getDestinatario().getApellidos());
+                mensaje.getDestinatario().getNombres(), mensaje.getDestinatario().getApellidos(),
+                mensaje.getIpRemitente(), mensaje.getIpDestinatario(), mensaje.getIdCliente());
     }
 
     private static AuditoriaInformeDTO aAuditoria(RegistroAccion accion) {

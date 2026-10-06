@@ -39,6 +39,8 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -470,6 +472,44 @@ class MensajeriaE2ETest {
             assertEquals(TipoMensaje.LISTAR_USUARIOS_RESPUESTA, respuesta.tipo());
             assertEquals("lu-1", respuesta.id());
             assertTrue(respuesta.contenido() != null && respuesta.contenido().contains(A));
+        }
+    }
+
+    /**
+     * SEC-05: socket crudo, sin LOGIN. Ninguna trama de negocio puede devolver
+     * datos; todas responden ERROR pidiendo LOGIN y la sesion sigue viva.
+     */
+    @Test
+    void tramaNoAutenticadaSeRechaza() throws Exception {
+        // Destinatario valido y existente: si la guarda faltara, MENSAJE_TEXTO
+        // entregaria de verdad y el assert de contenido lo detectaria.
+        String destinatario = registrarUsuarioNuevo();
+
+        try (ClientePrueba intruso = conectar()) {
+            for (TipoMensaje tipo : new TipoMensaje[]{TipoMensaje.LISTAR_USUARIOS,
+                    TipoMensaje.LISTAR_CONECTADOS, TipoMensaje.LOGOUT, TipoMensaje.HISTORIAL_REQ,
+                    TipoMensaje.MENSAJE_TEXTO}) {
+                intruso.enviar(Mensaje.builder().tipo(tipo).id("anon-" + tipo)
+                        .fechaHora(LocalDateTime.now().toString())
+                        .destinatario(destinatario).contenido("hola").build());
+
+                Mensaje respuesta = intruso.leer();
+                assertEquals(TipoMensaje.ERROR, respuesta.tipo(),
+                        tipo + " sin LOGIN debio responder ERROR");
+                assertEquals("anon-" + tipo, respuesta.id(), "el ERROR se correlaciona por id");
+                assertNotNull(respuesta.mensajeError(),
+                        tipo + " debio pedir LOGIN: " + respuesta.mensajeError());
+                assertTrue(respuesta.mensajeError().contains("LOGIN"),
+                        tipo + " debio pedir LOGIN: " + respuesta.mensajeError());
+                assertNull(respuesta.contenido(),
+                        tipo + " sin LOGIN no puede devolver datos de usuario");
+                assertNull(respuesta.usuariosConectados(),
+                        tipo + " sin LOGIN no puede devolver el directorio de conectados");
+            }
+
+            // El rechazo no tumba la sesion: tras los rechazos, LOGIN sigue entrando.
+            assertTrue(login(intruso, destinatario, "Nueva123").exito(),
+                    "la sesion debe sobrevivir a las tramas rechazadas");
         }
     }
 

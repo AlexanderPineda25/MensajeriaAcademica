@@ -19,7 +19,10 @@
     <SolidColorBrush x:Key="RemitenteBrush" Color="#FFC4B5FD" />
     <SolidColorBrush x:Key="FechaBrush" Color="#FFC4B5FD" />
     <SolidColorBrush x:Key="VistoLeidoBrush" Color="#FF5EB1FF" />
-    <SolidColorBrush x:Key="VistoOtroBrush" Color="#FFE8EEF2" />
+    <!-- UIX-18: el tick no-leido era #FFE8EEF2, el mismo gris del cuerpo:
+         se confunde con el texto. Gris medio propio, distinto del cuerpo
+         (#FFFFFFFF/#FFE8EEF2) y del leido azul (#FF5EB1FF). -->
+    <SolidColorBrush x:Key="VistoOtroBrush" Color="#FFA8B8C1" />
     <SolidColorBrush x:Key="CitaBgBrush" Color="#FF243447" />
     <SolidColorBrush x:Key="CitaBorderBrush" Color="#FFA78BFA" />
     <SolidColorBrush x:Key="CitaTextBrush" Color="#FFC4B5FD" />

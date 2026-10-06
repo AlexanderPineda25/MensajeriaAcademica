@@ -1,17 +1,23 @@
 package universidad.mensajeria.cliente.fachada;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import universidad.mensajeria.cliente.componentes.autenticacion.Autenticacion;
 import universidad.mensajeria.cliente.componentes.cache.CacheUsuarios;
 import universidad.mensajeria.cliente.componentes.conexion.InterfazConexionRed;
 import universidad.mensajeria.cliente.componentes.conexion.ReceptorMensajes;
 import universidad.mensajeria.cliente.componentes.historial.HistorialLocal;
+import universidad.mensajeria.cliente.componentes.protocolo.MapeadorDatosServidor;
 import universidad.mensajeria.cliente.persistencia.LocalStore;
 import universidad.mensajeria.cliente.presentacion.ChatController;
 import universidad.mensajeria.cliente.presentacion.ClienteApp;
+import universidad.mensajeria.cliente.transversal.EstadoConexion;
 import universidad.mensajeria.cliente.transversal.config.ClienteConfig;
+import universidad.mensajeria.cliente.transversal.records.EventoCliente;
 import universidad.mensajeria.cliente.transversal.records.MensajeLocal;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
+import universidad.mensajeria.cliente.RespuestaRedPrueba;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 
@@ -26,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * FachadaCliente con red falsa y DAOs reales (H2 en memoria):
@@ -36,7 +43,12 @@ class FachadaClienteTest {
     private RedFalsa red;
     private FachadaCliente fachada;
     private HistorialLocal historial;
-    private final List<Mensaje> avisosUi = new ArrayList<>();
+    private final List<EventoCliente> eventosUi = new ArrayList<>();
+
+    @AfterEach
+    void apagarWorkers() {
+        if (fachada != null) fachada.cerrar();
+    }
 
     @BeforeEach
     void montar() throws Exception {
@@ -48,8 +60,9 @@ class FachadaClienteTest {
         historial = new HistorialLocal(store);
         CacheUsuarios cache = new CacheUsuarios(store);
         red = new RedFalsa();
-        fachada = new FachadaCliente(red, new Autenticacion(red), historial, cache);
-        fachada.suscribir(avisosUi::add);
+        fachada = new FachadaCliente(red, new Autenticacion(red), historial, cache,
+                new MapeadorDatosServidor());
+        fachada.suscribirEventos(eventosUi::add);
     }
 
     @Test
@@ -57,6 +70,15 @@ class FachadaClienteTest {
         assertTrue(fachada.login("A001", "Secreta123"));
         assertEquals("A001", fachada.codigoActual());
         assertEquals(1, red.vecesLogin);
+    }
+
+    @Test
+    void credencialesRechazadasNoAbrenSesionNiSeConservanParaReconectar() throws Exception {
+        red.loginRechazado = true;
+
+        assertFalse(fachada.login("A001", "incorrecta"));
+        assertNull(fachada.codigoActual());
+        assertEquals(EstadoConexion.SIN_RED, fachada.estadoConexion());
     }
 
     @Test
@@ -116,26 +138,26 @@ class FachadaClienteTest {
     void mensajeRecibidoSePersisteYSeAvisaALaUi() throws Exception {
         fachada.login("A001", "Secreta123");
 
-        red.receptor.alRecibir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO)
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO)
                 .id("srv-1").fechaHora(LocalDateTime.now().toString())
                 .remitente("B002").destinatario("A001").contenido("hola A")
-                .hashSha256("h").numCaracteres(6).numPalabras(2).build());
+                .hashSha256("h").numCaracteres(6).numPalabras(2).build()));
 
         List<MensajeLocal> conversacion = fachada.conversacion("B002", 10, 0);
         assertEquals(1, conversacion.size());
         // FASE 13.9: la lista es metadata; el cuerpo va por blobMensaje.
         assertEquals("hola A", fachada.blobMensaje(conversacion.get(0).idMensaje()).orElseThrow());
         assertFalse(conversacion.get(0).enviado());
-        assertEquals(1, avisosUi.size());
+        assertEquals(1, eventosUi.size());
     }
 
     @Test
     void broadcastRecibidoApareceEnConversacionConSuRemitente() throws Exception {
         fachada.login("A001", "Secreta123");
 
-        red.receptor.alRecibir(Mensaje.builder().tipo(TipoMensaje.BROADCAST)
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.BROADCAST)
                 .id("bc-1").fechaHora(LocalDateTime.now().toString())
-                .remitente("B002").contenido("aviso general").build());
+                .remitente("B002").contenido("aviso general").build()));
 
         List<MensajeLocal> conversacion = fachada.conversacion("B002", 10, 0);
         assertEquals(1, conversacion.size());
@@ -165,6 +187,7 @@ class FachadaClienteTest {
         private ReceptorMensajes receptor;
         private boolean caida;
         private boolean conectada = true;
+        private boolean loginRechazado;
         private int vecesLogin;
 
         @Override
@@ -187,10 +210,29 @@ class FachadaClienteTest {
             this.receptor = receptor;
         }
 
+        /** PAT-03: el hilo lector muere (corte de red). */
+        void caer() {
+            conectada = false;
+            if (receptor != null) {
+                receptor.alDesconexion();
+            }
+        }
+
+        /** PAT-03: el servidor manda CLOSE_NOTICE y cierra. */
+        void cerrarSesion() {
+            conectada = false;
+            if (receptor != null) {
+                receptor.alCierre(RespuestaRedPrueba.desde(
+                        Mensaje.builder().tipo(TipoMensaje.CLOSE_NOTICE).build()));
+            }
+        }
+
         @Override
-        public Mensaje login(String codigo, String contrasena) {
+        public RespuestaRed login(String codigo, String contrasena) {
             vecesLogin++;
-            return Mensaje.builder().tipo(TipoMensaje.LOGIN_RESPUESTA).exito(true).build();
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.LOGIN_RESPUESTA)
+                    .exito(!loginRechazado)
+                    .mensajeError(loginRechazado ? "credenciales invalidas" : null).build());
         }
 
         private String idTexto;
@@ -199,33 +241,33 @@ class FachadaClienteTest {
         private boolean fallaDescarga;
 
         @Override
-        public Mensaje enviarTexto(String remitente, String destinatario, String contenido)
+        public RespuestaRed enviarTexto(String remitente, String destinatario, String contenido)
                 throws IOException {
             if (caida) {
                 throw new IOException("corte simulado");
             }
-            return Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build();
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build());
         }
 
         @Override
-        public Mensaje enviarTexto(String id, String remitente, String destinatario, String contenido)
+        public RespuestaRed enviarTexto(String id, String remitente, String destinatario, String contenido)
                 throws IOException {
             idTexto = id;
             return enviarTexto(remitente, destinatario, contenido);
         }
 
         @Override
-        public Mensaje enviarImagen(String remitente, String destinatario, String nombreArchivo,
+        public RespuestaRed enviarImagen(String remitente, String destinatario, String nombreArchivo,
                                     String mime, String contenidoBase64) throws IOException {
             if (caida) {
                 throw new IOException("corte simulado");
             }
-            return Mensaje.builder().tipo(TipoMensaje.IMAGE_FILTERED_RESULT)
-                    .exito(true).hashSha256("h").etapasFiltrado("[]").archivoId("1").build();
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.IMAGE_FILTERED_RESULT)
+                    .exito(true).hashSha256("h").etapasFiltrado("[]").archivoId("1").build());
         }
 
         @Override
-        public Mensaje enviarImagen(String id, String remitente, String destinatario,
+        public RespuestaRed enviarImagen(String id, String remitente, String destinatario,
                                     String nombreArchivo, String mime, String contenidoBase64)
                 throws IOException {
             idImagen = id;
@@ -233,54 +275,54 @@ class FachadaClienteTest {
         }
 
         @Override
-        public Mensaje difundir(String remitente, String contenido) {
-            return Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build();
+        public RespuestaRed difundir(String remitente, String contenido) {
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build());
         }
 
         @Override
-        public Mensaje listarConectados() {
-            return Mensaje.builder().tipo(TipoMensaje.LISTAR_CONECTADOS_RESPUESTA)
-                    .usuariosConectados(List.of("A001", "B002")).build();
+        public RespuestaRed listarConectados() {
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.LISTAR_CONECTADOS_RESPUESTA)
+                    .usuariosConectados(List.of("A001", "B002")).build());
         }
 
         @Override
-        public Mensaje listarUsuarios() {
-            return Mensaje.builder().tipo(TipoMensaje.LISTAR_USUARIOS_RESPUESTA).exito(true)
+        public RespuestaRed listarUsuarios() {
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.LISTAR_USUARIOS_RESPUESTA).exito(true)
                     .contenido("""
                             [{"codigo":"A001","nombres":"Ana","apellidos":"Pérez","programa":"Sistemas","conectado":true},
                              {"codigo":"B002","nombres":"Luis","apellidos":"Díaz","programa":"Matemáticas","conectado":false}]
-                            """).build();
+                            """).build());
         }
 
         @Override
-        public Mensaje expulsar(String codigo) {
-            return Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build();
+        public RespuestaRed expulsar(String codigo) {
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build());
         }
 
         @Override
-        public Mensaje solicitarHistorial(String remitente, String destinatario, int pagina) {
-            return Mensaje.builder().tipo(TipoMensaje.HISTORIAL_PAGE).pagina(pagina)
+        public RespuestaRed solicitarHistorial(String remitente, String destinatario, int pagina) {
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.HISTORIAL_PAGE).pagina(pagina)
                     .totalPaginas(totalPaginasRemotas).exito(true)
-                    .contenido(paginaRemotaJson).build();
+                    .contenido(paginaRemotaJson).build());
         }
 
         private String paginaRemotaJson = "[]";
         private int totalPaginasRemotas = 1;
 
         @Override
-        public Mensaje descargarArchivo(String archivoId) throws IOException {
+        public RespuestaRed descargarArchivo(String archivoId) throws IOException {
             vecesDescarga++;
             if (caida || fallaDescarga) throw new IOException("descarga interrumpida");
-            return Mensaje.builder().tipo(TipoMensaje.DESCARGAR_ARCHIVO_RESPUESTA).archivoId(archivoId).exito(true).contenidoImagen("AAAA").build();
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.DESCARGAR_ARCHIVO_RESPUESTA).archivoId(archivoId).exito(true).contenidoImagen("AAAA").build());
         }
 
         private int vecesLectura;
 
         @Override
-        public Mensaje enviarLectura(String lector, String autor, String idOriginal) throws IOException {
+        public RespuestaRed enviarLectura(String lector, String autor, String idOriginal) throws IOException {
             if (caida) throw new IOException("corte simulado");
             vecesLectura++;
-            return Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build();
+            return RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.ACK).exito(true).build());
         }
 
         @Override
@@ -309,9 +351,9 @@ class FachadaClienteTest {
     void marcarLeidosAvistaUnaVezYLuegoCalla() throws Exception {
         // FASE 13.19: sin filtro, cada acuse re-disparaba el acuse (tormenta).
         assertTrue(fachada.login("A001", "Secreta123"));
-        red.receptor.alRecibir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("l-1")
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("l-1")
                 .fechaHora(LocalDateTime.now().toString())
-                .remitente("B002").destinatario("A001").contenido("hola").build());
+                .remitente("B002").destinatario("A001").contenido("hola").build()));
         fachada.marcarLeidos("B002");
         assertEquals(1, red.vecesLectura, "el no-leído se acusa una vez");
         assertEquals("LEIDO", historial.pagina("A001", "B002", 10, 0).get(0).estado());
@@ -322,9 +364,9 @@ class FachadaClienteTest {
     @Test
     void acuseDeLecturaOfflinePermaneceEnColaYSeReintentaUnaVez() throws Exception {
         assertTrue(fachada.login("A001", "Secreta123"));
-        red.receptor.alRecibir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("lectura-offline")
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("lectura-offline")
                 .fechaHora(LocalDateTime.now().toString()).remitente("B002").destinatario("A001")
-                .contenido("pendiente de acuse").build());
+                .contenido("pendiente de acuse").build()));
         red.caida = true;
 
         fachada.marcarLeidos("B002");
@@ -380,9 +422,9 @@ class FachadaClienteTest {
     void ecoPropioConservaEnviado() throws Exception {
         // FASE 13.20: mi auto-mensaje re-entregado no se vuelve "recibido".
         assertTrue(fachada.login("A001", "Secreta123"));
-        red.receptor.alRecibir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("yo-1")
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("yo-1")
                 .fechaHora(LocalDateTime.now().toString())
-                .remitente("A001").destinatario("A001").contenido("nota").build());
+                .remitente("A001").destinatario("A001").contenido("nota").build()));
 
         var fila = historial.pagina("A001", "A001", 10, 0).get(0);
 
@@ -390,11 +432,26 @@ class FachadaClienteTest {
     }
 
     @Test
-    void esAcuseDistingueRecibos() {
-        assertTrue(ChatController.esAcuse(TipoMensaje.MENSAJE_LEIDO));
-        assertTrue(ChatController.esAcuse(TipoMensaje.MENSAJE_ENTREGADO));
-        assertFalse(ChatController.esAcuse(TipoMensaje.MENSAJE_TEXTO));
-        assertFalse(ChatController.esAcuse(TipoMensaje.PRESENCIA));
+    void eventoDeAplicacionDistingueAcusesSinUsarTiposDeRed() {
+        assertTrue(new EventoCliente(EventoCliente.Tipo.ACUSE_LECTURA,
+                "B002", "A001").esAcuse());
+        assertTrue(new EventoCliente(EventoCliente.Tipo.ACUSE_ENTREGA,
+                "B002", "A001").esAcuse());
+        assertFalse(new EventoCliente(EventoCliente.Tipo.MENSAJE,
+                "B002", "A001").esAcuse());
+        assertFalse(new EventoCliente(EventoCliente.Tipo.PRESENCIA,
+                "B002", "A001").esAcuse());
+    }
+
+    @Test
+    void fachadaTraduceAcuseDelProtocoloAEventoDeAplicacion() throws Exception {
+        assertTrue(fachada.login("A001", "Secreta123"));
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(Mensaje.builder()
+                .tipo(TipoMensaje.MENSAJE_LEIDO)
+                .remitente("B002").destinatario("A001").build()));
+
+        assertEquals(new EventoCliente(EventoCliente.Tipo.ACUSE_LECTURA,
+                "B002", "A001"), eventosUi.get(eventosUi.size() - 1));
     }
 
     @Test
@@ -403,17 +460,17 @@ class FachadaClienteTest {
         assertTrue(fachada.login("A001", "Secreta123"));
         java.util.concurrent.atomic.AtomicInteger avisos =
                 new java.util.concurrent.atomic.AtomicInteger();
-        java.util.function.Consumer<Mensaje> sonda = m -> avisos.incrementAndGet();
+        java.util.function.Consumer<EventoCliente> sonda = e -> avisos.incrementAndGet();
         Mensaje texto = Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("sonda-1")
                 .fechaHora(LocalDateTime.now().toString())
                 .remitente("B002").destinatario("A001").contenido("hola").build();
-        fachada.suscribir(sonda);
-        red.receptor.alRecibir(texto);
+        fachada.suscribirEventos(sonda);
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(texto));
         assertEquals(1, avisos.get());
-        fachada.desuscribir(sonda);
-        red.receptor.alRecibir(texto);
+        fachada.desuscribirEventos(sonda);
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(texto));
         assertEquals(1, avisos.get(), "desuscripto: sin más avisos");
-        fachada.desuscribir(sonda);
+        fachada.desuscribirEventos(sonda);
     }
 
     @Test
@@ -422,14 +479,14 @@ class FachadaClienteTest {
         assertTrue(fachada.login("A001", "Secreta123"));
         java.util.concurrent.atomic.AtomicInteger avisos =
                 new java.util.concurrent.atomic.AtomicInteger();
-        java.util.function.Consumer<Mensaje> sonda = m -> avisos.incrementAndGet();
+        java.util.function.Consumer<EventoCliente> sonda = e -> avisos.incrementAndGet();
         Mensaje texto = Mensaje.builder().tipo(TipoMensaje.MENSAJE_TEXTO).id("dup-1")
                 .fechaHora(LocalDateTime.now().toString())
                 .remitente("B002").destinatario("A001").contenido("hola").build();
-        fachada.suscribir(sonda);
-        fachada.suscribir(sonda);
-        assertEquals(2, fachada.suscriptores(), "avisosUi + sonda, sin duplicados");
-        red.receptor.alRecibir(texto);
+        fachada.suscribirEventos(sonda);
+        fachada.suscribirEventos(sonda);
+        assertEquals(2, fachada.cantidadObservadoresEventos(), "observadores sin duplicados");
+        red.receptor.alRecibir(RespuestaRedPrueba.desde(texto));
         assertEquals(1, avisos.get());
     }
 
@@ -447,7 +504,7 @@ class FachadaClienteTest {
                   "fechaEnvio": "2025-01-02T10:00:00"}]""";
         red.totalPaginasRemotas = 3;
 
-        FachadaCliente.PaginaRemota pagina = fachada.traerHistorial("B002", 0);
+        var pagina = fachada.traerHistorial("B002", 0);
 
         assertEquals(2, pagina.recibidos());
         assertEquals(3, pagina.totalPaginas());
@@ -525,5 +582,125 @@ class FachadaClienteTest {
         assertTrue(fachada.login("A001", "Secreta123"));
         var conectados = fachada.refrescarPresencia();
         assertTrue(conectados.containsAll(java.util.List.of("A001", "B002")));
+    }
+
+    // ---------------------------------------------------------------- PAT-03
+
+    @Test
+    void estadoDeConexionAvanzaConectandoConectadoYAvisaAlSuscribirse() throws Exception {
+        List<EstadoConexion> vistos = new ArrayList<>();
+        fachada.alCambiarEstado(vistos::add);
+
+        // Entrega el estado actual de inmediato: quien se suscribe tarde no se
+        // queda sin pintar (UIX-00c).
+        assertEquals(List.of(EstadoConexion.SIN_RED), vistos);
+
+        fachada.conectar();
+        assertEquals(EstadoConexion.CONECTADO, fachada.estadoConexion());
+        assertTrue(fachada.login("A001", "Secreta123"));
+        assertEquals(List.of(EstadoConexion.SIN_RED, EstadoConexion.CONECTANDO,
+                EstadoConexion.CONECTADO), vistos);
+    }
+
+    @Test
+    void caidaDelLectorPasaASinRedYNoRepiteSiYaEstaba() throws Exception {
+        List<EstadoConexion> vistos = new ArrayList<>();
+        fachada.conectar();
+        fachada.alCambiarEstado(vistos::add);
+        fachada.login("A001", "Secreta123");
+
+        red.caer();
+
+        assertEquals(EstadoConexion.SIN_RED, fachada.estadoConexion());
+        assertEquals(1, vistos.stream().filter(e -> e == EstadoConexion.SIN_RED).count(),
+                "la caída se avisa una sola vez");
+    }
+
+    @Test
+    void reconectaYReautenticaTrasUnaCaidaDelServidor() throws Exception {
+        fachada.login("A001", "Secreta123");
+
+        red.caer();
+        long limite = System.currentTimeMillis() + 5000;
+        while (fachada.estadoConexion() != EstadoConexion.CONECTADO
+                && System.currentTimeMillis() < limite) {
+            Thread.sleep(25);
+        }
+
+        assertEquals(EstadoConexion.CONECTADO, fachada.estadoConexion());
+        assertEquals(2, red.vecesLogin, "debe reautenticar al recuperar el socket");
+        assertEquals("A001", fachada.codigoActual());
+    }
+
+    @Test
+    void esperaDeReconexionTieneLimiteDeTreintaSegundos() {
+        assertEquals(1, FachadaCliente.esperaReconexionSegundos(0));
+        assertEquals(2, FachadaCliente.esperaReconexionSegundos(1));
+        assertEquals(16, FachadaCliente.esperaReconexionSegundos(4));
+        assertEquals(30, FachadaCliente.esperaReconexionSegundos(5));
+        assertEquals(30, FachadaCliente.esperaReconexionSegundos(100));
+    }
+
+    @Test
+    void cierreDelServidorNoSeConfundeConCaidaDeRed() throws Exception {
+        fachada.conectar();
+        fachada.login("A001", "Secreta123");
+
+        red.cerrarSesion();
+
+        assertEquals(EstadoConexion.SESION_CERRADA, fachada.estadoConexion(),
+                "CLOSE_NOTICE es sesion cerrada, no 'sin red': la UI no debe ofrecer reconectar");
+    }
+
+    @Test
+    void logoutYDesconectarDejanElEstadoCoherente() throws Exception {
+        fachada.conectar();
+        fachada.login("A001", "Secreta123");
+
+        fachada.desconectar();
+        assertEquals(EstadoConexion.SIN_RED, fachada.estadoConexion());
+
+        fachada.conectar();
+        fachada.login("A001", "Secreta123");
+        fachada.logout();
+        assertEquals(EstadoConexion.SESION_CERRADA, fachada.estadoConexion());
+    }
+
+    @Test
+    void unCierreVoluntarioNoSeReportaComoCaida() throws Exception {
+        // PAT-03: tras un logout, el hilo lector viejo puede terminar su finally
+        // y avisar de una caida que no existe. Si lo hiciera, el banner
+        // parpadearia en un cliente recien desconectado por el usuario.
+        fachada.conectar();
+        fachada.login("A001", "Secreta123");
+        fachada.logout();
+        EstadoConexion trasLogout = fachada.estadoConexion();
+
+        red.caer();
+
+        assertEquals(trasLogout, fachada.estadoConexion(),
+                "un lector obsoleto no debe degradar el estado de una sesion cerrada");
+    }
+
+    @Test
+    void losEstadosDegradadosMuestranBannerYLosConectadosNo() {
+        assertFalse(EstadoConexion.CONECTADO.muestraBanner());
+        assertFalse(EstadoConexion.CONECTANDO.muestraBanner());
+        assertTrue(EstadoConexion.SIN_RED.muestraBanner());
+        assertTrue(EstadoConexion.SESION_CERRADA.muestraBanner());
+    }
+
+    @Test
+    void buscarEnHistorialDevuelveIdsDeMasNuevoAMasViejo() throws Exception {
+        assertTrue(fachada.login("A001", "Secreta123"));
+        historial.guardar(new universidad.mensajeria.cliente.transversal.records.MensajeLocal(
+                "s1", "A001", "B002", "MENSAJE_TEXTO", "hola mundo", null, 4, 1,
+                null, null, null, "2026-01-01T10:00:00", true, true, "ENVIADO", null));
+        historial.guardar(new universidad.mensajeria.cliente.transversal.records.MensajeLocal(
+                "s2", "B002", "A001", "MENSAJE_TEXTO", "HOLA de vuelta", null, 4, 1,
+                null, null, null, "2026-01-01T10:05:00", false, true, "ENTREGADO", null));
+
+        assertEquals(java.util.List.of("s2", "s1"), fachada.buscarEnHistorial("B002", "HOLA"));
+        assertTrue(fachada.buscarEnHistorial("B002", "inexistente").isEmpty());
     }
 }

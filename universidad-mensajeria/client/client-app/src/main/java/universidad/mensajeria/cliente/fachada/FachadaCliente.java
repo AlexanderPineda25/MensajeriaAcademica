@@ -5,14 +5,21 @@ import universidad.mensajeria.cliente.componentes.cache.InterfazCacheUsuarios;
 import universidad.mensajeria.cliente.componentes.conexion.InterfazConexionRed;
 import universidad.mensajeria.cliente.componentes.conexion.ReceptorMensajes;
 import universidad.mensajeria.cliente.componentes.historial.InterfazHistorialLocal;
+import universidad.mensajeria.cliente.componentes.protocolo.InterfazMapeadorDatosServidor;
+import universidad.mensajeria.cliente.transversal.EstadoConexion;
 import universidad.mensajeria.cliente.transversal.records.EstadoMensaje;
+import universidad.mensajeria.cliente.transversal.records.EventoCliente;
 import universidad.mensajeria.cliente.transversal.records.MensajeLocal;
+import universidad.mensajeria.cliente.transversal.records.PaginaHistorialRemota;
 import universidad.mensajeria.cliente.transversal.records.PendienteEnvio;
 import universidad.mensajeria.cliente.transversal.records.RecienteChat;
+import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
+import universidad.mensajeria.cliente.transversal.records.TipoMensajeCliente;
 import universidad.mensajeria.cliente.transversal.records.UsuarioLocal;
+import universidad.mensajeria.cliente.fachada.servicios.CoordinadorHistorialCliente;
+import universidad.mensajeria.cliente.fachada.servicios.CoordinadorMensajeriaCliente;
+import universidad.mensajeria.cliente.fachada.servicios.GestorReconexionSesion;
 import universidad.mensajeria.cliente.transversal.utilerias.ValidacionCliente;
-import universidad.mensajeria.common.tipos.Mensaje;
-import universidad.mensajeria.common.tipos.TipoMensaje;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -20,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -30,15 +36,16 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Único punto de entrada de la UI (§7.1): inyecta interfaces, nunca
+ * Adaptador del puerto de aplicación consumido por la UI (§7.1): inyecta interfaces, nunca
  * implementaciones (DIP + DI por constructor). Orquesta red + historial:
  * lo enviado con red se guarda local (enviado), sin red va a pendientes y
  * lo recibido se persiste para el modo offline. Avisos a la UI vía Observer.
  */
-public final class FachadaCliente {
+public final class FachadaCliente implements InterfazFachadaCliente {
 
     /** Marcador de destino para broadcasts propios (sin destinatario único). */
     public static final String DESTINO_BROADCAST = "*";
@@ -49,7 +56,13 @@ public final class FachadaCliente {
     private final InterfazAutenticacion autenticacion;
     private final InterfazHistorialLocal historial;
     private final InterfazCacheUsuarios cache;
-    private final List<Consumer<Mensaje>> suscriptores = new CopyOnWriteArrayList<>();
+    private final InterfazMapeadorDatosServidor mapeadorDatosServidor;
+    /** Fase 4: servicio enfocado en consultas de historial (delega sobre {@link #historial}). */
+    private final CoordinadorHistorialCliente coordinadorHistorial;
+    /** Fase 4: servicio enfocado en envío de mensajes (texto, imagen, archivo). */
+    private final CoordinadorMensajeriaCliente coordinadorMensajeria;
+    private final List<Consumer<EventoCliente>> observadoresEventos =
+            new CopyOnWriteArrayList<>();
     /**
      * FASE 13.5: UN executor acotado para todo el trabajo de fondo del cliente
      * (leídos, reintentos, tareas de la UI). Adiós `new Thread` por evento.
@@ -63,13 +76,25 @@ public final class FachadaCliente {
      */
     public static final long INTERVALO_FLUSH_SEGUNDOS = 30;
     private volatile ScheduledExecutorService flush;
+    private final GestorReconexionSesion gestorReconexion;
 
     public FachadaCliente(InterfazConexionRed red, InterfazAutenticacion autenticacion,
-                          InterfazHistorialLocal historial, InterfazCacheUsuarios cache) {
+                          InterfazHistorialLocal historial, InterfazCacheUsuarios cache,
+                          InterfazMapeadorDatosServidor mapeadorDatosServidor) {
         this.red = red;
         this.autenticacion = autenticacion;
         this.historial = historial;
         this.cache = cache;
+        this.mapeadorDatosServidor = mapeadorDatosServidor;
+        this.coordinadorHistorial = new CoordinadorHistorialCliente(historial);
+        this.coordinadorMensajeria = new CoordinadorMensajeriaCliente(red, historial);
+        ScheduledExecutorService reconector = Executors.newSingleThreadScheduledExecutor(tarea -> {
+            Thread hilo = new Thread(tarea, "cliente-reconexion");
+            hilo.setDaemon(true);
+            return hilo;
+        });
+        this.gestorReconexion = new GestorReconexionSesion(red, autenticacion,
+                this::cambiarEstado, this::alRestaurarSesion, reconector);
         ThreadFactory hilos = new ThreadFactory() {
             private final AtomicInteger n = new AtomicInteger();
 
@@ -91,7 +116,9 @@ public final class FachadaCliente {
 
     /** Apaga el executor (al salir de la app). */
     public void cerrar() {
+        olvidarCredencialesEnMemoria();
         detenerFlushPendientes();
+        gestorReconexion.cerrar();
         fondo.shutdownNow();
     }
 
@@ -124,35 +151,107 @@ public final class FachadaCliente {
         }
     }
 
-    /** La UI se suscribe a mensajes entrantes (ya persistidos). */
-    public void suscribir(Consumer<Mensaje> observador) {
-        // FASE 13.16: sin duplicados (un re-login sin detener sumaba fantasmas).
-        if (!suscriptores.contains(observador)) {
-            suscriptores.add(observador);
+    @Override
+    public void suscribirEventos(Consumer<EventoCliente> observador) {
+        if (!observadoresEventos.contains(observador)) {
+            observadoresEventos.add(observador);
         }
     }
 
-    /** FASE 13.10: quita un suscriptor (fin de los refrescos fantasma). */
-    public void desuscribir(Consumer<Mensaje> observador) {
-        suscriptores.remove(observador);
+    @Override
+    public void desuscribirEventos(Consumer<EventoCliente> observador) {
+        observadoresEventos.remove(observador);
     }
 
-    /** FASE 13.17: cuántos observadores hay (diagnóstico de fantasmas). */
-    public int suscriptores() {
-        return suscriptores.size();
+    @Override
+    public int cantidadObservadoresEventos() {
+        return observadoresEventos.size();
+    }
+
+    private void publicarEvento(RespuestaRed mensaje) {
+        EventoCliente evento = adaptarEvento(mensaje);
+        for (Consumer<EventoCliente> observador : observadoresEventos) {
+            try {
+                observador.accept(evento);
+            } catch (RuntimeException error) {
+                LOG.log(Level.WARNING, "observador de eventos del cliente falló", error);
+            }
+        }
+    }
+
+    private static EventoCliente adaptarEvento(RespuestaRed mensaje) {
+        EventoCliente.Tipo tipo = switch (mensaje.tipo()) {
+            case PRESENCIA -> EventoCliente.Tipo.PRESENCIA;
+            case CLOSE_NOTICE -> EventoCliente.Tipo.SESION_CERRADA;
+            case MENSAJE_ENTREGADO -> EventoCliente.Tipo.ACUSE_ENTREGA;
+            case MENSAJE_LEIDO -> EventoCliente.Tipo.ACUSE_LECTURA;
+            default -> EventoCliente.Tipo.MENSAJE;
+        };
+        return new EventoCliente(tipo, mensaje.remitente(), mensaje.destinatario());
+    }
+
+    // ------------------------------------------- PAT-03: estado de conexión
+
+    private volatile EstadoConexion estadoConexion = EstadoConexion.SIN_RED;
+    private final List<Consumer<EstadoConexion>> observadoresEstado =
+            new CopyOnWriteArrayList<>();
+
+    /** Estado actual de la conexión (UIX-00c: antes solo se sondeaba). */
+    public EstadoConexion estadoConexion() {
+        return estadoConexion;
+    }
+
+    /**
+     * La UI se suscribe a los cambios de estado. Se entrega el estado actual de
+     * inmediato, para que quien se suscriba tarde no se quede sin pintar.
+     */
+    public void alCambiarEstado(Consumer<EstadoConexion> observador) {
+        observadoresEstado.add(observador);
+        observador.accept(estadoConexion);
+    }
+
+    public void quitarObservadorEstado(Consumer<EstadoConexion> observador) {
+        observadoresEstado.remove(observador);
+    }
+
+    private void cambiarEstado(EstadoConexion nuevo) {
+        if (nuevo == estadoConexion) {
+            return;
+        }
+        EstadoConexion anterior = estadoConexion;
+        estadoConexion = nuevo;
+        LOG.fine(() -> "estado de conexión: " + anterior + " -> " + nuevo);
+        for (Consumer<EstadoConexion> obs : observadoresEstado) {
+            try {
+                obs.accept(nuevo);
+            } catch (RuntimeException e) {
+                LOG.warning("observador de estado falló: " + e.getMessage());
+            }
+        }
     }
 
     public void conectar() throws IOException {
-        red.conectar();
+        cambiarEstado(EstadoConexion.CONECTANDO);
+        try {
+            red.conectar();
+            cambiarEstado(EstadoConexion.CONECTADO);
+        } catch (IOException e) {
+            cambiarEstado(EstadoConexion.SIN_RED);
+            throw e;
+        }
     }
 
     public void desconectar() {
+        olvidarCredencialesEnMemoria();
         red.desconectar();
+        cambiarEstado(EstadoConexion.SIN_RED);
     }
 
     public void cerrarSesionRemota() {
+        olvidarCredencialesEnMemoria();
         autenticacion.olvidarSesion();
         red.desconectar();
+        cambiarEstado(EstadoConexion.SESION_CERRADA);
     }
 
     public boolean conectado() {
@@ -160,33 +259,80 @@ public final class FachadaCliente {
     }
 
     public boolean login(String codigo, String contrasena) throws Exception {
+        olvidarCredencialesEnMemoria();
         historial.prepararCuenta(codigo);
         if (!red.conectado()) {
-            red.conectar();
+            conectar();
         }
         boolean ok = autenticacion.login(codigo, contrasena);
         if (ok) {
+            gestorReconexion.guardarSesion(codigo, contrasena);
+            cambiarEstado(EstadoConexion.CONECTADO);
             asegurarEnCache(codigo);
             reintentarPendientes();
             iniciarFlushPendientes(INTERVALO_FLUSH_SEGUNDOS);
+        } else {
+            olvidarCredencialesEnMemoria();
         }
         return ok;
     }
 
     public void logout() throws Exception {
+        olvidarCredencialesEnMemoria();
         detenerFlushPendientes();
         autenticacion.logout();
         red.desconectar();
+        cambiarEstado(EstadoConexion.SESION_CERRADA);
     }
 
     public String codigoActual() {
         return autenticacion.codigoActual();
     }
 
+    /**
+     * Espera incremental: 1, 2, 4, 8, 16 y luego 30 segundos.
+     * Fase 4: delega a {@link GestorReconexionSesion#esperaSegundos}.
+     */
+    public static int esperaReconexionSegundos(int intento) {
+        return GestorReconexionSesion.esperaSegundos(intento);
+    }
+
+    private void programarReconexion() {
+        gestorReconexion.programarReconexion();
+    }
+
+    private void olvidarCredencialesEnMemoria() {
+        gestorReconexion.olvidarSesion();
+    }
+
+    private void alRestaurarSesion(String codigo) {
+        try {
+            asegurarEnCache(codigo);
+        } catch (Exception e) {
+            throw new IllegalStateException("no se pudo restaurar la caché de usuarios", e);
+        }
+        try {
+            sincronizarDirectorio();
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "No se sincronizó el directorio al reconectar", e);
+        }
+        try {
+            refrescarPresencia();
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "No se actualizó presencia al reconectar", e);
+        }
+        try {
+            reintentarPendientes();
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "Quedaron envíos pendientes tras reconectar", e);
+        }
+        iniciarFlushPendientes(INTERVALO_FLUSH_SEGUNDOS);
+    }
+
     /** Conectados del servidor + refresco de la caché local. */
     public List<String> listarConectados() throws Exception {
         exigirSesion();
-        Mensaje respuesta = red.listarConectados();
+        RespuestaRed respuesta = red.listarConectados();
         List<String> conectados = respuesta.usuariosConectados() != null
                 ? respuesta.usuariosConectados() : List.of();
         cache.marcarConectados(conectados);
@@ -204,35 +350,15 @@ public final class FachadaCliente {
     /** Carga el directorio completo solo al entrar o bajo actualización manual. */
     public List<UsuarioLocal> sincronizarDirectorio() throws Exception {
         exigirSesion();
-        Mensaje respuesta = red.listarUsuarios();
-        if (respuesta.tipo() != TipoMensaje.LISTAR_USUARIOS_RESPUESTA
+        RespuestaRed respuesta = red.listarUsuarios();
+        if (respuesta.tipo() != TipoMensajeCliente.LISTAR_USUARIOS_RESPUESTA
                 || respuesta.contenido() == null || respuesta.contenido().isBlank()) {
             throw new IllegalStateException("directorio de usuarios no disponible");
         }
-        com.google.gson.JsonArray filas;
-        try {
-            filas = com.google.gson.JsonParser.parseString(respuesta.contenido()).getAsJsonArray();
-        } catch (Exception e) {
-            throw new IllegalStateException("directorio de usuarios ilegible", e);
-        }
-        String ahora = LocalDateTime.now().toString();
-        List<UsuarioLocal> usuarios = new ArrayList<>();
-        boolean incluyeSesion = false;
-        for (com.google.gson.JsonElement fila : filas) {
-            if (!fila.isJsonObject()) {
-                continue;
-            }
-            com.google.gson.JsonObject u = fila.getAsJsonObject();
-            String codigo = texto(u, "codigo");
-            if (codigo == null || codigo.isBlank()) {
-                continue;
-            }
-            usuarios.add(new UsuarioLocal(codigo,
-                    valorONada(texto(u, "nombres")), valorONada(texto(u, "apellidos")),
-                    valorONada(texto(u, "programa")), booleano(u, "conectado"),
-                    ahora, ahora));
-            incluyeSesion |= codigo.equals(codigoActual());
-        }
+        List<UsuarioLocal> usuarios = mapeadorDatosServidor
+                .mapearDirectorio(respuesta.contenido());
+        boolean incluyeSesion = usuarios.stream()
+                .anyMatch(usuario -> usuario.codigo().equals(codigoActual()));
         if (usuarios.isEmpty() || !incluyeSesion) {
             throw new IllegalStateException("directorio incompleto; se conserva la caché local");
         }
@@ -243,112 +369,33 @@ public final class FachadaCliente {
     /**
      * Chat 1-a-1 texto: con red envía y guarda; sin red guarda + pendiente.
      * Devuelve true si salió por red.
+     * Fase 4: delega al {@link CoordinadorMensajeriaCliente}.
      */
     public boolean enviarTexto(String destinatario, String contenido) throws Exception {
         exigirSesion();
-        ValidacionCliente.destinatario(destinatario);
-        ValidacionCliente.contenido(contenido);
-        String id = java.util.UUID.randomUUID().toString();
-        String ahora = LocalDateTime.now().toString();
-        historial.guardar(new MensajeLocal(id, codigoActual(), destinatario,
-                TipoMensaje.MENSAJE_TEXTO.name(), contenido, null, contenido.length(),
-                contarPalabras(contenido), null, null, null, ahora, true, true,
-                EstadoMensaje.PENDIENTE.name()));
-        try {
-            Mensaje ack = red.enviarTexto(id, codigoActual(), destinatario, contenido);
-            if (!Boolean.TRUE.equals(ack.exito())) {
-                throw new IllegalStateException(ack.mensajeError() != null
-                        ? ack.mensajeError() : "envio rechazado");
-            }
-            historial.marcarEstado(id, EstadoMensaje.ENVIADO.name());
-            return true;
-        } catch (IOException sinRed) {
-            historial.marcarEstado(id, EstadoMensaje.PENDIENTE.name());
-            historial.registrarPendiente(new PendienteEnvio(id,
-                    TipoMensaje.MENSAJE_TEXTO.name(), codigoActual(), destinatario,
-                    contenido, null, null, ahora, 0, sinRed.getMessage()));
-            return false;
-        } catch (RuntimeException rechazo) {
-            historial.marcarEstado(id, EstadoMensaje.ERROR.name());
-            throw rechazo;
-        }
+        return coordinadorMensajeria.enviarTexto(codigoActual(), destinatario, contenido);
     }
 
-    /** Chat 1-a-1 imagen con preview previa en la UI (bytes ya elegidos). */
+    /**
+     * Chat 1-a-1 imagen con preview previa en la UI (bytes ya elegidos).
+     * Fase 4: delega al {@link CoordinadorMensajeriaCliente}.
+     */
     public boolean enviarImagen(String destinatario, byte[] bytes,
                                 String nombreArchivo, String mime) throws Exception {
         exigirSesion();
-        ValidacionCliente.destinatario(destinatario);
-        ValidacionCliente.imagen(bytes);
-        String id = java.util.UUID.randomUUID().toString();
-        String ahora = LocalDateTime.now().toString();
-        String base64 = Base64.getEncoder().encodeToString(bytes);
-        historial.guardar(new MensajeLocal(id, codigoActual(), destinatario,
-                TipoMensaje.MENSAJE_IMAGEN.name(), base64, null, null, null,
-                nombreArchivo, null, (long) bytes.length, ahora, true, true,
-                EstadoMensaje.PENDIENTE.name()));
-        try {
-            Mensaje resultado = red.enviarImagen(id, codigoActual(), destinatario,
-                    nombreArchivo, mime, base64);
-            if (!Boolean.TRUE.equals(resultado.exito())
-                    && resultado.tipo() != TipoMensaje.IMAGE_FILTERED_RESULT) {
-                throw new IllegalStateException(resultado.mensajeError() != null
-                        ? resultado.mensajeError() : "envio rechazado");
-            }
-            if (resultado.archivoId() != null) {
-                historial.actualizarArchivoId(id, resultado.archivoId());
-            }
-            historial.marcarEstado(id, EstadoMensaje.ENVIADO.name());
-            return true;
-        } catch (IOException sinRed) {
-            historial.marcarEstado(id, EstadoMensaje.PENDIENTE.name());
-            historial.registrarPendiente(new PendienteEnvio(id,
-                    TipoMensaje.MENSAJE_IMAGEN.name(), codigoActual(), destinatario,
-                    null, nombreArchivo, bytes, ahora, 0, sinRed.getMessage()));
-            return false;
-        } catch (RuntimeException rechazo) {
-            historial.marcarEstado(id, EstadoMensaje.ERROR.name());
-            throw rechazo;
-        }
+        return coordinadorMensajeria.enviarImagen(codigoActual(), destinatario, bytes,
+                nombreArchivo, mime);
     }
 
-    /** Chat 1-a-1 archivo generico (PDF, docs, zip): mismo flujo que imagen. */
+    /**
+     * Chat 1-a-1 archivo generico (PDF, docs, zip): mismo flujo que imagen.
+     * Fase 4: delega al {@link CoordinadorMensajeriaCliente}.
+     */
     public boolean enviarArchivo(String destinatario, byte[] bytes,
                                  String nombreArchivo, String mime) throws Exception {
         exigirSesion();
-        ValidacionCliente.destinatario(destinatario);
-        if (bytes == null || bytes.length == 0) {
-            throw new IllegalArgumentException("el archivo esta vacio");
-        }
-        String id = java.util.UUID.randomUUID().toString();
-        String ahora = LocalDateTime.now().toString();
-        String base64 = Base64.getEncoder().encodeToString(bytes);
-        historial.guardar(new MensajeLocal(id, codigoActual(), destinatario,
-                TipoMensaje.MENSAJE_ARCHIVO.name(), base64, null, null, null,
-                nombreArchivo, null, (long) bytes.length, ahora, true, true,
-                EstadoMensaje.PENDIENTE.name()));
-        try {
-            Mensaje resultado = red.enviarArchivo(id, codigoActual(), destinatario,
-                    nombreArchivo, mime == null ? "application/octet-stream" : mime, base64);
-            if (!Boolean.TRUE.equals(resultado.exito())) {
-                throw new IllegalStateException(resultado.mensajeError() != null
-                        ? resultado.mensajeError() : "envio rechazado");
-            }
-            if (resultado.archivoId() != null) {
-                historial.actualizarArchivoId(id, resultado.archivoId());
-            }
-            historial.marcarEstado(id, EstadoMensaje.ENVIADO.name());
-            return true;
-        } catch (IOException sinRed) {
-            historial.marcarEstado(id, EstadoMensaje.PENDIENTE.name());
-            historial.registrarPendiente(new PendienteEnvio(id,
-                    TipoMensaje.MENSAJE_ARCHIVO.name(), codigoActual(), destinatario,
-                    null, nombreArchivo, bytes, ahora, 0, sinRed.getMessage()));
-            return false;
-        } catch (RuntimeException rechazo) {
-            historial.marcarEstado(id, EstadoMensaje.ERROR.name());
-            throw rechazo;
-        }
+        return coordinadorMensajeria.enviarArchivo(codigoActual(), destinatario, bytes,
+                nombreArchivo, mime);
     }
 
     /** Broadcast a todos los conectados (req. servidor #9). */
@@ -357,11 +404,11 @@ public final class FachadaCliente {
         ValidacionCliente.contenido(contenido);
         String id = java.util.UUID.randomUUID().toString();
         historial.guardar(new MensajeLocal(id, codigoActual(),
-                DESTINO_BROADCAST, TipoMensaje.BROADCAST.name(), contenido, null,
+                DESTINO_BROADCAST, TipoMensajeCliente.BROADCAST.name(), contenido, null,
                 contenido.length(), contarPalabras(contenido), null, null, null,
                 LocalDateTime.now().toString(), true, true, EstadoMensaje.PENDIENTE.name()));
         try {
-            Mensaje ack = red.difundir(id, codigoActual(), contenido);
+            RespuestaRed ack = red.difundir(id, codigoActual(), contenido);
             if (!Boolean.TRUE.equals(ack.exito())) {
                 throw new IllegalStateException(ack.mensajeError() != null
                         ? ack.mensajeError() : "difusion rechazada");
@@ -426,7 +473,7 @@ public final class FachadaCliente {
 
     /** FASE 13.9: bytes de UN mensaje (miniatura visible), nunca la lista. */
     public java.util.Optional<String> blobMensaje(String idMensaje) throws Exception {
-        return historial.blobPorId(idMensaje);
+        return coordinadorHistorial.blobMensaje(idMensaje);
     }
 
     /** Marca como leídos los entrantes y conserva cada acuse hasta enviarlo. */
@@ -437,7 +484,7 @@ public final class FachadaCliente {
             String idPendiente = "lectura:" + idMensaje;
             if (historial.pendientePorId(idPendiente).isEmpty()) {
                 historial.registrarPendiente(new PendienteEnvio(idPendiente,
-                        TipoMensaje.MENSAJE_LEIDO.name(), codigoActual(), otro,
+                        TipoMensajeCliente.MENSAJE_LEIDO.name(), codigoActual(), otro,
                         idMensaje, null, null, LocalDateTime.now().toString(), 0, null));
             }
         }
@@ -462,15 +509,11 @@ public final class FachadaCliente {
         red.expulsar(codigoActual());
     }
 
-    public int sesionesInfo() {
-        return -1;
-    }
-
     /** Historial offline paginado (más reciente primero, como el contrato). */
     public List<MensajeLocal> conversacion(String otro, int limite, int offset) throws Exception {
         exigirSesion();
         long inicio = System.nanoTime();
-        List<MensajeLocal> pagina = historial.pagina(codigoActual(), otro, limite, offset);
+        List<MensajeLocal> pagina = coordinadorHistorial.conversacion(codigoActual(), otro, limite, offset);
         List<MensajeLocal> cronologica = new ArrayList<>(pagina);
         java.util.Collections.reverse(cronologica);
         LOG.fine(() -> "[perf] conversacion=" + entre(System.nanoTime(), inicio)
@@ -480,17 +523,16 @@ public final class FachadaCliente {
 
     public int contarConversacion(String otro) throws Exception {
         exigirSesion();
-        return historial.contar(codigoActual(), otro);
+        return coordinadorHistorial.contarConversacion(codigoActual(), otro);
     }
 
-    /** FASE 6 — Solicitar página del historial remoto al servidor. */
-    public Mensaje solicitarHistorialServidor(String destinatario, int pagina) throws Exception {
+    /**
+     * UIX-06: ids de mensajes con el patrón (de más nuevo a más viejo,
+     * tope 200). La vista salta entre ellos sin traer el historial entero.
+     */
+    public List<String> buscarEnHistorial(String otro, String patron) throws Exception {
         exigirSesion();
-        return red.solicitarHistorial(codigoActual(), destinatario, pagina);
-    }
-
-    /** Resultado de una página remota ya persistida en H2. */
-    public record PaginaRemota(int recibidos, int pagina, int totalPaginas) {
+        return coordinadorHistorial.buscarEnHistorial(codigoActual(), otro, patron, 200);
     }
 
     /**
@@ -498,44 +540,24 @@ public final class FachadaCliente {
      * la persiste (upsert por id) y registra `archivoId` para descargas.
      * Llamar en hilo de fondo: `pedir()` bloquea hasta 15 s.
      */
-    public PaginaRemota traerHistorial(String otro, int pagina) throws Exception {
+    public PaginaHistorialRemota traerHistorial(String otro, int pagina) throws Exception {
         exigirSesion();
         long inicio = System.nanoTime();
-        Mensaje respuesta = red.solicitarHistorial(codigoActual(), otro, pagina);
+        RespuestaRed respuesta = red.solicitarHistorial(codigoActual(), otro, pagina);
         if (!Boolean.TRUE.equals(respuesta.exito())) {
             throw new IllegalStateException(respuesta.mensajeError() != null
                     ? respuesta.mensajeError() : "historial rechazado");
         }
-        int recibidos = 0;
-        String json = respuesta.contenido();
-        if (json != null && !json.isBlank()) {
-            com.google.gson.JsonArray filas;
-            try {
-                filas = com.google.gson.JsonParser.parseString(json).getAsJsonArray();
-            } catch (Exception e) {
-                throw new IllegalStateException("pagina remota ilegible", e);
-            }
-            for (com.google.gson.JsonElement fila : filas) {
-                com.google.gson.JsonObject o = fila.getAsJsonObject();
-                String id = texto(o, "id");
-                if (id == null) {
-                    continue;
-                }
-                historial.guardar(new MensajeLocal(id,
-                        texto(o, "remitente"), texto(o, "destinatario"), texto(o, "tipo"),
-                        texto(o, "contenido"), texto(o, "hashSha256"),
-                        entero(o, "numCaracteres"), entero(o, "numPalabras"),
-                        texto(o, "nombreArchivo"), null, largo(o, "tamanoArchivo"),
-                        texto(o, "fechaEnvio") != null ? texto(o, "fechaEnvio")
-                                : LocalDateTime.now().toString(),
-                        false, false, EstadoMensaje.ENTREGADO.name(), texto(o, "archivoId")));
-                recibidos++;
-            }
+        List<MensajeLocal> mensajes = mapeadorDatosServidor
+                .mapearPaginaHistorial(respuesta.contenido(), codigoActual());
+        for (MensajeLocal mensaje : mensajes) {
+            historial.guardar(mensaje);
         }
+        int recibidos = mensajes.size();
         int total = respuesta.totalPaginas() != null ? respuesta.totalPaginas() : 0;
         LOG.fine("[perf] historialRemoto pag=" + pagina + " recibidos=" + recibidos
                 + " en " + entre(System.nanoTime(), inicio) + "ms");
-        return new PaginaRemota(recibidos, pagina, total);
+        return new PaginaHistorialRemota(recibidos, pagina, total);
     }
 
     /**
@@ -553,7 +575,7 @@ public final class FachadaCliente {
             throw new IllegalStateException(
                     "metadatos de imagen pendientes; actualiza esta página del historial");
         }
-        Mensaje respuesta = red.descargarArchivo(archivoId);
+        RespuestaRed respuesta = red.descargarArchivo(archivoId);
         if (!Boolean.TRUE.equals(respuesta.exito()) || respuesta.contenidoImagen() == null) {
             throw new IllegalStateException(respuesta.mensajeError() != null
                     ? respuesta.mensajeError() : "descarga rechazada");
@@ -564,40 +586,20 @@ public final class FachadaCliente {
         return bytes;
     }
 
-    private static String texto(com.google.gson.JsonObject o, String campo) {
-        return o.has(campo) && !o.get(campo).isJsonNull() ? o.get(campo).getAsString() : null;
-    }
-
-    private static String valorONada(String valor) {
-        return valor == null ? "" : valor;
-    }
-
-    private static boolean booleano(com.google.gson.JsonObject o, String campo) {
-        try {
-            return o.has(campo) && !o.get(campo).isJsonNull() && o.get(campo).getAsBoolean();
-        } catch (Exception e) {
-            return false;
+    /** Descarga un adjunto sin exponer el DTO de red a la presentación. */
+    @Override
+    public byte[] descargarContenidoArchivo(String archivoId) throws Exception {
+        exigirSesion();
+        RespuestaRed respuesta = red.descargarArchivo(archivoId);
+        if (!Boolean.TRUE.equals(respuesta.exito()) || respuesta.contenidoImagen() == null) {
+            throw new IllegalStateException(respuesta.mensajeError() != null
+                    ? respuesta.mensajeError() : "descarga no disponible");
         }
-    }
-
-    private static Integer entero(com.google.gson.JsonObject o, String campo) {
-        try {
-            return o.has(campo) && !o.get(campo).isJsonNull() ? o.get(campo).getAsInt() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static Long largo(com.google.gson.JsonObject o, String campo) {
-        try {
-            return o.has(campo) && !o.get(campo).isJsonNull() ? o.get(campo).getAsLong() : null;
-        } catch (Exception e) {
-            return null;
-        }
+        return Base64.getDecoder().decode(respuesta.contenidoImagen());
     }
 
     /** FASE 6 — Descargar archivo (imagen) del servidor bajo demanda. */
-    public Mensaje descargarArchivo(String archivoId) throws Exception {
+    public RespuestaRed descargarArchivo(String archivoId) throws Exception {
         exigirSesion();
         return red.descargarArchivo(archivoId);
     }
@@ -614,24 +616,24 @@ public final class FachadaCliente {
         int enviados = 0;
         for (PendienteEnvio pendiente : historial.pendientes()) {
             try {
-                if (TipoMensaje.MENSAJE_LEIDO.name().equals(pendiente.tipo())) {
-                    Mensaje ack = red.enviarLectura(
+                if (TipoMensajeCliente.MENSAJE_LEIDO.name().equals(pendiente.tipo())) {
+                    RespuestaRed ack = red.enviarLectura(
                             pendiente.origen(), pendiente.destino(), pendiente.contenido());
                     exigirExito(ack, "acuse de lectura rechazado");
-                } else if (TipoMensaje.MENSAJE_IMAGEN.name().equals(pendiente.tipo())) {
+                } else if (TipoMensajeCliente.MENSAJE_IMAGEN.name().equals(pendiente.tipo())) {
                     String base64 = pendiente.payload() == null ? ""
                             : Base64.getEncoder().encodeToString(pendiente.payload());
-                    Mensaje ack = red.enviarImagen(pendiente.id(), pendiente.origen(), pendiente.destino(),
+                    RespuestaRed ack = red.enviarImagen(pendiente.id(), pendiente.origen(), pendiente.destino(),
                             pendiente.nombreArchivo(), "application/octet-stream", base64);
                     exigirExito(ack, "reenvio de imagen rechazado");
                     if (ack.archivoId() != null) {
                         historial.actualizarArchivoId(pendiente.id(), ack.archivoId());
                     }
                     historial.marcarEstado(pendiente.id(), EstadoMensaje.ENVIADO.name());
-                } else if (TipoMensaje.MENSAJE_ARCHIVO.name().equals(pendiente.tipo())) {
+                } else if (TipoMensajeCliente.MENSAJE_ARCHIVO.name().equals(pendiente.tipo())) {
                     String base64 = pendiente.payload() == null ? ""
                             : Base64.getEncoder().encodeToString(pendiente.payload());
-                    Mensaje ack = red.enviarArchivo(pendiente.id(), pendiente.origen(), pendiente.destino(),
+                    RespuestaRed ack = red.enviarArchivo(pendiente.id(), pendiente.origen(), pendiente.destino(),
                             pendiente.nombreArchivo(), "application/octet-stream", base64);
                     if (!Boolean.TRUE.equals(ack.exito())) {
                         throw new IllegalStateException(ack.mensajeError() != null
@@ -642,7 +644,7 @@ public final class FachadaCliente {
                     }
                     historial.marcarEstado(pendiente.id(), EstadoMensaje.ENVIADO.name());
                 } else {
-                    Mensaje ack = red.enviarTexto(pendiente.id(), pendiente.origen(),
+                    RespuestaRed ack = red.enviarTexto(pendiente.id(), pendiente.origen(),
                             pendiente.destino(), pendiente.contenido());
                     exigirExito(ack, "reenvio de mensaje rechazado");
                     historial.marcarEstado(pendiente.id(), EstadoMensaje.ENVIADO.name());
@@ -677,9 +679,9 @@ public final class FachadaCliente {
         }
     }
 
-    private static void exigirExito(Mensaje respuesta, String error) {
+    private static void exigirExito(RespuestaRed respuesta, String error) {
         if (!Boolean.TRUE.equals(respuesta.exito())
-                && respuesta.tipo() != TipoMensaje.IMAGE_FILTERED_RESULT) {
+                && respuesta.tipo() != TipoMensajeCliente.IMAGE_FILTERED_RESULT) {
             throw new IllegalStateException(respuesta.mensajeError() != null
                     ? respuesta.mensajeError() : error);
         }
@@ -698,19 +700,19 @@ public final class FachadaCliente {
     private final class ReceptorInterno implements ReceptorMensajes {
 
         @Override
-        public void alRecibir(Mensaje mensaje) {
+        public void alRecibir(RespuestaRed mensaje) {
             try {
-                if (mensaje.tipo() == TipoMensaje.MENSAJE_ENTREGADO) {
+                if (mensaje.tipo() == TipoMensajeCliente.MENSAJE_ENTREGADO) {
                     if (mensaje.contenido() != null) {
                         historial.marcarEstado(mensaje.contenido(),
                                 EstadoMensaje.ENTREGADO.name());
                     }
-                } else if (mensaje.tipo() == TipoMensaje.MENSAJE_LEIDO) {
+                } else if (mensaje.tipo() == TipoMensajeCliente.MENSAJE_LEIDO) {
                     if (mensaje.contenido() != null) {
                         historial.marcarEstado(mensaje.contenido(),
                                 EstadoMensaje.LEIDO.name());
                     }
-                } else if (mensaje.tipo() == TipoMensaje.PRESENCIA) {
+                } else if (mensaje.tipo() == TipoMensajeCliente.PRESENCIA) {
                     if (mensaje.codigo() != null) {
                         asegurarEnCache(mensaje.codigo());
                     }
@@ -721,24 +723,27 @@ public final class FachadaCliente {
                             // presencia best-effort
                         }
                     }
-                } else if (mensaje.tipo() == TipoMensaje.MENSAJE_TEXTO
-                        || mensaje.tipo() == TipoMensaje.MENSAJE_IMAGEN
-                        || mensaje.tipo() == TipoMensaje.MENSAJE_ARCHIVO
-                        || mensaje.tipo() == TipoMensaje.BROADCAST
-                        || mensaje.tipo() == TipoMensaje.SYNC_LOGIN) {
+                } else if (mensaje.tipo() == TipoMensajeCliente.MENSAJE_TEXTO
+                        || mensaje.tipo() == TipoMensajeCliente.MENSAJE_IMAGEN
+                        || mensaje.tipo() == TipoMensajeCliente.MENSAJE_ARCHIVO
+                        || mensaje.tipo() == TipoMensajeCliente.BROADCAST
+                        || mensaje.tipo() == TipoMensajeCliente.SYNC_LOGIN) {
                     // Lo entrante siempre es (remitente → yo): así el broadcast
                     // recibido aparece en la conversación con su remitente.
                     String yo = codigoActual();
                     String destino = yo != null ? yo : mensaje.destinatario();
                     String cuerpo = mensaje.contenido();
-                    if ((mensaje.tipo() == TipoMensaje.MENSAJE_IMAGEN
-                            || mensaje.tipo() == TipoMensaje.MENSAJE_ARCHIVO)
+                    if ((mensaje.tipo() == TipoMensajeCliente.MENSAJE_IMAGEN
+                            || mensaje.tipo() == TipoMensajeCliente.MENSAJE_ARCHIVO)
                             && mensaje.contenidoImagen() != null) {
                         cuerpo = mensaje.contenidoImagen();
                     }
                     historial.guardar(new MensajeLocal(
                             mensaje.id() != null ? mensaje.id() : UUID.randomUUID().toString(),
-                            mensaje.remitente(), destino, mensaje.tipo().name(),
+                            mensaje.remitente(), destino,
+                            mensaje.tipo() == TipoMensajeCliente.SYNC_LOGIN
+                                    ? mapeadorDatosServidor.normalizarTipoMensaje(
+                                            mensaje.tipoOriginal()) : mensaje.tipo().name(),
                             cuerpo, mensaje.hashSha256(),
                             mensaje.numCaracteres(), mensaje.numPalabras(),
                             mensaje.nombreArchivo(), null, mensaje.tamanoArchivo(),
@@ -754,24 +759,48 @@ public final class FachadaCliente {
                     }
                 }
             } catch (Exception e) {
-                // persistir no puede tumbar al lector: se reporta y sigue con el aviso
+                // PAT-03/UIX-00d: persistir no puede tumbar al lector, pero el
+                // fallo ya no se traga en silencio. El aviso a la vista va DESPUES
+                // de este bloque, asi que el mensaje igualmente se pinta en
+                // pantalla; lo que faltaba era que nadie lo supiera.
+                // Ojo: una base local en solo lectura NO es "sin red", asi que
+                // aqui no se toca el estado de conexion.
+                LOG.warning("no se pudo persistir la trama " + mensaje.tipo()
+                        + ": " + e.getMessage());
             }
-            suscriptores.forEach(obs -> obs.accept(mensaje));
+            publicarEvento(mensaje);
         }
 
         @Override
-        public void alCierre(Mensaje aviso) {
-            suscriptores.forEach(obs -> obs.accept(aviso));
+        public void alCierre(RespuestaRed aviso) {
+            // PAT-03: CLOSE_NOTICE es "el servidor cerró mi sesión", no una caída
+            // de red. Distinguirlo permite que la UI no ofrezca "reintentar" en un
+            // sitio donde lo que hace falta es volver a entrar.
+            olvidarCredencialesEnMemoria();
+            cambiarEstado(EstadoConexion.SESION_CERRADA);
+            publicarEvento(aviso);
         }
 
         @Override
         public void alError(String motivo) {
-            // ruido asíncrono: la UI lo ignora (los errores de solicitud van por futuro)
+            // PAT-03/UIX-00c: esto ya no es un comentario. Un ERROR de trama es un
+            // fallo de una petición, no del socket: se registra y se propaga a la UI
+            // como estado degradado solo si además no hay socket vivo.
+            LOG.warning("error del servidor: " + motivo);
+            if (!red.conectado()) {
+                cambiarEstado(EstadoConexion.SIN_RED);
+            }
         }
 
         @Override
         public void alDesconexion() {
-            // la UI lo nota por suscriptores? se re-conecta manual: sin-op documentado
+            // PAT-03/UIX-00c: el hilo lector murió. Aquí se.enteraba la UI por
+            // sondeo cada 30 s; ahora es un evento.
+            LOG.info("conexión con el servidor perdida");
+            if (estadoConexion != EstadoConexion.SESION_CERRADA) {
+                cambiarEstado(EstadoConexion.SIN_RED);
+                programarReconexion();
+            }
         }
     }
 }

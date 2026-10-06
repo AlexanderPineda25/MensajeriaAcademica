@@ -69,7 +69,7 @@ Convenciones: `→` en el botón de entrar, `✕` para quitar cita/adjunto,
 | Tarjeta de cita | cabecera `Respondiendo a` + `Respuesta a {autor}: "{extracto}"` (150 car. máx.) + `✕` (`Cancelar respuesta`) | `Respuesta a {autor}: "{extracto}"` (120 car. + `…`) + `✕` | `Respuesta a {autor}: "{extracto}"` (120 car. + `…`) + `✕` | Patrón `Respuesta a {autor}: "{extracto}"` + botón `✕`; la cabecera `Respondiendo a` solo existe en Java (se conserva) |
 | Cita de imagen/archivo | `[Imagen: {nombre}]` / nombre de archivo | `[Imagen: {nombre}]` | nombre de archivo | `Respuesta a …` con el nombre entre `[Imagen: …]` para imágenes; para archivos, el nombre tal cual |
 | Barra adjunto | `{nombre}[ (archivo generico)]` + miniatura + `✕` (`Quitar imagen adjunta`) | `{nombre} ({tamaño})` + miniatura + `✕ Quitar` | imagen: `Adjunta: {nombre} (arrastra otra para reemplazar)` + vista previa + `Quitar`; archivo: `Archivo: {nombre} ({bytes} bytes)` + `Quitar` | Botón `Quitar` (Python antepone `✕` por su set de botones); el texto descriptivo del adjunto es libre por cliente pero siempre incluye el nombre |
-| Límite 50 MiB | `Máximo 50 MiB` (en estado) | — (sin tope local; el servidor rechaza) | `El archivo supera el máximo de 50 MB ({bytes} bytes).` (título `Adjunto no válido`) | El número `50 MB/MiB` es el mismo límite; cada cliente conserva su vía de aviso |
+| Límite 50 MiB | `Máximo 50 MiB` (en estado) | — (sin tope local; el servidor rechaza) | aviso inline `Atención`: `El archivo supera el máximo de 50 MB ({bytes} bytes).` | El número `50 MB/MiB` es el mismo límite; cada cliente conserva su vía de aviso |
 | Diálogo abrir | `Elegir archivo (imagen, PDF, documento...)` | `Seleccionar archivo` | Sin título (filtros `Imágenes\|…` / `Todos los archivos\|*.*`) | Título libre por cliente; los filtros deben ofrecer imágenes + todos los archivos |
 | Sin conversación al adjuntar | — (el botón existe sin destino; el envío exige destino) | título `Seleccionar conversación`, `Selecciona una conversación primero.` | Silencio (retorno temprano; punto 2) | `Selecciona una conversación primero.` donde haya aviso; no se unifica el mecanismo |
 
@@ -91,12 +91,14 @@ Convenciones: `→` en el botón de entrar, `✕` para quitar cita/adjunto,
 |---|---|---|---|---|
 | Cerrar chat (volver al inicio) | pregunta `¿Deseas cerrar esta sesión y volver al inicio?`, título `Confirmar salida`, defecto `No` | = (título `Confirmar salida`, defecto `No`) | = (título `Confirmar salida`, defecto `No`) | `¿Deseas cerrar esta sesión y volver al inicio?` / `Confirmar salida` |
 | Salir en todos | Sin confirmación propia: ejecuta y vuelve al inicio con estado `Se solicitó cerrar tus otras sesiones` | pregunta `¿Cerrar todas las sesiones de esta cuenta?`, título `Confirmar salida`, defecto `No` | pregunta `¿Cerrar todas las sesiones de esta cuenta?`, título `Confirmar salida`, defecto `No` | `¿Cerrar todas las sesiones de esta cuenta?` / `Confirmar salida` donde exista confirmación; en Java no se añade diálogo (sería cambio de conducta) |
-| Sesión cerrada por el servidor | estado `Sesión cerrada: {motivo}` + aviso al próximo login | título `Sesión cerrada`, `{motivo}` (defecto `Sesión cerrada por el servidor.`) | título `Sesión cerrada`, `{motivo}` (defecto `sesión cerrada por el servidor`) | Título `Sesión cerrada`; motivo por defecto `Sesión cerrada por el servidor.` |
-| Envío sin red | estado `Sin red: guardado para reintentar` | banner `Sin red: guardado para reintentar` | `Sin red: guardado para reintentar.` (título `Sin conexión`) | `Sin red: guardado para reintentar` |
-| Error de envío | estado `No se completó el envío: {causa}` | banner `No se pudo enviar: {error}` | `No se pudo enviar: {mensaje}` (título `No se pudo enviar`) | Base `No se pudo enviar`; el detalle anexo es libre |
+| Sesión cerrada por el servidor | estado `Sesión cerrada: {motivo}` + aviso al próximo login | título `Sesión cerrada`, `{motivo}` (defecto `Sesión cerrada por el servidor.`) | banner inline ámbar en el login: `⏳ {motivo}` (defecto `sesión cerrada por el servidor`) | Motivo en un aviso inline del login; defecto `Sesión cerrada por el servidor.` |
+| Envío sin red | estado `Sin red: guardado para reintentar` | banner `Sin red: guardado para reintentar` | banner inline `Información`: `Sin red: guardado para reintentar.` | `Sin red: guardado para reintentar` |
+| Error de envío | estado `No se completó el envío: {causa}` | banner `No se pudo enviar: {error}` | banner inline `Error`: detalle de la excepción | Base `No se pudo enviar`; el detalle anexo es libre |
 | Guardar archivo | título `Guardar archivo` | título `Guardar archivo` | diálogo sin título (se conserva; el concepto es el mismo) | `Guardar archivo` |
-| Descarga OK | estado `Archivo guardado: {nombre}` | título `Descarga completa`, `Archivo guardado exitosamente en:\n{ruta}` | título `Descarga completa`, `Archivo guardado en {ruta}.` | Título `Descarga completa`; el mensaje incluye la ruta |
-| Descarga sin id | estado `No se pudo descargar: {causa}` | título `No se pudo descargar`, `El identificador del archivo no está disponible.` | título `No se pudo descargar`, `El servidor no entregó el identificador de este archivo.` | Título `No se pudo descargar`; el mensaje explica que falta el identificador |
+| Descarga OK | estado `Archivo guardado: {nombre}` | título `Descarga completa`, `Archivo guardado exitosamente en:\n{ruta}` | banner inline `Listo`: `Archivo guardado en {ruta}.` | Mensaje de éxito con la ruta |
+| Error de descarga | estado `No se pudo descargar: {causa}` | título `No se pudo descargar`, `El identificador del archivo no está disponible.` | banner inline `Error`: detalle de la excepción, incluido el caso sin identificador | El mensaje explica el motivo de la descarga fallida |
+| Error de adjunto | estado propio | aviso inline | banner inline `Error` o `Atención`, con el detalle de validación | El aviso aparece en el chat y puede cerrarse manualmente |
+| Error al cerrar otras sesiones | estado propio | estado propio | banner inline `Error`: detalle de la excepción | No se abre un modal de error |
 | Descargando… | estado `Descargando {nombre}…` | botón `Descargando…` → `✓ Descargado` | botón deshabilitado durante la descarga | `Descargando…` como estado transitorio; botón deshabilitado mientras dura |
 | Cierre remoto inactividad | aviso al próximo login `Sesión cerrada por inactividad (10 min), inicie de nuevo. {motivo}` | — | — | Solo Java (RF-C08); se conserva |
 
@@ -153,4 +155,26 @@ campos `#F7F9FC`, botón `#2456A6`.
    adjunto (matriz pto. 2).
 6. Salir: `¿Deseas cerrar esta sesión y volver al inicio?` /
    `Confirmar salida`; `¿Cerrar todas las sesiones de esta cuenta?` donde
-   aplique (§6); descarga OK → `Descarga completa` + ruta.
+   aplique (§6); descarga OK muestra la ruta en un aviso inline.
+
+En .NET se conservan las tres confirmaciones modales existentes. Los avisos de chat usan un banner
+inline con severidad `Error`, `Atención`, `Información` o `Listo`, permanece hasta cerrarlo o
+reemplazarlo por otro aviso, y el cierre remoto muestra el motivo en el banner ámbar del login.
+
+## 10. Consola administrativa del servidor
+
+Esta sección fija etiquetas y estados de la vista JavaFX administrativa; no cambia el protocolo TCP
+ni los textos que intercambian los clientes.
+
+| Ubicación | Texto/estado | Comportamiento |
+|---|---|---|
+| Pestaña Conectados, selector vacío | `No hay usuarios activos` | Acción `Desconectar usuario` deshabilitada si no existen sesiones activas |
+| Pestaña Conectados, acción | `Desconectar usuario` | Selector con códigos de usuarios que tienen sesiones activas |
+| Pestaña Mensajes | `Caracteres` y `Palabras` | Valores presentados como filas separadas |
+| Pestaña Mensajes, IP destino | `No disponible` | Solo cuando el destinatario no tiene sesión activa; las IP actuales no se presentan como históricas |
+| Pestaña Difundir, botón | `Enviar difusión` | Envía a todos los usuarios, incluidos los desconectados para entrega posterior |
+| Cierre de ventana administrativa con X | `¿Deseas cerrar la vista administrativa del servidor? El servicio y la consola JLine seguirán activos.` | Título `Cerrar vista del servidor`; encabezado `Salir de la vista administrativa`; confirmar solo cierra la ventana |
+| Usuarios, detalle | `Resumen`, `Conexiones`, `Mensajes`, `Archivos` | Ficha abre al hacer doble clic y pagina mensajes/archivos de 50 en 50 |
+
+Las demás etiquetas de pestaña son `Estado`, `Conectados`, `Usuarios`, `Mensajes`, `Informes`,
+`Logs`, `Pool` y `Difundir`. Los literales de cierre se cotejaron con `VistaEscritorio.java`.

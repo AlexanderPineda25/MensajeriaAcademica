@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Windows;
+using Mensajeria.Transversal;
 
 namespace Mensajeria.Temas
 {
@@ -12,42 +11,18 @@ namespace Mensajeria.Temas
         public const string Oscuro = "oscuro";
         public const string Claro = "claro";
         private const string Clave = "tema";
-        private const string Fichero = "client.properties";
 
         public static string Normalizar(string? modo) =>
             modo == Claro ? Claro : Oscuro;
 
         public static string Leer()
         {
-            try
-            {
-                if (File.Exists(Fichero))
-                    foreach (var linea in File.ReadAllLines(Fichero))
-                    {
-                        var t = linea.Trim();
-                        if (t.StartsWith(Clave + "="))
-                            return Normalizar(t.Substring(Clave.Length + 1).Trim());
-                    }
-            }
-            catch { }
-            return Oscuro;
+            return Normalizar(ClienteConfig.Valor(Clave, Oscuro));
         }
 
         public static void Guardar(string modo)
         {
-            try
-            {
-                string valor = Normalizar(modo);
-                var lineas = File.Exists(Fichero)
-                    ? File.ReadAllLines(Fichero).ToList() : new List<string>();
-                bool puesta = false;
-                for (int i = 0; i < lineas.Count; i++)
-                    if (lineas[i].Trim().StartsWith(Clave + "="))
-                    { lineas[i] = $"{Clave}={valor}"; puesta = true; }
-                if (!puesta) lineas.Add($"{Clave}={valor}");
-                File.WriteAllLines(Fichero, lineas);
-            }
-            catch { }
+            ClienteConfig.Guardar(Clave, Normalizar(modo));
         }
 
         public static void Aplicar(string modo)

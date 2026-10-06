@@ -19,7 +19,9 @@
     <SolidColorBrush x:Key="RemitenteBrush" Color="#FF17635B" />
     <SolidColorBrush x:Key="FechaBrush" Color="#FF687A80" />
     <SolidColorBrush x:Key="VistoLeidoBrush" Color="#FF1D9BF0" />
-    <SolidColorBrush x:Key="VistoOtroBrush" Color="#FF61717F" />
+    <!-- UIX-18: tick no-leido mas oscuro para separarlo del cuerpo
+         (#FF202124) y del leido azul (#FF1D9BF0). 5.88:1 sobre blanco. -->
+    <SolidColorBrush x:Key="VistoOtroBrush" Color="#FF57676E" />
     <SolidColorBrush x:Key="CitaBgBrush" Color="#FFE6F4F2" />
     <SolidColorBrush x:Key="CitaBorderBrush" Color="#FF147D73" />
     <SolidColorBrush x:Key="CitaTextBrush" Color="#FF147D73" />

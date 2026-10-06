@@ -6,87 +6,79 @@ title: "Casos de uso — SERVIDOR (actor Administrador)"
 %% escritorio. El usuario final solo aparece como actor secundario.
 %% Origen de los casos: REQUERIMIENTOS.md 3.1/3.2/3.6/3.7/3.8 (RF-S01..RF-S49).
 %% Correspondencia: VistaConsola.java / VistaEscritorio.java / Fabrica.java.
-usecaseDiagram
-    actor A as Administrador
-    actor U as Usuario conectado
+%% NOTA DE FORMATO: mermaid no tiene diagrama de casos de uso, asi que los
+%% actores son elipses, los casos son rectangulos agrupados por subgrafo y las
+%% inclusiones son flechas punteadas. Mismo contenido, sintaxis renderizable.
+flowchart TB
+    A(["Administrador"])
+    U(["Usuario conectado"])
 
-    rectangle "Servidor — arranque" {
-        usecase (US-01) Arrancar el sistema y abrir el puerto TCP
-        usecase (US-02) Montar el grafo de componentes y el pool
-        usecase (US-03) Cargar el archivo plano de usuarios
-        usecase (US-04) Ejecutar migraciones del esquema
-    }
+    subgraph ARR["Servidor — arranque"]
+        US01["US-01 — Arrancar el sistema y abrir el puerto TCP"]
+        US02["US-02 — Montar el grafo de componentes y el pool"]
+        US03["US-03 — Cargar el archivo plano de usuarios"]
+        US04["US-04 — Ejecutar migraciones del esquema"]
+    end
 
-    rectangle "Servidor — operación" {
-        usecase (US-10) Transmitir un mensaje entre usuarios
-        usecase (US-11) Difundir un mensaje a toda la comunidad
-        usecase (US-12) Cerrar las conexiones de un usuario
-        usecase (US-13) Expulsar las otras sesiones del usuario
-        usecase (US-14) Procesar texto: hash, caracteres, palabras
-        usecase (US-15) Procesar imagen: hash y 5 filtros encadenados
-        usecase (US-16) Perseguir un mensaje por destino
-        usecase (US-17) Registrar auditoría de cada evento
-    }
+    subgraph OPE["Servidor — operacion"]
+        US10["US-10 — Transmitir un mensaje entre usuarios"]
+        US11["US-11 — Difundir un mensaje a toda la comunidad"]
+        US12["US-12 — Cerrar las conexiones de un usuario"]
+        US13["US-13 — Expulsar las otras sesiones del usuario"]
+        US14["US-14 — Procesar texto: hash, caracteres, palabras"]
+        US15["US-15 — Procesar imagen: hash y 5 filtros encadenados"]
+        US16["US-16 — Perseguir un mensaje por destino"]
+        US17["US-17 — Registrar auditoria de cada evento"]
+    end
 
-    rectangle "Servidor — informes" {
-        usecase (US-20) Informe de usuarios registrados
-        usecase (US-21) Informe de accesos y sesiones vivas
-        usecase (US-22) Informe de mensajes enviados con detalle
-        usecase (US-23) Informe de logs generados
-        usecase (US-24) Exportar informe a CSV
-    }
+    subgraph INF["Servidor — informes"]
+        US20["US-20 — Informe de usuarios registrados"]
+        US21["US-21 — Informe de accesos y sesiones vivas"]
+        US22["US-22 — Informe de mensajes enviados con detalle"]
+        US23["US-23 — Informe de logs generados"]
+        US24["US-24 — Exportar informe a CSV"]
+    end
 
-    rectangle "Servidor — supervisión" {
-        usecase (US-30) Ver el estado del pool de trabajadores
-        usecase (US-31) Ver la consola de eventos en vivo
-        usecase (US-32) Cerrar una sesión por inactividad
-        usecase (US-33) Rechazar por saturación del pool
-        usecase (US-34) Rotar los secretos de producción
-    }
+    subgraph SUP["Servidor — supervision"]
+        US30["US-30 — Ver el estado del pool de trabajadores"]
+        US31["US-31 — Ver la consola de eventos en vivo"]
+        US32["US-32 — Cerrar una sesion por inactividad"]
+        US33["US-33 — Rechazar por saturacion del pool"]
+        US34["US-34 — Rotar los secretos de produccion"]
+    end
 
-    A -- (US-01)
-    US-01 ..> US-02
-    US-01 ..> US-03
-    US-01 ..> US-04
-    US-02 ..> US-30 : el pool se expone en la vista
+    A --> US01
+    US01 -.-> US02
+    US01 -.-> US03
+    US01 -.-> US04
+    US02 -. "el pool se expone en la vista" .-> US30
 
-    A -- (US-11)
-    US-11 ..> US-17 : cada entrega genera su auditoría
-    A -- (US-12)
-    US-12 ..> US-13 : "cerrar todas = cerrar las otras sesiones"
+    A --> US11
+    US11 -. "cada entrega genera su auditoria" .-> US17
+    A --> US12
+    US12 -. "cerrar todas = cerrar las otras sesiones" .-> US13
 
-    A -- (US-20)
-    A -- (US-21)
-    A -- (US-22)
-    A -- (US-23)
-    US-24 ..> US-22 : exporta el informe visible
-    US-24 ..> US-21
-    US-24 ..> US-20
+    A --> US20
+    A --> US21
+    A --> US22
+    A --> US23
+    US24 -. "exporta el informe visible" .-> US22
+    US24 -.-> US21
+    US24 -.-> US20
 
-    A -- (US-30)
-    A -- (US-31)
-    A -- (US-34)
+    A --> US30
+    A --> US31
+    A --> US34
 
-    U -- (US-10)
-    US-10 ..> US-14 : "texto"
-    US-10 ..> US-15 : "imagen"
-    US-10 ..> US-16 : "notifica a todas sus sesiones"
-    US-10 ..> US-17
+    U --> US10
+    US10 -. "texto" .-> US14
+    US10 -. "imagen" .-> US15
+    US10 -. "notifica a todas sus sesiones" .-> US16
+    US10 -.-> US17
 
-    US-14 ..> US-17
-    US-15 ..> US-17
-    US-16 ..> US-21 : alimenta el informe de conexiones
+    US14 -.-> US17
+    US15 -.-> US17
+    US16 -. "alimenta el informe de conexiones" .-> US21
 
-    note "Ver NOTA 1 al pie" as N1
-        El administrador es el UNICO
-        actor que difunde a todos.
-        Los clientes no tienen caso
-        de difusión (PROD por decidir).
-    end note
-
-    note "Ver NOTA 2 al pie" as N2
-        U nunca accede a la base de
-        datos: solo al puerto TCP.
-        El alta de usuarios no existe
-        por red (RF-S27).
-    end note
+    N1["NOTA 1:<br/>El administrador es el UNICO<br/>actor que difunde a todos.<br/>Los clientes no tienen caso<br/>de difusion (PROD por decidir)."]
+    N2["NOTA 2:<br/>U nunca accede a la base de<br/>datos: solo al puerto TCP.<br/>El alta de usuarios no existe<br/>por red (RF-S27)."]

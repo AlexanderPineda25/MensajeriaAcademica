@@ -5,6 +5,7 @@
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ProgressIndicator?>
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
@@ -15,12 +16,12 @@
 
 <SplitPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
            fx:controller="universidad.mensajeria.cliente.presentacion.ChatController"
-           dividerPositions="0.30" stylesheets="@../estilos/chat.css" styleClass="messenger-root">
+           dividerPositions="0.30" styleClass="messenger-root">
     <VBox styleClass="sidebar">
         <padding><Insets top="16" right="12" bottom="12" left="12"/></padding>
         <HBox alignment="CENTER_LEFT" spacing="8" styleClass="sidebar-heading">
             <Label text="Contactos" styleClass="sidebar-title" HBox.hgrow="ALWAYS"/>
-            <Button fx:id="botonRefrescar" text="↻" onAction="#alActualizar"
+            <Button text="↻" onAction="#alActualizar"
                     styleClass="icon-button" accessibleText="Actualizar usuarios"/>
         </HBox>
         <Label fx:id="etiquetaSesion" styleClass="session-label"/>
@@ -43,8 +44,27 @@
             </VBox>
             <Button fx:id="botonMas" text="↑ Cargar mensajes anteriores" onAction="#alCargarMas"
                     visible="false" managed="false" styleClass="quiet-button"/>
+            <!-- UIX-16: baja a lo nuevo sin perder el punto de lectura. -->
+            <Button fx:id="botonNuevos" onAction="#alIrANuevos"
+                    visible="false" managed="false" styleClass="quiet-button"/>
+            <!-- UIX-14: indicador de carga del historial. -->
+            <ProgressIndicator fx:id="ruedaHistorial" prefWidth="18" prefHeight="18"
+                    visible="false" managed="false"/>
         </HBox>
         <ListView fx:id="listaMensajes" VBox.vgrow="ALWAYS" styleClass="message-list"/>
+        <!-- UIX-06: buscar en el historial (Ctrl+F). Oculta hasta invocarla. -->
+        <HBox fx:id="barraBuscar" spacing="6" alignment="CENTER_LEFT"
+              visible="false" managed="false" styleClass="search-bar">
+            <TextField fx:id="campoBuscarHistorial" promptText="Buscar en el historial"
+                       HBox.hgrow="ALWAYS" styleClass="search-field"/>
+            <Button text="↑" onAction="#alBuscarAnterior" styleClass="icon-button"
+                    accessibleText="Anterior coincidencia"/>
+            <Button text="↓" onAction="#alBuscarSiguiente" styleClass="icon-button"
+                    accessibleText="Siguiente coincidencia"/>
+            <Label fx:id="etiquetaBuscarContador" text="" styleClass="session-label"/>
+            <Button text="✕" onAction="#alCerrarBuscar" styleClass="icon-button"
+                    accessibleText="Cerrar búsqueda"/>
+        </HBox>
         <Label fx:id="bannerOffline" text="⛔ Sin conexión — mensajes en cola local, se reintentan solos"
                visible="false" managed="false" styleClass="offline-banner" maxWidth="Infinity"/>
         <VBox spacing="8" styleClass="composer-area">

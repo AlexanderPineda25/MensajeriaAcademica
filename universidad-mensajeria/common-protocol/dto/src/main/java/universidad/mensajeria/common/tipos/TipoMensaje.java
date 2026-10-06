@@ -8,8 +8,10 @@ public enum TipoMensaje {
     // Autenticacion / sesion
     LOGIN,
     LOGIN_RESPUESTA,
+    // REGISTRO se conserva en el catalogo solo para responder ERROR: el alta por
+    // red esta eliminada (RF-S27, solo CSV). REGISTRO_RESPUESTA se elimino
+    // porque el servidor nunca la emitia (PROTOCOLO.md §, MUERT-08).
     REGISTRO,
-    REGISTRO_RESPUESTA,
     LOGOUT,
     CLOSE_NOTICE,
     KICK,

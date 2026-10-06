@@ -117,8 +117,10 @@ pertinente de cliente y servidor y revisa el mismo ID y tipo de trama en ambos e
 
 ### `SEC-05` — tramas sin autenticación
 
-Comprobación **manual y de bajo nivel**, porque ninguna suite la cubre hoy. Es la aceptación de
-[`SEC-05`](ESTADO_ROADMAP.md#seguridad-bloqueante).
+Esta sección conserva un procedimiento de bajo nivel para reproducir el hallazgo histórico y
+confirmar el comportamiento actual si se necesita una comprobación manual. `SEC-05` está cerrado;
+la protección principal está cubierta por pruebas parametrizadas y E2E descritas en el
+[`roadmap`](ESTADO_ROADMAP.md#seguridad-bloqueante).
 
 1. Levanta el servidor. Abre un socket TCP crudo contra `IP_SERVIDOR:5000` **sin autenticar**.
    Puedes usar PowerShell:
@@ -137,8 +139,8 @@ Comprobación **manual y de bajo nivel**, porque ninguna suite la cubre hoy. Es 
 
 2. Lee la respuesta. **Comportamiento correcto:** una trama `ERROR` con el motivo
    `autenticate primero con LOGIN`, y **ningún** dato de usuario.
-3. **Comportamiento defectuoso (el que hay hoy):** llega `LISTAR_USUARIOS_RESPUESTA` con el
-   contenido de `nombres`, `apellidos`, `programa` y `conectado` de toda la comunidad.
+3. Comportamiento anterior al arreglo: llegaba `LISTAR_USUARIOS_RESPUESTA` con datos del directorio.
+   El comportamiento vigente debe cumplir el paso 2.
 4. Repite con `LISTAR_CONECTADOS` y `LOGOUT`. Las 3 deben devolver `ERROR`.
 5. Repite los 4 pasos con **TLS** en `5001` para confirmar que el cifrado no cambia el resultado.
 
@@ -151,31 +153,36 @@ escrita a mano.
 
 ---
 
-## Estados de conexión (`SMOKE-06`, espera a `PAT-03`)
+## Estados de conexión (`SMOKE-06`; `PAT-03` implementado)
 
 Matriz de 4 estados × 3 clientes. Los 4 estados son `Conectando`, `Conectado`, `SinRed` y
 `SesionCerrada`.
 
 | Transición | Cómo se provoca | Qué se espera en los 3 clientes | Anotar |
 |---|---|---|---|
-| → `Conectando` | Login con el servidor apagado y luego encendiéndolo | Indicador de carga, **no** texto de error. .NET hoy falla aquí: pinta "Conectando…" en la caja roja (`UIX-00f`) | |
+| → `Conectando` | Login con el servidor apagado y luego encendiéndolo | Indicador de carga neutro mientras conecta; el error de transporte, si llega, se muestra separado. La corrección de .NET está en `UIX-00f`. | |
 | → `Conectado` | Login correcto | El banner ámbar desaparece; el directorio carga | |
-| → `SinRed` | Matar el proceso del servidor con el cliente abierto | Banner ámbar en ≤ 2 s. **.NET hoy no muestra nada**: `OnDesconectado` no tiene suscriptores y `bannerOffline` nunca se activa (`UIX-00a`). Python solo lo cambia de paso al refrescar el directorio | |
-| → `SesionCerrada` | `Salir`, o `Salir en todos` desde otra sesión, o esperar 10 min | Aviso con el **motivo** y vuelta al login | |
-| `SinRed` → `Conectando` | Reencender el servidor | Reconexión **sin** que el usuario toque nada; la cola se reintenta sin duplicar | |
+| → `SinRed` | Matar el proceso del servidor con el cliente abierto | Los 3 clientes reciben el estado observable y muestran el aviso/banner de desconexión. Medir la latencia real; no asumir el límite de 2 s a partir de la ida/vuelta de una herramienta remota. | |
+| → `SesionCerrada` | `Salir`, o `Salir en todos` desde otra sesión, o esperar 10 min | Aviso con el **motivo** y vuelta al login. En WPF, el cierre remoto se comunica en el banner del login. | |
+| `SinRed` → `Conectando` | Reencender el servidor | Comprobar reconexión y reintento de cola sin duplicados; anotar si el usuario debe accionar una actualización según el cliente. | |
+
+`PAT-03` está implementado en Java, Python y .NET. `SMOKE-06` continúa pendiente como matriz
+manual completa de cuatro estados por tres clientes, con versión del sistema, texto observado y
+tiempos medidos.
 
 ---
 
 ## Capturas lado a lado (`SMOKE-07` y `SMOKE-08`)
 
-Objetivo: comprobar que `VIS-01` unificó la paleta y que los contrastes pasan.
+Este registro se completa cuando se implemente `VIS-01`; mientras siga pendiente, las capturas
+documentan la línea base, no una paridad ya alcanzada.
 
 1. Con la **misma conversación** en los 3 clientes, captura el mismo intervalo en tema **oscuro**
    y en tema **claro**.
 2. Compara contra `DIAGRAMAS/mockups/mockup-chat-telegram-{java,python,dotnet}.png`.
-3. Los **11 colores del tema oscuro** deben coincidir en los 3. Antes de `VIS-01` el tema **claro**
-   no coincidía en ninguno: la burbuja propia era `#E4F3EC` / `#E1F5FE` / `#D9FDD3` y el acento
-   `#2456A6` / `#147D73` / el de WPF-UI.
+3. Los colores se comparan contra la paleta declarada en los recursos actuales, no contra valores
+   anteriores de la auditoría. Anota los valores leídos en los 3 clientes y clasifica diferencias
+   por tema/toolkit.
 4. Contrastes a medir con el inspector del navegador de toolkit o una herramienta de contraste:
    `.chat-list-preview` en tema claro, el placeholder del campo de búsqueda, y la fecha de la
    burbuja. Todos deben llegar a **4.5:1**.
@@ -183,24 +190,54 @@ Objetivo: comprobar que `VIS-01` unificó la paleta y que los contrastes pasan.
 
 ---
 
-## Búsqueda en el historial (`UIX-06`, cuando exista)
+## Búsqueda en el historial (`UIX-06`)
 
-No existe hoy en ninguno de los 3 clientes, así que esta comprobación **no aplica** hasta que se
-implemente.
+La búsqueda (`Ctrl+F`) y el debounce están implementados en los tres clientes; esta comprobación
+verifica el recorrido de usuario y la paridad con datos comunes.
 
 1. `Ctrl+F` en la conversación abierta.
 2. Busca un texto que esté en un mensaje **cargado hace varias páginas** (scrollea hacia atrás).
 3. Debe encontrarlo sin abrir el historial entero.
-4. La búsqueda debe tener retardo perceptible al teclear (debounce), no un refiltrado por tecla.
+4. La búsqueda debe aplicar debounce y mostrar el resultado sin bloquear la interfaz.
 5. Repetir en los 3 clientes con el mismo texto: los resultados deben ser los mismos.
 
 ---
 
-## Cambio de tema y reconstruction de la lista (`UIX-27`, `UIX-29`)
+## Cambio de tema y reconstrucción de la lista (`UIX-26`, `UIX-27`, `UIX-29`)
 
 1. Cambia de oscuro a claro **con 100+ mensajes** en pantalla en cada cliente.
 2. El cambio debe ser fluido y **no** recargar la red ni releer las imágenes desde el disco.
-3. En Python el arranque debe respetar `tema=` de `client.properties` (hoy `main.py:20` fuerza tema
-   claro).
-4. En modo oscuro, los iconos de adjunto **sin imagen** deben usar el color del tema oscuro (hoy
-   Python pone los de tema claro).
+3. En Python, el arranque debe usar el tema oscuro por defecto (`UIX-29` ya está implementado) y
+   respetar una configuración explícita si se admite en `client.properties`.
+4. Comprueba que los iconos de adjunto en modo oscuro usan colores legibles (`UIX-26` sigue en el
+   roadmap como pendiente).
+5. Comprueba la reconstrucción sin recarga de datos al cambiar de tema en .NET (`UIX-27` sigue en
+   el roadmap como pendiente).
+
+## Avisos inline del cliente WPF (`UIX-15`)
+
+1. Provoca avisos/errores recuperables de envío, descarga, adjunto y cierre de otras sesiones.
+2. Comprueba que cada aviso aparece en el banner del chat con severidad, se puede cerrar y un aviso
+   posterior reemplaza el anterior sin diálogos en cascada.
+3. Simula un cierre remoto: el motivo debe aparecer en el banner ámbar del login.
+4. Verifica las tres confirmaciones que se conservan: cerrar LoginWindow, salir del chat y cerrar
+   todas las sesiones.
+5. La cobertura xUnit de `EstadoAvisoInline` está en
+   `universidad-mensajeria/client-dotnet.Tests/EstadoAvisoInlineTests.cs`; el último resultado
+   registrado fue 71/71, pero esta guía no afirma una ejecución nueva en esta revisión.
+
+## Consola administrativa del servidor
+
+1. En JavaFX, confirma que Estado presenta cada indicador verticalmente y que el texto no se
+   solapa al redimensionar la ventana.
+2. En Conectados, revisa el estado vacío «No hay usuarios activos» y, con sesiones abiertas, la
+   lista de códigos disponibles para «Desconectar usuario».
+3. En Usuarios, abre un usuario con doble clic; la ficha debe mostrar resumen, conexiones,
+   mensajes y archivos, con paginación de 50 registros y contacto principal.
+4. En Mensajes, escribe un código y selecciónalo del desplegable; confirma caracteres, palabras,
+   IP histórica del remitente y las IP disponibles (o «No disponible») para el destinatario.
+5. En Informes, verifica que el detalle de mensaje/imagen solo está visible para el informe de
+   mensajes; revisa la expansión de Logs, la presentación de Pool y el botón «Enviar difusión».
+6. Cierra la ventana administrativa con X: debe preguntar si se cierra esa vista; confirmar no
+   debe detener el servicio TCP ni JLine.
+7. En JLine, recorre títulos, comandos, tablas y eventos; confirma que se conservaron los comandos.

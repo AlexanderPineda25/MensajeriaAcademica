@@ -194,67 +194,16 @@ classDiagram
         <<MODULO MUERTO>>
     }
 
-    note for ChatWindow
-        1322 lineas: el mas grande de los 3.
-        _procesar_tarea es un if/elif de
-        100 lineas por 8 tipos de tarea:
-        es un PRESENTER sin tipar.
-        Arreglo previsto: PAT-VM (MVVM).
-    end note
+    note for ChatWindow "1322 lineas: el mas grande de los 3.<br/>_procesar_tarea es un if/elif de<br/>100 lineas por 8 tipos de tarea:<br/>es un PRESENTER sin tipar que despacha<br/>todo resultado asincrono (8 tipos).<br/>Arreglo previsto: PAT-VM (MVVM)."
 
-    note for FachadaCliente
-        Sin constructor: main.py la crea
-        sin argumentos y los 6 colaboradores
-        se cablean con defaults "or".
-        Ademas el GRAFO CAMBIA DE FORMA en
-        runtime: para_cuenta() reasigna db
-        e historial al hacer login.
-        Arreglo: PAT-01.
-    end note
+    note for FachadaCliente "Sin constructor: main.py la crea<br/>sin argumentos y los 6 colaboradores<br/>se cablean con defaults 'or'.<br/>Ademas el GRAFO CAMBIA DE FORMA en<br/>runtime: para_cuenta() reasigna db<br/>e historial al hacer login.<br/>Arreglo: PAT-01."
 
-    note for HistorialLocal
-        SIN INTERFAZ: a diferencia de Java
-        (InterfazHistorialLocal) y .NET
-        (IHistorialLocal). La ventana la
-        salta y accede a fachada.historial
-        con getattr para contar no leidos.
-        Arreglo: PAT-04.
-    end note
+    note for HistorialLocal "SIN INTERFAZ: a diferencia de Java<br/>(InterfazHistorialLocal) y .NET<br/>(IHistorialLocal). La ventana la<br/>salta y accede a fachada.historial<br/>con getattr para contar no leidos.<br/>Arreglo: PAT-04."
 
-    note "ChatWindow._procesar_tarea" as N1
-        Punto unico donde se despacha
-        todo resultado asincrono: 8 tipos
-        de tarea. Mezcla presentacion y
-        logica de negocio.
-    end note
+    note for transversal.tls "UNICO cliente que valida TLS<br/>fail-fast (validar_tls). Java no<br/>valida en ningun sitio y .NET<br/>sustituye el puerto en silencio.<br/>Arreglo: PAT-05 / SEG-01."
 
-    note for transversal.tls
-        UNICO cliente que valida TLS
-        fail-fast (validar_tls). Java no
-        valida en ningun sitio y .NET
-        sustituye el puerto en silencio.
-        Arreglo: PAT-05 / SEG-01.
-    end note
+    note for Database "Upsert con ON CONFLICT, que es<br/>dialecto SQLite. La forma portable<br/>(DELETE + INSERT) ya esta documentada<br/>en HistorialLocal.java:17 y no se<br/>usa aqui. Arreglo: PAT-04."
 
-    note for Database
-        Upsert con ON CONFLICT, que es
-        dialecto SQLite. La forma portable
-        (DELETE + INSERT) ya esta documentada
-        en HistorialLocal.java:17 y no se
-        usa aqui. Arreglo: PAT-04.
-    end note
+    note for ui.registro_window "Stub de 3 lineas: __all__ = vacio.<br/>El registro por red se elimino en<br/>Fase 10.2 (RF-S27). Solo lo<br/>referencia el test que comprueba<br/>que no existe. Arreglo: MUERT-18."
 
-    note for ui.registro_window
-        Stub de 3 lineas: __all__ = [].
-        El registro por red se elimino en
-        Fase 10.2 (RF-S27). Solo lo
-        referencia el test que comprueba
-        que no existe. Arreglo: MUERT-18.
-    end note
-
-    note for LoginWindow
-        mostrar_aviso() no lo llama nadie.
-        Y login() corre en el hilo de la
-        GUI: bloquea hasta 15 s.
-        Arreglo: MUERT-17 / UIX-00e.
-    end note
+    note for LoginWindow "mostrar_aviso() no lo llama nadie.<br/>Y login() corre en el hilo de la<br/>GUI: bloquea hasta 15 s.<br/>Arreglo: MUERT-17 / UIX-00e."

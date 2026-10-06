@@ -1,8 +1,8 @@
 # Despliegue del cliente JavaFX
 
-JavaFX es el cliente principal. En ejecución requiere solo el JRE Java 21, la carpeta de
-distribución JavaFX y conectividad TCP hacia el servidor. No requiere Maven ni acceso a MySQL en el
-computador del usuario.
+JavaFX es el cliente principal. Usa JavaFX 22.0.2 con AtlantaFX 2.1.0 y en ejecución requiere solo
+el JRE Java 21, la carpeta de distribución JavaFX y conectividad TCP hacia el servidor. No requiere
+Maven ni acceso a MySQL en el computador del usuario.
 
 ## Construir en desarrollo
 
@@ -14,8 +14,10 @@ mvn -pl client/client-app javafx:run
 ```
 
 El comando usa el reactor Maven y los módulos `client-interfaces`, `dto` y `codec`. Por eso
-`client/` como carpeta de fuentes no se copia sola a otra máquina. JavaFX 21 necesita JDK 21 para
-compilar; se recomienda también JRE 21 en la máquina final.
+`client/` como carpeta de fuentes no se copia sola a otra máquina. JavaFX 22 necesita JDK 21 para
+compilar; se recomienda también JRE 21 en la máquina final. El launcher habilita acceso nativo para
+`javafx.graphics` y el tema AtlantaFX se cambia como hoja de escena, sin sustituir el user-agent de
+JavaFX.
 
 ## Crear carpeta distribuible para Windows x64
 

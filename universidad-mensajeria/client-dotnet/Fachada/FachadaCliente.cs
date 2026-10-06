@@ -33,7 +33,6 @@ namespace Mensajeria.Fachada
         private string _dbUrl = "sqlite:///~/mensajeria_cliente.db";
         private LocalStore? _store;
         private readonly bool _dependenciasInyectadas;
-        public string? RutaDbActual => _store?.DbPath;
 
         public event Action<Dictionary<string, JsonElement>>? OnMensajeRecibido;
         public event Action<Dictionary<string, JsonElement>>? OnCierre;
@@ -62,30 +61,33 @@ namespace Mensajeria.Fachada
 
         private void CargarPropiedades()
         {
-            try
-            {
-                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "client.properties");
-                if (!File.Exists(path)) return;
-                foreach (var linea in File.ReadAllLines(path))
-                {
-                    var t = linea.Trim();
-                    if (t.Length == 0 || t.StartsWith("#")) continue;
-                    int eq = t.IndexOf('=');
-                    if (eq < 0) continue;
-                    string clave = t[..eq].Trim(), valor = t[(eq + 1)..].Trim();
-                    if (clave == "host" && valor.Length > 0) _host = valor;
-                    else if (clave == "puerto" && int.TryParse(valor, out int p) && p > 0 && p <= 65535) _puerto = p;
-                    else if (clave == "tls.habilitado") _tlsHabilitado = valor.Equals("true", StringComparison.OrdinalIgnoreCase);
-                    else if (clave == "tls.puerto" && int.TryParse(valor, out int tp) && tp > 0 && tp <= 65535) _tlsPuerto = tp;
-                    else if (clave == "db.url" && valor.Length > 0) _dbUrl = valor;
-                }
-            }
-            catch { }
+            _host = Transversal.ClienteConfig.Valor("host", Transversal.ClienteConfig.HostPorDefecto);
+            _puerto = Transversal.ClienteConfig.Entero("puerto",
+                    Transversal.ClienteConfig.PuertoPorDefecto, 1, 65535);
+            _tlsHabilitado = Transversal.ClienteConfig.Booleano("tls.habilitado", false);
+            _tlsPuerto = Transversal.ClienteConfig.Entero("tls.puerto",
+                    Transversal.ClienteConfig.TlsPuertoPorDefecto, 1, 65535);
+            _dbUrl = Transversal.ClienteConfig.Valor("db.url", Transversal.ClienteConfig.DbUrlPorDefecto);
         }
 
         public Task ConectarAsync() => ConectarAsync(_host, _puerto);
 
         public async Task ConectarAsync(string host, int puerto)
+        {
+            CambiarEstado(EstadoConexion.Conectando);
+            try
+            {
+                await ConectarInternoAsync(host, puerto);
+                CambiarEstado(EstadoConexion.Conectado);
+            }
+            catch
+            {
+                CambiarEstado(EstadoConexion.SinRed);
+                throw;
+            }
+        }
+
+        private async Task ConectarInternoAsync(string host, int puerto)
         {
             if (_dependenciasInyectadas)
             {
@@ -118,8 +120,41 @@ namespace Mensajeria.Fachada
         {
             if (_conexion == null) return;
             _conexion.OnMensajeRecibido += AlRecibir;
-            _conexion.OnCierre += msg => OnCierre?.Invoke(msg);
-            _conexion.OnDesconectado += () => OnDesconectado?.Invoke();
+            _conexion.OnCierre += msg =>
+            {
+                // PAT-03: CLOSE_NOTICE es "el servidor cerró mi sesión", no una
+                // caída de red. Distinguirlo evita que la UI ofrezca reconectar
+                // donde lo que hace falta es volver a entrar.
+                CambiarEstado(EstadoConexion.SesionCerrada);
+                OnCierre?.Invoke(msg);
+            };
+            _conexion.OnDesconectado += () =>
+            {
+                // Un cierre voluntario también pasa por aquí: no se degrada el
+                // estado si ya estamos en sesión cerrada.
+                if (_estado != EstadoConexion.SesionCerrada)
+                {
+                    CambiarEstado(EstadoConexion.SinRed);
+                }
+                OnDesconectado?.Invoke();
+            };
+        }
+
+        // ------------------------------------------------------- PAT-03: estado
+
+        private EstadoConexion _estado = EstadoConexion.SinRed;
+
+        /// <summary>Estado actual de la conexión (antes nadie lo consultaba).</summary>
+        public EstadoConexion EstadoConexion => _estado;
+
+        /// <summary>La vista se suscribe aquí para pintar el banner (UIX-00a).</summary>
+        public event Action<EstadoConexion>? OnEstadoConexion;
+
+        private void CambiarEstado(EstadoConexion nuevo)
+        {
+            if (nuevo == _estado) return;
+            _estado = nuevo;
+            OnEstadoConexion?.Invoke(nuevo);
         }
 
         public void Desconectar()
@@ -127,6 +162,7 @@ namespace Mensajeria.Fachada
             DetenerFlushPendientes();
             _autenticacion?.Logout();
             _conexion?.Desconectar();
+            CambiarEstado(EstadoConexion.SinRed);
             _store?.Dispose();
             _store = null;
         }
@@ -137,6 +173,7 @@ namespace Mensajeria.Fachada
             bool ok = await _autenticacion.LoginAsync(codigo, contrasena);
             if (ok)
             {
+                CambiarEstado(EstadoConexion.Conectado);
                 CambiarAStorePorCuenta(codigo);
                 AsegurarEnCache(codigo);
                 await ReintentarPendientesAsync();
@@ -266,7 +303,7 @@ namespace Mensajeria.Fachada
             }
         }
 
-        public async Task MarcarLeidosAsync(string otroUsuario)
+public async Task MarcarLeidosAsync(string otroUsuario)
         {
             if (UsuarioActual == null || _conexion == null)
                 throw new InvalidOperationException("inicia sesion primero");
@@ -280,6 +317,22 @@ namespace Mensajeria.Fachada
             }
             Historial?.MarcarLeidos(UsuarioActual, otroUsuario);
             await ReintentarPendientesAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>UIX-02: no leídos por contacto para la insignia.</summary>
+        public IReadOnlyDictionary<string, int> ContarNoLeidos()
+        {
+            if (UsuarioActual == null || Historial == null)
+                return new Dictionary<string, int>();
+            return Historial.ContarNoLeidosPorContacto(UsuarioActual);
+        }
+
+        /// <summary>UIX-06: ids con el patrón (de más nuevo a más viejo).</summary>
+        public List<string> BuscarEnHistorial(string otro, string patron)
+        {
+            if (UsuarioActual == null || Historial == null)
+                return new List<string>();
+            return Historial.BuscarEnConversacion(UsuarioActual, otro, patron, 200);
         }
 
         public async Task ExpulsarOtrasSesionesAsync()
@@ -718,6 +771,12 @@ namespace Mensajeria.Fachada
 
         public int ContarConversacion(string otro) =>
             UsuarioActual == null ? 0 : (Historial?.ContarConversacion(UsuarioActual, otro) ?? 0);
+
+        public IReadOnlyDictionary<string, string> UltimosMensajesPorContacto() =>
+            UsuarioActual == null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : (Historial?.UltimosMensajesPorContacto(UsuarioActual)
+                    ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
         public List<Dictionary<string, object>> DirectorioLocal() =>
             Cache?.Listar() ?? new List<Dictionary<string, object>>();

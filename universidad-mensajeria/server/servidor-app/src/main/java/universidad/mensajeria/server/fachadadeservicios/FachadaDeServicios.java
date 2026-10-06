@@ -6,6 +6,7 @@ import universidad.mensajeria.colas.ConsumidorDeMensajes;
 import universidad.mensajeria.colas.InterfazGestorMensajes;
 import universidad.mensajeria.common.interno.EstadoServidor;
 import universidad.mensajeria.common.interno.EstadoPool;
+import universidad.mensajeria.common.interno.DetalleUsuarioDTO;
 import universidad.mensajeria.common.interno.EventoEtapa;
 import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.IdSesion;
@@ -14,6 +15,8 @@ import universidad.mensajeria.common.interno.InformeFiltroDTO;
 import universidad.mensajeria.common.interno.LimitesDTO;
 import universidad.mensajeria.common.interno.LoginConteoDTO;
 import universidad.mensajeria.common.interno.ConexionInformeDTO;
+import universidad.mensajeria.common.interno.MensajeResumenDTO;
+import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.interno.ResultadoMensajeDTO;
 import universidad.mensajeria.common.interno.UsuarioInformeDTO;
 import universidad.mensajeria.common.interno.UsuarioResumen;
@@ -173,6 +176,44 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
     }
 
     @Override
+    public DetalleUsuarioDTO detalleUsuario(String codigo) {
+        String cuenta = codigo == null ? "" : codigo.trim();
+        if (cuenta.isEmpty()) {
+            throw new IllegalArgumentException("El codigo de usuario es obligatorio");
+        }
+        var usuario = usuarios.buscar(cuenta)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario inexistente: " + cuenta));
+        Set<IdSesion> sesiones = conexiones.sesionesDe(cuenta);
+        FechasUsuarioDTO fechas = fechasPorCodigo().get(cuenta);
+        long logins = eventos.consultarConexiones(InformeFiltroDTO.sinFiltro()).stream()
+                .filter(conteo -> cuenta.equalsIgnoreCase(conteo.codigo()))
+                .mapToLong(LoginConteoDTO::veces)
+                .findFirst().orElse(0);
+        var actividad = mensajes.actividadUsuario(cuenta);
+        return new DetalleUsuarioDTO(usuario.codigo(), usuario.nombres(), usuario.apellidos(),
+                usuario.programa(), !sesiones.isEmpty(),
+                fechas == null ? null : fechas.fechaRegistro(),
+                fechas == null ? null : fechas.fechaUltimaConexion(), logins, sesiones.size(),
+                actividad.totalMensajes(), actividad.totalArchivos(),
+                actividad.contactoPrincipal(), actividad.mensajesCompartidos());
+    }
+
+    @Override
+    public PaginaDTO<MensajeResumenDTO> paginaMensajesUsuario(String codigo,
+            boolean soloArchivos, int pagina, int tamano) {
+        return mensajes.paginaDetalleUsuario(codigo, soloArchivos, pagina, tamano);
+    }
+
+    @Override
+    public List<IdSesion> sesionesActivas() {
+        return conexiones.codigosConectados().stream()
+                .flatMap(codigo -> conexiones.sesionesDe(codigo).stream())
+                .sorted(java.util.Comparator.comparing(IdSesion::codigo)
+                        .thenComparing(IdSesion::id))
+                .toList();
+    }
+
+    @Override
     public int mensajesEnCola() {
         return colas.tamano();
     }
@@ -262,12 +303,6 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
     }
 
     @Override
-    public java.util.Optional<universidad.mensajeria.common.interno.ArchivoDTO> archivoParaVista(
-            long archivoId) {
-        return casos.archivoVista().metadatos(archivoId);
-    }
-
-    @Override
     public byte[] bytesArchivoParaVista(long archivoId) {
         return casos.archivoVista().bytes(archivoId);
     }
@@ -332,9 +367,23 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         }
     }
 
+    private String ipDestinatarioSnapshot(String codigoDestinatario) {
+        if (codigoDestinatario == null || codigoDestinatario.isBlank()) {
+            return null;
+        }
+        String ips = conexiones.sesionesDe(codigoDestinatario.trim()).stream()
+                .map(IdSesion::direccionIp)
+                .filter(ip -> ip != null && !ip.isBlank())
+                .distinct()
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(", "));
+        return ips.isBlank() ? null : ips;
+    }
+
     private void procesarTexto(Mensaje trama, IdSesion origen) {
+        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
         mensajes.procesarTexto(trama.remitente(), trama.destinatario(),
-                        trama.contenido(), trama.ipRemitente())
+                        trama.contenido(), trama.ipRemitente(), ipDestinatario, trama.id())
                 .thenAccept(dto -> {
                     Mensaje entrega = Mensaje.builder()
                             .tipo(TipoMensaje.MENSAJE_TEXTO)
@@ -371,8 +420,10 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
             responderError(origen, trama, e);
             return;
         }
+        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
         mensajes.procesarImagen(trama.remitente(), trama.destinatario(), bytes,
-                        trama.nombreArchivo(), trama.mime(), trama.ipRemitente())
+                        trama.nombreArchivo(), trama.mime(), trama.ipRemitente(),
+                        ipDestinatario, trama.id())
                 .thenAccept(dto -> {
                     Mensaje entrega = Mensaje.builder()
                             .tipo(TipoMensaje.MENSAJE_IMAGEN)
@@ -410,8 +461,10 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
             responderError(origen, trama, e);
             return;
         }
+        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
         mensajes.procesarArchivo(trama.remitente(), trama.destinatario(), bytes,
-                        trama.nombreArchivo(), trama.mime(), trama.ipRemitente())
+                        trama.nombreArchivo(), trama.mime(), trama.ipRemitente(),
+                        ipDestinatario, trama.id())
                 .thenAccept(dto -> {
                     Mensaje entrega = Mensaje.builder()
                             .tipo(TipoMensaje.MENSAJE_ARCHIVO)
@@ -502,8 +555,9 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         AtomicInteger entregados = new AtomicInteger();
         int hito = Math.max(1, destinos.size() / 4);
         for (String codigo : destinos) {
+            String ipDestinatario = ipDestinatarioSnapshot(codigo);
             futuros.add(mensajes.procesarTexto(trama.remitente(), codigo,
-                            trama.contenido(), trama.ipRemitente())
+                            trama.contenido(), trama.ipRemitente(), ipDestinatario, trama.id())
                     .thenAcceptAsync(dto -> {
                         Mensaje entrega = Mensaje.builder()
                                 .tipo(TipoMensaje.BROADCAST)

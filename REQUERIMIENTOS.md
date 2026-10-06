@@ -160,6 +160,19 @@ El sistema se compone de dos aplicaciones:
 | **RF-S48** | El pool se expone mediante una **interfaz** (por ejemplo `PoolDeConexiones`) y se crea mediante una **fábrica**, cumpliendo los principios de inversión de dependencias e inyección de dependencias. | Ajuste |
 | **RF-S49** | La consola y la vista de escritorio muestran el **estado del pool** (trabajadores en uso / disponibles / tamaño total). | Extra |
 
+### 3.9 Usabilidad de la vista administrativa del servidor (2026-10-06)
+
+| ID | Requerimiento | Prioridad |
+|---|---|---|
+| **RF-S50** | La vista administrativa organiza los indicadores de Estado en una lista vertical adaptable, sin solapamiento al cambiar el tamaño de ventana. | Ajuste |
+| **RF-S51** | La pestaña Conectados ofrece la acción `Desconectar usuario` y un selector que contiene los códigos con sesiones activas; cuando la lista está vacía muestra `No hay usuarios activos` y deshabilita la acción. | Ajuste |
+| **RF-S52** | Al hacer doble clic en un usuario se abre una ficha reutilizable con secciones Resumen, Conexiones, Mensajes y Archivos. Incluye totales de mensajes/archivos, conexiones registradas, sesiones activas y contacto principal; mensajes y archivos se consultan en páginas de 50. El contacto principal cuenta mensajes enviados y recibidos y excluye `SERVIDOR`. | Ajuste |
+| **RF-S53** | La pestaña Mensajes permite ingresar un código o elegirlo de una lista; muestra caracteres y palabras en filas separadas, la IP histórica del remitente y las IP de sesiones activas del destinatario. Si no existe sesión activa para el destinatario muestra `No disponible`; no se persiste una IP destinataria histórica. | Ajuste |
+| **RF-S54** | El panel de contenido/imágenes de Informes solo aparece al consultar el informe de mensajes. | Ajuste |
+| **RF-S55** | Logs usa el espacio disponible de la pestaña. Pool presenta sus métricas en secciones visuales claras sin cambiar sus valores ni semántica. | Ajuste |
+| **RF-S56** | La acción de difusión administrativa conserva el envío a todos los usuarios y usa el rótulo `Enviar difusión`. | Ajuste |
+| **RF-S57** | Cerrar con X solicita confirmación para cerrar la ventana administrativa; cerrarla no detiene el listener TCP ni la consola JLine. JLine mejora títulos, comandos, tablas y eventos sin alterar los comandos existentes. | Ajuste |
+
 ---
 
 ## 4. Requerimientos funcionales del cliente
@@ -354,8 +367,10 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | **Higiene del código** | **RNF-16** |
 | **Documentación de diagramas** | **RNF-20** |
 
-> Los IDs en **negrita** son los añadidos el **2026-10-05** en la ronda de auditoría
-> ([`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md)). Nota sobre numeración: `RF-S34` y `RF-S35` son
+> Los IDs en **negrita** corresponden a cambios recientes: los puntos 11–15 se añadieron el
+> **2026-10-05** en la ronda de auditoría y el punto 16 el **2026-10-06** para la consola
+> administrativa ([`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md)). Nota sobre numeración:
+> `RF-S34` y `RF-S35` son
 > **nuevos** y se solapan con el rango histórico `RF-S34..RF-S38` de §3.7 (interfaz de consola).
 > Conviene renumerar en la siguiente versión del documento; mientras tanto, la desambiguación es
 > `RF-S34/S35` = autorización de tramas y `RF-S36..S42` = consola y refresco.
@@ -381,3 +396,4 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | **13** | **Auditoría 2026-10-05 — higiene y contrato visual.** No acumular código muerto (con la salvedad de lo que vive por framework, reflexión o SPI), paridad de paleta y de máquina de estados de mensaje entre los 3 clientes, y accesibilidad WCAG AA | **RNF-16, RNF-17, RNF-18** |
 | **14** | **Auditoría 2026-10-05 — documentación de diagramas.** Exigencia de que existan diagramas de casos de uso, secuencia, actividad, estados y despliegue, más clases por componente de los **tres** clientes, todos derivados del código y con render revisado | **RNF-20** |
 | **15** | **Auditoría 2026-10-05 — persistencia local y transporte.** El upsert local debe ser portable y pasar por un puerto declarado; TCP y TLS se eligen por configuración detrás de un contrato único, con validación de configuración homogénea en los 3 clientes | **PD-12, PD-13** |
+| **16** | **Consola administrativa 2026-10-06.** Ficha de usuario con páginas de mensajes/archivos, estados vacíos explícitos, metadatos/IP disponibles, vista adaptativa, difusión y cierre aislado de la ventana administrativa | **RF-S50 a RF-S57** |

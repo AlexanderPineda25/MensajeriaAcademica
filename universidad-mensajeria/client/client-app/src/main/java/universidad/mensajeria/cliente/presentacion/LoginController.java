@@ -10,19 +10,46 @@ import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
+import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import universidad.mensajeria.cliente.fachada.InterfazInicioSesion;
 import universidad.mensajeria.cliente.transversal.config.ClienteConfig;
 
 /** Login mockup §2: solo autenticacion, host/puerto visibles, spinner y avisos. */
 public final class LoginController {
+
+    private static final Logger LOG = Logger.getLogger(LoginController.class.getName());
+
+    private final InterfazInicioSesion inicioSesion;
+    private final Executor tareasFondo;
+    private final ClienteConfig config;
+    private final InterfazNavegacionCliente navegacion;
+
+    public LoginController(InterfazInicioSesion inicioSesion, Executor tareasFondo,
+                           ClienteConfig config,
+                           InterfazNavegacionCliente navegacion) {
+        this.inicioSesion = inicioSesion;
+        this.tareasFondo = tareasFondo;
+        this.config = config;
+        this.navegacion = navegacion;
+    }
 
     @FXML
     private TextField campoCodigo;
     @FXML
     private PasswordField campoContrasena;
     @FXML
-    private TextField campoHost;
+    private TextField campoContrasenaVisible;
     @FXML
-    private TextField campoPuerto;
+    private Button botonMostrarContrasena;
+    @FXML
+    private Label campoHost;
+    @FXML
+    private Label campoPuerto;
     @FXML
     private ComboBox<String> comboTema;
     @FXML
@@ -36,44 +63,69 @@ public final class LoginController {
 
     @FXML
     private void initialize() {
-        try {
-            ClienteConfig config = ClienteConfig.cargar();
-            campoHost.setText(config.host());
-            campoPuerto.setText(String.valueOf(config.puerto()));
-        } catch (Exception e) {
-            campoHost.setText("localhost");
-            campoPuerto.setText("5000");
-        }
+        campoHost.setText(config.host());
+        campoPuerto.setText(String.valueOf(config.puerto()));
         comboTema.setItems(FXCollections.observableArrayList("Oscuro", "Claro"));
         comboTema.getSelectionModel().select(
                 Tema.CLARO.equals(Tema.cargar()) ? "Claro" : "Oscuro");
         comboTema.getSelectionModel().selectedItemProperty().addListener((o, a, b) -> {
             Tema.guardar("Claro".equals(b) ? Tema.CLARO : Tema.OSCURO);
             if (campoCodigo.getScene() != null) {
-                ClienteApp.aplicarTema(campoCodigo.getScene(), true);
+                navegacion.aplicarTema(campoCodigo.getScene(), true);
             }
         });
-        String aviso = ClienteApp.consumirAviso();
+        String aviso = navegacion.consumirAviso();
         if (aviso != null && !aviso.isBlank()) {
             mostrarAviso(aviso);
         }
         Runnable refrescar = this::actualizarBoton;
         campoCodigo.textProperty().addListener((o, a, b) -> refrescar.run());
         campoContrasena.textProperty().addListener((o, a, b) -> refrescar.run());
+        campoContrasenaVisible.textProperty().addListener((o, a, b) -> refrescar.run());
         actualizarBoton();
         Platform.runLater(() -> campoCodigo.requestFocus());
     }
 
+    @FXML
+    private void alternarContrasena() {
+        boolean mostrar = !campoContrasenaVisible.isVisible();
+        if (mostrar) {
+            campoContrasenaVisible.setText(campoContrasena.getText());
+            campoContrasenaVisible.positionCaret(campoContrasena.getCaretPosition());
+            campoContrasena.setVisible(false);
+            campoContrasena.setManaged(false);
+            campoContrasenaVisible.setVisible(true);
+            campoContrasenaVisible.setManaged(true);
+            campoContrasenaVisible.requestFocus();
+        } else {
+            campoContrasena.setText(campoContrasenaVisible.getText());
+            campoContrasena.positionCaret(campoContrasenaVisible.getCaretPosition());
+            campoContrasenaVisible.setVisible(false);
+            campoContrasenaVisible.setManaged(false);
+            campoContrasena.setVisible(true);
+            campoContrasena.setManaged(true);
+            campoContrasena.requestFocus();
+        }
+        botonMostrarContrasena.setAccessibleText(mostrar
+                ? "Ocultar contraseña" : "Mostrar contraseña");
+        actualizarBoton();
+    }
+
     private void actualizarBoton() {
         boolean listo = campoCodigo.getText() != null && !campoCodigo.getText().isBlank()
-                && campoContrasena.getText() != null && !campoContrasena.getText().isEmpty();
+                && !contrasenaActual().isEmpty();
         botonEntrar.setDisable(!listo || spinner.isVisible());
+    }
+
+    private String contrasenaActual() {
+        return campoContrasenaVisible.isVisible()
+                ? campoContrasenaVisible.getText() : campoContrasena.getText();
     }
 
     @FXML
     private void alEntrar() {
         String codigo = campoCodigo.getText() == null ? "" : campoCodigo.getText().trim();
-        String clave = campoContrasena.getText() == null ? "" : campoContrasena.getText();
+        String clave = contrasenaActual() == null ? "" : contrasenaActual();
         if (codigo.isEmpty() || clave.isEmpty()) {
             mostrarError("Ingresa el código y la contraseña.");
             return;
@@ -86,7 +138,7 @@ public final class LoginController {
         Task<Boolean> tarea = new Task<>() {
             @Override
             protected Boolean call() throws Exception {
-                return ClienteApp.fachada().login(codigo, clave);
+                return inicioSesion.login(codigo, clave);
             }
         };
         tarea.setOnSucceeded(e -> {
@@ -98,7 +150,7 @@ public final class LoginController {
             if (!Boolean.TRUE.equals(tarea.getValue())) {
                 // Credencial mala sin excepción: burbuja roja exacta, sin abrir el chat.
                 try {
-                    ClienteApp.fachada().desconectar();
+                    inicioSesion.desconectar();
                 } catch (Exception ignorada) {
                     // ya fuera
                 }
@@ -106,9 +158,10 @@ public final class LoginController {
                 return;
             }
             try {
-                ClienteApp.mostrarChat();
+                navegacion.mostrarChat();
             } catch (Exception ex) {
-                mostrarError(fallo(ex));
+                LOG.log(Level.WARNING, "No se pudo abrir la vista de chat", ex);
+                mostrarError("No se pudo abrir el chat. Intenta iniciar sesión de nuevo.");
             }
         });
         tarea.setOnFailed(e -> {
@@ -117,12 +170,11 @@ public final class LoginController {
                 spinner.setVisible(false);
                 spinner.setManaged(false);
                 botonEntrar.setDisable(false);
-                String detalle = causa != null && causa.getMessage() != null
-                        ? causa.getMessage() : "no se pudo entrar";
-                mostrarError("No se pudo conectar (" + causaNombre(causa) + "): " + detalle);
+                LOG.log(Level.WARNING, "Falló el inicio de sesión", causa);
+                mostrarError(mensajeUsuario(causa));
             });
         });
-        new Thread(tarea, "login-fondo").start();
+        tareasFondo.execute(tarea);
     }
 
     private void mostrarError(String texto) {
@@ -147,11 +199,15 @@ public final class LoginController {
     // Fase 10.2 (P2): sin «Crear cuenta». La alta de usuarios es solo por
     // archivo plano (usuarios_iniciales.csv); RegistroView queda inalcanzable.
 
-    private static String fallo(Exception e) {
-        return e.getMessage() != null ? e.getMessage() : "no se pudo entrar";
-    }
-
-    private static String causaNombre(Throwable causa) {
-        return causa == null ? "Error" : causa.getClass().getSimpleName();
+    private static String mensajeUsuario(Throwable causa) {
+        for (Throwable actual = causa; actual != null; actual = actual.getCause()) {
+            if (actual instanceof SocketTimeoutException) {
+                return "El servidor tardó demasiado en responder. Intenta de nuevo.";
+            }
+            if (actual instanceof IOException) {
+                return "No fue posible conectar con el servidor. Verifica que esté activo e inténtalo de nuevo.";
+            }
+        }
+        return "No fue posible iniciar sesión. Verifica tus datos e inténtalo de nuevo.";
     }
 }
