@@ -2,6 +2,7 @@ package universidad.mensajeria.cliente.presentacion;
 
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
+import java.io.IOException;
 import java.net.URL;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -13,6 +14,7 @@ import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
 import universidad.mensajeria.cliente.composicion.ClienteRuntime;
 import universidad.mensajeria.cliente.composicion.FabricaCliente;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
 
 /** Shell JavaFX y composition root de la aplicación del cliente. */
 public final class ClienteApp extends Application implements InterfazNavegacionCliente {
@@ -48,7 +50,7 @@ public final class ClienteApp extends Application implements InterfazNavegacionC
     }
 
     @Override
-    public void mostrarLogin() throws Exception {
+    public void mostrarLogin() throws ExcepcionCliente, IOException {
         FXMLLoader cargador = crearCargador("/vistas/login.fxml");
         Parent raiz = cargador.load();
         escenario.setTitle("Mensajería Académica | Iniciar sesión");
@@ -77,7 +79,7 @@ public final class ClienteApp extends Application implements InterfazNavegacionC
     }
 
     @Override
-    public void mostrarChat() throws Exception {
+    public void mostrarChat() throws ExcepcionCliente, IOException {
         FXMLLoader cargador = crearCargador("/vistas/chat.fxml");
         Parent raiz = cargador.load();
         escenario.setTitle("Mensajería Académica | Chat");

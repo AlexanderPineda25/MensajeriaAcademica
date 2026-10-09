@@ -129,6 +129,25 @@ class DiagramaFidelidadTest {
     }
 
     @Test
+    void casosNuncaTocanAlmacen() throws IOException {
+        // E13/E14 estrictos: los casos de la Fachada leen por E10 (Mensajes),
+        // nunca por AlmacenarInformacion. Las 5 consultas de vista viven como
+        // pass-through en InterfazMensajes; aqui solo se vigila la direccion.
+        Path base = SERVER.resolve(
+                "servidor-app/src/main/java/universidad/mensajeria/server/fachadadeservicios/casosdeuso");
+        try (Stream<Path> archivos = Files.walk(base)) {
+            List<String> violaciones = archivos
+                    .filter(p -> p.toString().endsWith(".java"))
+                    .flatMap(p -> lineas(p).stream()
+                            .filter(l -> l.contains("almacenarinformacion"))
+                            .map(l -> p.getFileName() + ": " + l.strip()))
+                    .toList();
+            assertTrue(violaciones.isEmpty(),
+                    "casos -> AlmacenarInformacion fuera de E13/E14: " + violaciones);
+        }
+    }
+
+    @Test
     void soloPersistenciaVeEntidades() throws IOException {
         // E15 estricto: el adaptador dentro de persistencia es el unico que conoce JPA.
         List<String> duenos = List.of("persistencia");

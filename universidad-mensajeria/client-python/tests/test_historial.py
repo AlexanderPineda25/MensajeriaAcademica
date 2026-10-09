@@ -91,6 +91,26 @@ class TestHistorial(unittest.TestCase):
         self.assertEqual(fila["estado"], "LEIDO")
         self.assertEqual(fila["archivo_id"], "archivo-1")
 
+    def test_etapas_filtrado_se_persisten_y_se_enriquecen_sin_perderse(self):
+        etapas = '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]'
+        self.h.guardar_mensaje(
+            "imagen-etapas", "A", "B", "MENSAJE_IMAGEN", "[Imagen]",
+            "2026-01-01T10:00:00", etapas_filtrado=etapas)
+        self.h.guardar_mensaje(
+            "imagen-etapas", "A", "B", "MENSAJE_IMAGEN", "[Imagen]",
+            "2026-01-01T10:00:00")
+        self.assertEqual(
+            self.h.obtener_por_id("imagen-etapas")["etapas_filtrado"], etapas)
+        imagen = next(fila for fila in self.h.obtener_conversacion("A", "B")
+                      if fila["id_mensaje"] == "imagen-etapas")
+        self.assertEqual(imagen["etapas_filtrado"], etapas)
+
+        actualizadas = '[{"etapa":"02_sepia.png","ms":4,"ruta":"otra/ruta"}]'
+        self.h.actualizar_metadatos_remotos(
+            "imagen-etapas", etapas_filtrado=actualizadas)
+        self.assertEqual(
+            self.h.obtener_por_id("imagen-etapas")["etapas_filtrado"], actualizadas)
+
     def test_pagina_no_carga_contenido_de_imagen(self):
         self.h.guardar_mensaje("imagen-base64", "A", "B", "MENSAJE_IMAGEN",
                                "aGVsbG8=", "2026-01-01T10:00:00",
@@ -118,11 +138,13 @@ class TestHistorial(unittest.TestCase):
         conn.commit()
         conn.close()
 
+        Database("sqlite:///" + tmp.name, esquema_path=ESQUEMA_CANONICO)
+        # Reabrir ejecuta la migración de nuevo: debe ser segura e idempotente.
         migrated = Database("sqlite:///" + tmp.name, esquema_path=ESQUEMA_CANONICO)
         with migrated.conexion() as conn:
             columnas = {r[1] for r in conn.execute("PRAGMA table_info(historial_local)")}
             fila = conn.execute("SELECT contenido, estado, archivo_id FROM historial_local WHERE id_mensaje='old'").fetchone()
-        self.assertTrue({"estado", "archivo_id"} <= columnas)
+        self.assertTrue({"estado", "archivo_id", "etapas_filtrado"} <= columnas)
         self.assertEqual(tuple(fila), ("conservado", "ENVIADO", None))
 
     def test_pendientes_con_predelete_e_intentos(self):
@@ -175,7 +197,8 @@ class TestHistorial(unittest.TestCase):
                 num_caracteres INTEGER, num_palabras INTEGER, nombre_archivo TEXT,
                 ruta_archivo TEXT, tamano_archivo INTEGER, fecha_envio TEXT NOT NULL,
                 enviado INTEGER NOT NULL DEFAULT 0, descargado INTEGER NOT NULL DEFAULT 0,
-                estado TEXT NOT NULL DEFAULT 'ENVIADO', archivo_id TEXT
+                estado TEXT NOT NULL DEFAULT 'ENVIADO', archivo_id TEXT,
+                etapas_filtrado TEXT
             )
         """)
         conn.execute("""
@@ -195,8 +218,8 @@ class TestHistorial(unittest.TestCase):
         """)
         # Fila de mensaje de A a B
         conn.execute("""
-            INSERT INTO historial_local (id_mensaje, origen, destino, tipo, contenido, fecha_envio, enviado, estado)
-            VALUES ('msg-ab-1', 'A', 'B', 'MENSAJE_TEXTO', 'De A para B', '2026-01-01T10:00:00', 1, 'ENVIADO')
+            INSERT INTO historial_local (id_mensaje, origen, destino, tipo, contenido, fecha_envio, enviado, estado, etapas_filtrado)
+            VALUES ('msg-ab-1', 'A', 'B', 'MENSAJE_IMAGEN', '[Imagen]', '2026-01-01T10:00:00', 1, 'ENVIADO', '[{"etapa":"grises","ms":2}]')
         """)
         # Pendiente de origen A
         conn.execute("""
@@ -226,21 +249,21 @@ class TestHistorial(unittest.TestCase):
         # En cuenta A: enviado=1 porque origen es A
         conn_a = sqlite3.connect(cuenta_a_path)
         try:
-            row_a = conn_a.execute("SELECT id_mensaje, enviado, estado FROM historial_local WHERE id_mensaje='msg-ab-1'").fetchone()
+            row_a = conn_a.execute("SELECT id_mensaje, enviado, estado, etapas_filtrado FROM historial_local WHERE id_mensaje='msg-ab-1'").fetchone()
             pend_a = [r[0] for r in conn_a.execute("SELECT id FROM pendientes_envio").fetchall()]
         finally:
             conn_a.close()
-        self.assertEqual(row_a, ('msg-ab-1', 1, 'ENVIADO'))
+        self.assertEqual(row_a, ('msg-ab-1', 1, 'ENVIADO', '[{"etapa":"grises","ms":2}]'))
         self.assertEqual(pend_a, ['pend-a-1'])
 
         # En cuenta B: enviado=0 porque origen es A (para B es mensaje recibido)
         conn_b = sqlite3.connect(cuenta_b_path)
         try:
-            row_b = conn_b.execute("SELECT id_mensaje, enviado, estado FROM historial_local WHERE id_mensaje='msg-ab-1'").fetchone()
+            row_b = conn_b.execute("SELECT id_mensaje, enviado, estado, etapas_filtrado FROM historial_local WHERE id_mensaje='msg-ab-1'").fetchone()
             pend_b = [r[0] for r in conn_b.execute("SELECT id FROM pendientes_envio").fetchall()]
         finally:
             conn_b.close()
-        self.assertEqual(row_b, ('msg-ab-1', 0, 'ENVIADO'))
+        self.assertEqual(row_b, ('msg-ab-1', 0, 'ENVIADO', '[{"etapa":"grises","ms":2}]'))
         self.assertEqual(pend_b, ['pend-b-1'])
 
         # Idempotencia: volver a ejecutar la migración no duplica ni falla

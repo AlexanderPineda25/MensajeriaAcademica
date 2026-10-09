@@ -65,7 +65,8 @@ public final class MapeadorDatosServidor implements InterfazMapeadorDatosServido
                     texto(mensaje, "nombreArchivo"), null, largo(mensaje, "tamanoArchivo"),
                     fecha != null ? fecha : LocalDateTime.now().toString(),
                     Objects.equals(codigoSesion, remitente), false,
-                    EstadoMensaje.ENTREGADO.name(), texto(mensaje, "archivoId")));
+                    EstadoMensaje.ENTREGADO.name(), texto(mensaje, "archivoId"),
+                    texto(mensaje, "etapasFiltrado")));
         }
         return List.copyOf(mensajes);
     }
@@ -74,7 +75,8 @@ public final class MapeadorDatosServidor implements InterfazMapeadorDatosServido
         try {
             return JsonParser.parseString(json).getAsJsonArray();
         } catch (RuntimeException error) {
-            throw new IllegalStateException(mensajeError, error);
+            throw new universidad.mensajeria.cliente.transversal.excepciones.ExcepcionSesion(
+                    mensajeError, error);
         }
     }
 

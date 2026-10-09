@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "nota": [
+    "FUENTE UNICA de la maquina de estados del mensaje (cierra VIS-02 de ESTADO_ROADMAP.md §7).",
+    "",
+    "Por que hace falta: la precedencia vivia escrita 5 veces en los 3 clientes y con dos",
+    "mecanismos distintos. Java la resuelve con una comparacion de enteros en el WHERE",
+    "(MARCAR_ESTADO) y con DELETE+INSERT al guardar; Python y .NET la resuelven con un",
+    "CASE dentro de ON CONFLICT DO UPDATE, y ademas Python la repite en marcar_estado.",
+    "Son 5 copias de la misma tabla de precedencia. Si se anade un estado y se actualiza",
+    "una sola, el historial de ese cliente discrepa del de los otros dos sin que nada falle.",
+    "",
+    "`contrato/verificar_estado_mensaje.py` extrae las reglas reales de cada cliente y las",
+    "compara con este archivo. Si divergen, sale con codigo 1."
+  ],
+
+  "estados": [
+    {
+      "nombre": "PENDIENTE",
+      "orden": 0,
+      "tick": "⏳ Pendiente",
+      "detalle": "Pendiente de envío",
+      "color": "muted.fg",
+      "glifo": "⏳",
+      "descripcion": "Guardado localmente, aún sin salir por la red."
+    },
+    {
+      "nombre": "ENVIADO",
+      "orden": 1,
+      "tick": "✓ Enviado",
+      "detalle": "Enviado",
+      "color": "muted.fg",
+      "glifo": "✓",
+      "descripcion": "El servidor aceptó la trama."
+    },
+    {
+      "nombre": "ENTREGADO",
+      "orden": 2,
+      "tick": "✓✓ Entregado",
+      "detalle": "Entregado",
+      "color": "muted.fg",
+      "glifo": "✓✓",
+      "descripcion": "El destinatario tiene sesión abierta y lo recibió."
+    },
+    {
+      "nombre": "LEIDO",
+      "orden": 3,
+      "tick": "✓✓ Leído",
+      "detalle": "Visto por {nombre}",
+      "color": "tick.read",
+      "glifo": "✓✓",
+      "descripcion": "El destinatario abrió la conversación. Es el único estado con color propio."
+    },
+    {
+      "nombre": "ERROR",
+      "orden": 0,
+      "tick": "! No enviado",
+      "detalle": "No se pudo enviar",
+      "color": "muted.fg",
+      "glifo": "!",
+      "terminal": true,
+      "descripcion": "Rechazo definitivo del servidor. No se reintenta nunca: `orden` 0 a propósito, para que un mensaje ya ERRORED no pueda volver a ENVIADO por un acuse tardío."
+    }
+  ],
+
+  "precedencia": {
+    "nota": [
+      "Regla que implementan los 3 clientes: un estado NUNCA retrocede.",
+      "`conservar(actual, nuevo)` devuelve el de mayor `orden`; a igualdad de orden gana el existente.",
+      "ERROR tiene orden 0 y es terminal, así que convive con PENDIENTE sin pisarse:",
+      "un ERROR sigue siendo ERROR aunque llegue un PENDIENTE, y un PENDIENTE nunca",
+      "deshace un ERROR.",
+      "",
+      "La implementan 5 copias de esta tabla:",
+      "  Java  : MARCAR_ESTADO (CASE de enteros en el WHERE) + guardar() con DELETE+INSERT",
+      "  Python: ON CONFLICT DO UPDATE (x2) + marcar_estado",
+      "  .NET  : ON CONFLICT DO UPDATE (x2) + MarcarEstado",
+      "Si una se queda atrás, ese cliente discrepa del resto sin fallar ninguna prueba."
+    ],
+    "reglas": [
+      {
+        "id": "leido-absorbe",
+        "cuando": "actual == LEIDO",
+        "resultado": "LEIDO",
+        "explicacion": "Nada degrada un mensaje ya leído. Es la regla que evita que un reintento de cola lo devuelva a ENVIADO."
+      },
+      {
+        "id": "nuevo-leido",
+        "cuando": "nuevo == LEIDO",
+        "resultado": "LEIDO",
+        "explicacion": "El acuse de lectura siempre gana, llegue cuando llegue."
+      },
+      {
+        "id": "entregado-no-retrcede",
+        "cuando": "actual == ENTREGADO y nuevo ∈ {PENDIENTE, ENVIADO}",
+        "resultado": "ENTREGADO",
+        "explicacion": "Un reintento de cola con el mensaje ya entregado no debe rebajarlo."
+      },
+      {
+        "id": "enviado-no-retrcede",
+        "cuando": "actual == ENVIADO y nuevo == PENDIENTE",
+        "resultado": "ENVIADO",
+        "explicacion": "El `ENVIADO` en cola se grabó antes de caer la red; el PENDIENTE posterior es un eco suyo."
+      },
+      {
+        "id": "defecto-gana",
+        "cuando": "otro caso",
+        "resultado": "nuevo",
+        "explicacion": "Sin regla, gana el valor entrante."
+      }
+    ]
+  },
+
+  "visibles_en_ui": {
+    "nota": [
+      "`estado = 'LEIDO'` es la condición de 'sin leer' en los 3 clientes. Si cambia, hay que",
+      "cambiarla en los cuatro sitios de cada cliente (los verifica el script).",
+      "`ERROR` NO cuenta como no leído: un mensaje que no se pudo enviar no puede poner un",
+      "contador en el sidebar."
+    ]
+  }
+}

@@ -9,7 +9,7 @@ import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 import universidad.mensajeria.protocolo.InterfazProtocoloComunicacion;
-import universidad.mensajeria.server.almacenarinformacion.InterfazAlmacenarInformacion;
+import universidad.mensajeria.server.mensajes.InterfazMensajes;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -26,14 +26,14 @@ public final class HistorialCaso {
     private static final int TAMANO_PAGINA = 50;
     private static final Gson JSON = new Gson();
 
-    private final InterfazAlmacenarInformacion almacenar;
+    private final InterfazMensajes mensajes;
     private final InterfazProtocoloComunicacion protocolo;
     private final ResponderCaso respuestas;
 
-    public HistorialCaso(InterfazAlmacenarInformacion almacenar,
+    public HistorialCaso(InterfazMensajes mensajes,
                          InterfazProtocoloComunicacion protocolo,
                          ResponderCaso respuestas) {
-        this.almacenar = almacenar;
+        this.mensajes = mensajes;
         this.protocolo = protocolo;
         this.respuestas = respuestas;
     }
@@ -41,7 +41,7 @@ public final class HistorialCaso {
     public void historial(IdSesion sesion, String otro, int pagina, String idSolicitud) {
         String remitente = sesion.codigo();
         PaginaDTO<MensajeResumenDTO> page =
-                almacenar.paginaConversacion(remitente, otro, pagina, TAMANO_PAGINA);
+                mensajes.paginaConversacion(remitente, otro, pagina, TAMANO_PAGINA);
         List<Map<String, Object>> resumen = page.contenido().stream()
                 .map(HistorialCaso::aResumen)
                 .toList();

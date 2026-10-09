@@ -44,15 +44,15 @@ public final class Tema {
             if (in != null) {
                 props.load(in);
             }
-        } catch (Exception ignorada) {
-            // respaldo por defecto
+        } catch (java.io.IOException lecturaOmitida) {
+            // Respaldo por defecto: sin properties se usa oscuro.
         }
         Path externo = externo();
         if (Files.exists(externo)) {
             try (Reader reader = Files.newBufferedReader(externo, StandardCharsets.UTF_8)) {
                 props.load(reader);
-            } catch (Exception ignorada) {
-                // respaldo por defecto
+            } catch (java.io.IOException lecturaOmitida) {
+                // Respaldo por defecto.
             }
         }
         return normalizar(props.getProperty(CLAVE, OSCURO));
@@ -66,15 +66,15 @@ public final class Tema {
         if (Files.exists(externo)) {
             try (Reader reader = Files.newBufferedReader(externo, StandardCharsets.UTF_8)) {
                 props.load(reader);
-            } catch (Exception ignorada) {
-                // se reescribe igual
+            } catch (java.io.IOException lecturaOmitida) {
+                // Se reescribe igual con lo que haya en memoria.
             }
         }
         props.setProperty(CLAVE, valor);
         try (Writer writer = Files.newBufferedWriter(externo, StandardCharsets.UTF_8)) {
             props.store(writer, "tema del cliente (oscuro|claro)");
-        } catch (Exception ignorada) {
-            // preferencia opcional
+        } catch (java.io.IOException escrituraOpcional) {
+            // Preferencia opcional: no interrumpe la UI.
         }
     }
 

@@ -1,5 +1,6 @@
 """Fachada Python con red falsa y SQLite real: online, offline, reintento."""
 import os
+import json
 import tempfile
 import unittest
 
@@ -14,9 +15,13 @@ class RedFalsa:
         self.conectado = True
         self.enviados_async = []
         self.caida = False
+        self.historial_remoto = []
 
     def conectar(self):
         self.conectado = True
+
+    def desconectar(self):
+        self.conectado = False
 
     def pedir(self, msg, timeout=15):
         if self.caida or not self.conectado:
@@ -32,8 +37,13 @@ class RedFalsa:
                     'hashSha256': 'h', 'numCaracteres': 4, 'numPalabras': 1}
         if tipo == 'MENSAJE_IMAGEN':
             return {'tipo': 'IMAGE_FILTERED_RESULT', 'id': msg.get('id'),
-                    'exito': True, 'hashSha256': 'hi', 'etapasFiltrado': '[]',
+                    'exito': True, 'hashSha256': 'hi',
+                    'etapasFiltrado': '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]',
                     'archivoId': '7'}
+        if tipo == 'HISTORIAL_REQ':
+            return {'tipo': 'HISTORIAL_PAGE', 'id': msg.get('id'),
+                    'exito': True, 'contenido': json.dumps(self.historial_remoto),
+                    'totalPaginas': 1}
         if tipo == 'BROADCAST':
             return {'tipo': 'ACK', 'id': msg.get('id'), 'exito': True}
         if tipo == 'LISTAR_CONECTADOS':
@@ -63,6 +73,7 @@ class TestFachada(unittest.TestCase):
                                 on_presencia_ui=self.presencias.append,
                                 on_cierre_ui=self.cierres.append,
                                 db=db, conexion=self.red)
+        self.addCleanup(self.f.desconectar)
         self.f.login("A001", "Secreta123")
 
     def test_enviar_texto_online_guarda_metadatos(self):
@@ -102,12 +113,51 @@ class TestFachada(unittest.TestCase):
         self.assertEqual(len(self.avisos), 1)
 
     def test_imagen_recibida_no_guarda_base64(self):
+        etapas = '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]'
         self.f._handle_unsolicited_message(
             {'tipo': 'MENSAJE_IMAGEN', 'id': 'im-1', 'remitente': 'B002',
              'contenidoImagen': 'QUJD', 'nombreArchivo': 'f.png',
-             'hashSha256': 'hi', 'fechaHora': '2026-01-01T10:00:00'})
+             'hashSha256': 'hi', 'fechaHora': '2026-01-01T10:00:00',
+             'etapasFiltrado': etapas})
         conv = self.f.obtener_conversacion("B002")
         self.assertIsNone(conv[0]["contenido"])
+        self.assertEqual(conv[0]["etapas_filtrado"], etapas)
+
+    def test_envio_imagen_persiste_etapas_del_ack(self):
+        etapas = '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]'
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as archivo:
+            archivo.write(b"imagen")
+            ruta = archivo.name
+        self.addCleanup(lambda: os.path.exists(ruta) and os.unlink(ruta))
+
+        self.assertTrue(self.f.enviar_imagen("B002", ruta, id_msg="ack-etapas"))
+
+        self.assertEqual(
+            self.f.historial.obtener_por_id("ack-etapas")["etapas_filtrado"], etapas)
+
+    def test_historial_remoto_persiste_etapas_filtrado(self):
+        etapas = '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]'
+        self.red.historial_remoto = [{
+            "id": "remoto-etapas", "remitente": "B002", "destinatario": "A001",
+            "tipo": "MENSAJE_IMAGEN", "nombreArchivo": "foto.png",
+            "fechaEnvio": "2026-01-01T10:00:00", "etapasFiltrado": etapas,
+        }]
+
+        self.f.traer_historial("B002", 0)
+
+        self.assertEqual(
+            self.f.historial.obtener_por_id("remoto-etapas")["etapas_filtrado"], etapas)
+
+    def test_marcar_leidos_encola_y_envia_confirmacion(self):
+        self.f._handle_unsolicited_message(
+            {'tipo': 'MENSAJE_TEXTO', 'id': 'msg-leer', 'remitente': 'B002',
+             'contenido': 'mensaje', 'fechaHora': '2026-01-01T10:00:00'})
+
+        self.assertEqual(self.f.historial.ids_no_leidos('A001', 'B002'), ['msg-leer'])
+        self.assertEqual(self.f.marcar_leidos('B002'), 1)
+        self.assertEqual(self.f.historial.ids_no_leidos('A001', 'B002'), [])
+        self.assertEqual(self.red.enviados_async[-1]['tipo'], 'MENSAJE_LEIDO')
+        self.assertEqual(self.red.enviados_async[-1]['contenido'], 'msg-leer')
 
     def test_presencia_push_actualiza_callback_y_cierre_limpia_sesion(self):
         self.f._handle_unsolicited_message(

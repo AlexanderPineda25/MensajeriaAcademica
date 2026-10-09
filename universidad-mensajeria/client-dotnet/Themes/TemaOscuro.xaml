@@ -1,10 +1,11 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Tema oscuro Telegram liso (UI-09). Mismas claves que TemaClaro.xaml. -->
+    <!-- GENERADO por contrato/generar_tokens.py desde contrato/tokens-diseno.json.
+         NO editar a mano. Tema: oscuro -->
     <SolidColorBrush x:Key="CardBrush" Color="#FF182533" />
     <SolidColorBrush x:Key="CardBorderBrush" Color="#FF2A3B4D" />
     <SolidColorBrush x:Key="HeaderBrush" Color="#FF1F3A5F" />
-    <SolidColorBrush x:Key="TitleBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="TitleBrush" Color="#FFE8EEF2" />
     <SolidColorBrush x:Key="SubtitleBrush" Color="#FFC9D6E8" />
     <SolidColorBrush x:Key="EyebrowBrush" Color="#FF9FB6D8" />
     <SolidColorBrush x:Key="LabelBrush" Color="#FFE8EEF2" />
@@ -17,13 +18,21 @@
     <SolidColorBrush x:Key="BubbleOwnFgBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="BubbleInFgBrush" Color="#FFE8EEF2" />
     <SolidColorBrush x:Key="RemitenteBrush" Color="#FFC4B5FD" />
-    <SolidColorBrush x:Key="FechaBrush" Color="#FFC4B5FD" />
+    <SolidColorBrush x:Key="FechaBrush" Color="#FFA8B8C1" />
     <SolidColorBrush x:Key="VistoLeidoBrush" Color="#FF5EB1FF" />
-    <!-- UIX-18: el tick no-leido era #FFE8EEF2, el mismo gris del cuerpo:
-         se confunde con el texto. Gris medio propio, distinto del cuerpo
-         (#FFFFFFFF/#FFE8EEF2) y del leido azul (#FF5EB1FF). -->
+    <!-- UIX-18: el tick no-leido debe ser un gris propio, distinto del cuerpo y del leido azul. -->
     <SolidColorBrush x:Key="VistoOtroBrush" Color="#FFA8B8C1" />
     <SolidColorBrush x:Key="CitaBgBrush" Color="#FF243447" />
     <SolidColorBrush x:Key="CitaBorderBrush" Color="#FFA78BFA" />
     <SolidColorBrush x:Key="CitaTextBrush" Color="#FFC4B5FD" />
+    <SolidColorBrush x:Key="SendBrush" Color="#FF7B61B8" />
+    <SolidColorBrush x:Key="InputBgBrush" Color="#FF243447" />
+    <SolidColorBrush x:Key="InputFgBrush" Color="#FFE8EEF2" />
+    <SolidColorBrush x:Key="SidebarBrush" Color="#FF182533" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#FF2A3B4D" />
+    <SolidColorBrush x:Key="ErrorBgBrush" Color="#FFFDECEA" />
+    <SolidColorBrush x:Key="ErrorFgBrush" Color="#FFB91C1C" />
+    <SolidColorBrush x:Key="OfflineBannerBgBrush" Color="#FFFFFBEB" />
+    <SolidColorBrush x:Key="OfflineBannerFgBrush" Color="#FFB45309" />
+    <SolidColorBrush x:Key="BadgeBrush" Color="#FF48A982" />
 </ResourceDictionary>

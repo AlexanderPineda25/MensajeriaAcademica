@@ -1,13 +1,13 @@
 import sys
 import os
 
-from PySide6.QtGui import QColor, QFont, QFontDatabase
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
-from qfluentwidgets import setTheme, setThemeColor, Theme
 
 from fachada.fachada_cliente import FachadaCliente
 from ui.chat_window import ChatWindow
 from ui.login_window import LoginWindow
+from ui.tema import aplicar_tema_fluent, modo_guardado
 
 
 def iniciar():
@@ -17,12 +17,12 @@ def iniciar():
         fuente = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "segoeui.ttf")
         if os.path.exists(fuente) and QFontDatabase.addApplicationFont(fuente) >= 0:
             app.setFont(QFont("Segoe UI", 10))
-    # UIX-29: el canonico es oscuro (tema.py: normalizar/modo_guardado
-    # devuelven MODO_OSCURO por defecto). Antes arrancaba en claro.
-    setTheme(Theme.DARK)
-    setThemeColor(QColor("#7B61B8"))
 
     fachada = FachadaCliente()
+    # UIX-29: el canonico es oscuro (tema.py: normalizar/modo_guardado
+    # devuelven MODO_OSCURO por defecto). Si el usuario guardo "claro", los
+    # controles Fluent arrancan YA en claro y no cambian al primer toggle.
+    aplicar_tema_fluent(modo_guardado(fachada))
     login = LoginWindow(fachada)
     ventana_chat = None
 

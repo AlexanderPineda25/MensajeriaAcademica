@@ -1,4 +1,5 @@
 package universidad.mensajeria.cliente.presentacion;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
 
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
@@ -17,6 +18,7 @@ import universidad.mensajeria.cliente.transversal.records.UsuarioLocal;
 import universidad.mensajeria.cliente.transversal.utilerias.FormatoRespuesta;
 import universidad.mensajeria.cliente.transversal.utilerias.FormatoUsuario;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +32,7 @@ import java.util.function.Consumer;
  * Encapsula el estado observable de la vista, la lógica de presentación,
  * filtros y coordinación de casos de uso sin acceso directo a socket ni persistencia.
  */
-public class ChatViewModel implements InterfazArchivosConversacion {
+public class ChatViewModel implements InterfazChatViewModel {
 
     private final InterfazChatCliente fachada;
     private final Executor tareasFondo;
@@ -145,7 +147,7 @@ public class ChatViewModel implements InterfazArchivosConversacion {
     }
 
     public static boolean puedeEnviar(String texto, boolean adjunto, boolean hayDestino, boolean enviando) {
-        return hayDestino && !enviando && ((texto != null && !texto.isBlank()) || adjunto);
+        return InterfazChatViewModel.puedeEnviar(texto, adjunto, hayDestino, enviando);
     }
 
     public String nombreVisible(String codigo) {
@@ -175,12 +177,12 @@ public class ChatViewModel implements InterfazArchivosConversacion {
         return resultado;
     }
 
-    public boolean enviarTexto(String destinatario, String texto) throws Exception {
+    public boolean enviarTexto(String destinatario, String texto) throws ExcepcionCliente, IOException {
         return enviarTexto(destinatario, texto, respuestaSeleccionada.get());
     }
 
     public boolean enviarTexto(String destinatario, String texto, MensajeLocal respuesta)
-            throws Exception {
+            throws ExcepcionCliente, IOException {
         if (destinatario == null || destinatario.isBlank()) {
             return false;
         }
@@ -192,16 +194,16 @@ public class ChatViewModel implements InterfazArchivosConversacion {
     }
 
     public boolean enviarImagen(String destinatario, byte[] bytes, String nombre, String mime)
-            throws Exception {
+            throws ExcepcionCliente, IOException {
         return fachada.enviarImagen(destinatario, bytes, nombre, mime);
     }
 
     public boolean enviarArchivo(String destinatario, byte[] bytes, String nombre, String mime)
-            throws Exception {
+            throws ExcepcionCliente, IOException {
         return fachada.enviarArchivo(destinatario, bytes, nombre, mime);
     }
 
-    public boolean enviarAdjunto(String destinatario, boolean esImagen) throws Exception {
+    public boolean enviarAdjunto(String destinatario, boolean esImagen) throws ExcepcionCliente, IOException {
         if (destinatario == null || adjuntoBytes == null) {
             return false;
         }
@@ -212,19 +214,19 @@ public class ChatViewModel implements InterfazArchivosConversacion {
         }
     }
 
-    public List<MensajeLocal> cargarConversacion(String otro, int limite, int offset) throws Exception {
+    public List<MensajeLocal> cargarConversacion(String otro, int limite, int offset) throws ExcepcionCliente, IOException {
         return fachada.conversacion(otro, limite, offset);
     }
 
-    public int contarConversacion(String otro) throws Exception {
+    public int contarConversacion(String otro) throws ExcepcionCliente, IOException {
         return fachada.contarConversacion(otro);
     }
 
-    public List<String> buscarHistorial(String otro, String patron) throws Exception {
+    public List<String> buscarHistorial(String otro, String patron) throws ExcepcionCliente, IOException {
         return fachada.buscarEnHistorial(otro, patron);
     }
 
-    public void marcarLeidos(String otro) throws Exception {
+    public void marcarLeidos(String otro) throws ExcepcionCliente, IOException {
         fachada.marcarLeidos(otro);
     }
 
@@ -232,34 +234,34 @@ public class ChatViewModel implements InterfazArchivosConversacion {
         fachada.suscribirEventos(observador);
     }
 
-    public void sincronizarDirectorio() throws Exception {
+    public void sincronizarDirectorio() throws ExcepcionCliente, IOException {
         fachada.sincronizarDirectorio();
     }
 
-    public void refrescarPresencia() throws Exception {
+    public void refrescarPresencia() throws ExcepcionCliente, IOException {
         fachada.refrescarPresencia();
     }
 
-    public List<UsuarioLocal> directorioLocal() throws Exception {
+    public List<UsuarioLocal> directorioLocal() throws ExcepcionCliente, IOException {
         return fachada.directorioLocal();
     }
 
-    public List<RecienteChat> cargarRecientes() throws Exception {
+    public List<RecienteChat> cargarRecientes() throws ExcepcionCliente, IOException {
         return fachada.recientes();
     }
 
     @Override
-    public byte[] descargarImagen(String idMensaje) throws Exception {
+    public byte[] descargarImagen(String idMensaje) throws ExcepcionCliente, IOException {
         return fachada.descargarImagen(idMensaje);
     }
 
     @Override
-    public PaginaHistorialRemota traerHistorial(String otro, int pagina) throws Exception {
+    public PaginaHistorialRemota traerHistorial(String otro, int pagina) throws ExcepcionCliente, IOException {
         return fachada.traerHistorial(otro, pagina);
     }
 
     @Override
-    public byte[] descargarContenidoArchivo(String archivoId) throws Exception {
+    public byte[] descargarContenidoArchivo(String archivoId) throws ExcepcionCliente, IOException {
         return fachada.descargarContenidoArchivo(archivoId);
     }
 
@@ -297,11 +299,11 @@ public class ChatViewModel implements InterfazArchivosConversacion {
         fachada.desconectar();
     }
 
-    public void logout() throws Exception {
+    public void logout() throws ExcepcionCliente, IOException {
         fachada.logout();
     }
 
-    public void expulsarOtrasSesiones() throws Exception {
+    public void expulsarOtrasSesiones() throws ExcepcionCliente, IOException {
         fachada.expulsarOtrasSesiones();
     }
 

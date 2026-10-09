@@ -3,6 +3,8 @@ package universidad.mensajeria.cliente.fachada;
 import java.util.List;
 import java.util.function.Consumer;
 import universidad.mensajeria.cliente.transversal.EstadoConexion;
+import java.io.IOException;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
 import universidad.mensajeria.cliente.transversal.records.MensajeLocal;
 import universidad.mensajeria.cliente.transversal.records.RecienteChat;
 import universidad.mensajeria.cliente.transversal.records.UsuarioLocal;
@@ -25,33 +27,33 @@ public interface InterfazChatCliente extends InterfazArchivosConversacion,
 
     void cerrarSesionRemota();
 
-    void logout() throws Exception;
+    void logout() throws ExcepcionCliente, IOException;
 
-    void expulsarOtrasSesiones() throws Exception;
+    void expulsarOtrasSesiones() throws ExcepcionCliente, IOException;
 
-    List<UsuarioLocal> directorioLocal() throws Exception;
+    List<UsuarioLocal> directorioLocal() throws ExcepcionCliente, IOException;
 
-    List<UsuarioLocal> sincronizarDirectorio() throws Exception;
+    List<UsuarioLocal> sincronizarDirectorio() throws ExcepcionCliente, IOException;
 
-    List<RecienteChat> recientes() throws Exception;
+    List<RecienteChat> recientes() throws ExcepcionCliente, IOException;
 
-    List<String> refrescarPresencia() throws Exception;
+    List<String> refrescarPresencia() throws ExcepcionCliente, IOException;
 
-    void marcarLeidos(String otro) throws Exception;
+    void marcarLeidos(String otro) throws ExcepcionCliente, IOException;
 
     void marcarLeidosFondo(String otro);
 
-    boolean enviarTexto(String destinatario, String contenido) throws Exception;
+    boolean enviarTexto(String destinatario, String contenido) throws ExcepcionCliente, IOException;
 
     boolean enviarImagen(String destinatario, byte[] bytes, String nombreArchivo,
-                         String mime) throws Exception;
+                         String mime) throws ExcepcionCliente, IOException;
 
     boolean enviarArchivo(String destinatario, byte[] bytes, String nombreArchivo,
-                          String mime) throws Exception;
+                          String mime) throws ExcepcionCliente, IOException;
 
-    List<MensajeLocal> conversacion(String otro, int limite, int offset) throws Exception;
+    List<MensajeLocal> conversacion(String otro, int limite, int offset) throws ExcepcionCliente, IOException;
 
-    int contarConversacion(String otro) throws Exception;
+    int contarConversacion(String otro) throws ExcepcionCliente, IOException;
 
-    List<String> buscarEnHistorial(String otro, String patron) throws Exception;
+    List<String> buscarEnHistorial(String otro, String patron) throws ExcepcionCliente, IOException;
 }

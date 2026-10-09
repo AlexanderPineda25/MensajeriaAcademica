@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- GENERADO por contrato/generar_tokens.py desde contrato/tokens-diseno.json.
+         NO editar a mano. Tema: {{tema}} -->
+    <SolidColorBrush x:Key="CardBrush" Color="{{login.card.bg}}" />
+    <SolidColorBrush x:Key="CardBorderBrush" Color="{{login.card.border}}" />
+    <SolidColorBrush x:Key="HeaderBrush" Color="{{login.header.bg}}" />
+    <SolidColorBrush x:Key="TitleBrush" Color="{{title.fg}}" />
+    <SolidColorBrush x:Key="SubtitleBrush" Color="{{login.subtitle.fg}}" />
+    <SolidColorBrush x:Key="EyebrowBrush" Color="{{login.eyebrow.fg}}" />
+    <SolidColorBrush x:Key="LabelBrush" Color="{{login.label.fg}}" />
+    <SolidColorBrush x:Key="MutedBrush" Color="{{muted.fg}}" />
+    <SolidColorBrush x:Key="ChatBgBrush" Color="{{root.bg}}" />
+    <SolidColorBrush x:Key="WindowBgBrush" Color="{{root.bg}}" />
+    <SolidColorBrush x:Key="BubbleOwnBrush" Color="{{bubble.out.bg}}" />
+    <SolidColorBrush x:Key="BubbleInBrush" Color="{{bubble.in.bg}}" />
+    <SolidColorBrush x:Key="BubbleBorderBrush" Color="{{bubble.in.border}}" />
+    <SolidColorBrush x:Key="BubbleOwnFgBrush" Color="{{body.out.fg}}" />
+    <SolidColorBrush x:Key="BubbleInFgBrush" Color="{{body.fg}}" />
+    <SolidColorBrush x:Key="RemitenteBrush" Color="{{sender.fg}}" />
+    <SolidColorBrush x:Key="FechaBrush" Color="{{muted.fg}}" />
+    <SolidColorBrush x:Key="VistoLeidoBrush" Color="{{tick.read}}" />
+    <!-- UIX-18: el tick no-leido debe ser un gris propio, distinto del cuerpo y del leido azul. -->
+    <SolidColorBrush x:Key="VistoOtroBrush" Color="{{tick.unread}}" />
+    <SolidColorBrush x:Key="CitaBgBrush" Color="{{quote.bg}}" />
+    <SolidColorBrush x:Key="CitaBorderBrush" Color="{{quote.border}}" />
+    <SolidColorBrush x:Key="CitaTextBrush" Color="{{quote.fg}}" />
+    <SolidColorBrush x:Key="SendBrush" Color="{{send.bg}}" />
+    <SolidColorBrush x:Key="InputBgBrush" Color="{{input.bg}}" />
+    <SolidColorBrush x:Key="InputFgBrush" Color="{{input.fg}}" />
+    <SolidColorBrush x:Key="SidebarBrush" Color="{{sidebar.bg}}" />
+    <SolidColorBrush x:Key="DividerBrush" Color="{{split.divider}}" />
+    <SolidColorBrush x:Key="ErrorBgBrush" Color="{{comunes.error_bg}}" />
+    <SolidColorBrush x:Key="ErrorFgBrush" Color="{{comunes.error_fg}}" />
+    <SolidColorBrush x:Key="OfflineBannerBgBrush" Color="{{comunes.banner_offline_bg}}" />
+    <SolidColorBrush x:Key="OfflineBannerFgBrush" Color="{{comunes.banner_offline_fg}}" />
+    <SolidColorBrush x:Key="BadgeBrush" Color="{{comunes.badge_bg}}" />
+</ResourceDictionary>

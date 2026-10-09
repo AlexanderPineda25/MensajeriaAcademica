@@ -1,6 +1,6 @@
 # Estado y roadmap
 
-Actualizado: **2026-10-06**. Este es el tablero de estado; la arquitectura está en
+Actualizado: **2026-10-07** (consolidación documental; sin cambios de código). Este es el tablero de estado; la arquitectura está en
 [`PLAN.md`](PLAN.md), el plan de refactor de clientes en
 [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md), la evidencia de la auditoría en
 [`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md), los requisitos en
@@ -8,7 +8,7 @@ Actualizado: **2026-10-06**. Este es el tablero de estado; la arquitectura está
 [`DESPLIEGUE.md`](DESPLIEGUE.md).
 
 Regla de tableros: **este archivo manda hacia adelante** (qué falta);
-[`PLAN_MEJORAS.md`](PLAN_MEJORAS.md) es el **diario de lo ya ejecutado** (qué se hizo y cómo se
+[`docs/archivo/PLAN_MEJORAS-historico.md`](docs/archivo/PLAN_MEJORAS-historico.md) es el **diario de lo ya ejecutado** (qué se hizo y cómo se
 verificó).
 
 ## Cómo leer este archivo
@@ -109,11 +109,28 @@ El launcher del cliente habilita `--enable-native-access=javafx.graphics`. Los t
 - **Bug de concurrencia en difusión ✅:** varias tareas de `poolFiltros` hacían `Files.move` sobre
   la misma ruta y en Windows se perdían copias. Corregido con candado por ruta en
   `AlmacenarInformacion`, cubierto por `difusionDelMismoTextoEnParaleloNoPierdeCopias`.
-- **Vista administrativa del servidor ✅ (implementación 2026-10-06):** mejoras a Estado,
+- **Vista administrativa del servidor ✅ (implementación 2026-10-06 + Sesión B 2026-10-07):** mejoras a Estado,
   Conectados, ficha de Usuario con páginas de 50, Mensajes con IP/contadores, detalle condicional
   de Informes, expansión de Logs, secciones de Pool, etiqueta de Difundir y confirmación de cierre
-  que deja vivos TCP/JLine. JLine reorganiza jerarquía visual. La revisión documental no ejecutó el
+  que deja vivos TCP/JLine. Sesión B: Conectados con `Nombre Apellidos [código]` y sync
+  lista↔combo, confirmación Sí/No al desconectar, Usuarios centrado, ficha Mensajes con
+  paridad (filtro local, detalle, divisor, selección por id) e Informes manual sin
+  auto-refresh (conserva fila). JLine reorganiza jerarquía visual. La revisión documental no ejecutó el
   smoke visual completo: `SMOKE-09` lo registra como pendiente.
+- **Cierre de parciales 2026-10-08 ✅:** RF-S36 (bloque multilínea en consola con rutas de
+  derivadas en IMAGEN, `BloqueMensajeTest` 4/4) y RF-S53 (IP viva del destinatario en tabla
+  y detalle, con `No disponible` si offline). Las 5 lecturas de `casosdeuso/` pasan por E10
+  (`InterfazMensajes` como pass-through, 0 flechas y 0 métodos netos nuevos) con candado
+  `casosNuncaTocanAlmacen` en `DiagramaFidelidadTest` (7/7). Suite `servidor-app`: 106 casos,
+  102 en verde; los 4 fallos son preexistentes y ajenos (2 umbrales `CargaMixtaTest`, 2
+  `MensajesTest` verificados sin estos cambios).
+- **Deuda SOLID/Clean Code saldada 2026-10-08 ✅:** `EntregaCaso` (entrega, presencia, acuses)
+  y `DifusionCaso` (abanico admin/usuario) extraídos verbatim de `FachadaDeServicios`
+  (901→650 líneas); despacho de cola por tabla `EnumMap` en vez de `switch`; pool de entrega
+  creado por `Fabrica` e inyectado; `DetalleMensaje` extraído a clase propia
+  (VistaEscritorio 1699→1418); fallback 50 MB unificado en
+  `LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO`. Diagrama intacto (0 flechas, 0 métodos netos
+  nuevos) y suite en verde salvo los 4 preexistentes.
 
 ---
 
@@ -366,7 +383,7 @@ Detalle, riesgos y criterios medibles en [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_U
 | **PAT-VM** | MVVM: `ChatViewModel` en los 3 | Java ya tiene ViewModel que centraliza estado conversacional y sirve de frontera de operaciones, pero el controlador aún conserva coordinación JavaFX extensa (968 líneas). Python tiene 1 322; .NET va ⅓ (`MensajeVM` sí notifica, `UsuarioVM` no) | P1 | 🟡 Parcial en Java; extracción completa de coordinación JavaFX y MVVM Python/.NET pendientes |
 | **PAT-CMD** | `Command` / `ICommand` para las acciones de UI | "Puedo enviar" está implementado **3 veces** y en .NET hay **0 `ICommand`**, así que ningún botón se habilita de forma declarativa | P1 | ⬜ Por hacer |
 | **PAT-04** | Adapter del almacén local | Python **no tiene interfaz**: la vista la salta y accede a `fachada.historial`. El upsert `DELETE + INSERT` portable ya está documentado y solo se usa en Java | P2 | ⬜ Por hacer |
-| **PAT-05** | Adapter de transporte TCP/TLS | 3 implementaciones con 3 estrategias, y **validación TLS inconsistente**: Python valida fail-fast, Java no valida, .NET sustituye el puerto en silencio | P2 (cierra `SEG-01`) | ⬜ Por hacer |
+| **PAT-05** | Adapter de transporte TCP/TLS | Sigue habiendo estrategias y formatos de almacén distintos; el fail-fast ya está cableado en los 3 clientes y se comprueba en sus suites | P2 (cierra `SEG-01`) | 🟡 Implementación validada el 2026-10-08; falta la matriz de handshake de aceptación |
 | **PAT-06** | Test de equivalencia del `schema-local.sql` en .NET | `test_schema_distribuible.py:34` protege la copia Python; **la .NET no tiene equivalente** y puede divergir en silencio | P2 | ✅ Cerrado **por otra vía** (en `MUERTE-5`): `Mensajeria.Tests.csproj` enlaza el `schema-local.sql` real y los 35 tests de store lo ejecutan |
 
 ### 6.1 `PAT-03` en detalle — qué se añadió
@@ -452,8 +469,8 @@ para validar tema, adjuntos y recorridos completos de sesión/reconexión.
 
 | ID | Tarea | Estado |
 |---|---|---|
-| **VIS-01** | **Fijar una única paleta por tema.** El tema oscuro coincide en los 3 (11 colores idénticos); **el claro no coincide en ninguno**: burbuja propia `#E4F3EC` / `#E1F5FE` / `#D9FDD3` y acento `#2456A6` / `#147D73` / defecto de WPF-UI. Deriva real, no diferencia de toolkit | ⬜ Por hacer |
-| **VIS-02** | **Centralizar los 73 literales compartidos.** Caso grave: la **máquina de estados de mensaje** está escrita como `CASE` SQL **3 veces** con la misma precedencia — si se añade un estado y se olvida una pista, el historial de un cliente discrepa del de otro. Ojo: `Respuesta a {identidad}: "…"` es **visible en el protocolo** y no se puede cambiar sin tocar los 3 a la vez | ⬜ Por hacer |
+| **VIS-01** | **Fijar una única paleta por tema.** El tema oscuro coincide en los 3 (11 colores idénticos); **el claro no coincide en ninguno**: burbuja propia `#E4F3EC` / `#E1F5FE` / `#D9FDD3` y acento `#2456A6` / `#147D73` / defecto de WPF-UI. Deriva real, no diferencia de toolkit | ✅ **Cerrado 2026-10-07.** Fase 0.2 de [`PLAN_PARIDAD_CLIENTES.md`](PLAN_PARIDAD_CLIENTES.md): la paleta vive una vez en `contrato/tokens-diseno.json` y `contrato/generar_tokens.py` produce los 4 CSS, los 2 `.xaml` y los tokens de Python. El generador **falla** si un contraste baja de 4.5:1 (19 reglas, todas OK). Detectó y corrigió 4 tokens con contraste insuficiente y partió `sender.fg` en dos por el lavanda sobre la burbuja morada. Efecto colateral: `chat-claro.css` ya no puede quedarse sin selectores, porque sale de la misma plantilla que `chat.css` (le faltaban 3) |
+| **VIS-02** | **Centralizar los 73 literales compartidos.** Caso grave: la **máquina de estados de mensaje** está escrita como `CASE` SQL **3 veces** con la misma precedencia — si se añade un estado y se olvida una pista, el historial de un cliente discrepa del de otro. Ojo: `Respuesta a {identidad}: "…"` es **visible en el protocolo** y no se puede cambiar sin tocar los 3 a la vez | 🟠 **Parcial 2026-10-08.** La parte grave (máquina de estados) está cerrada: `contrato/estado-mensaje.json` declara los 5 estados y sus 5 reglas de precedencia, y `contrato/verificar_estado_mensaje.py` lo contrasta con lo escrito en los 3 clientes. **Bug real encontrado:** `ERROR` no pintaba nada en Python ni en WPF (`ERROR` sí se escribía en la base y JavaFX sí lo mostraba) — corregido. Queda centralizar los literales de ventana y diálogo (~1 j) |
 
 **Lo que NO entra:** i18n (resource files / `QTranslator` / `.resx`). Ninguno de los 3 tiene
 mecanismo y el enunciado no lo pide. Lo que sí entra es centralizar literales (`VIS-02`), que es lo
@@ -475,7 +492,7 @@ reconciliación del legado siguen pendientes. Detalle y plan de consolidación e
 | **DIAG-04** | **Estados** — mensaje, sesión, transferencia. Antes no existía ningún `stateDiagram`. `st-mensaje` pasa a ser la referencia contra la cual se comparan los 3 `CASE` SQL duplicados | ✅ source | Render + revisión |
 | **DIAG-05** | **Despliegue** — 4 procesos en LAN, con la prohibición explícita de cliente → base del servidor | ✅ source | Render + revisión |
 | **DIAG-06** | **Clases de Python y .NET** — no existía ninguno de los dos | ✅ source | Render + revisión |
-| **DIAG-07** | **Consolidación** — migrar diagramas únicos a `DIAGRAMAS/` y revisar los legados | ✅ Fuentes/renderes canónicos migrados y catalogados en Lote G. **Las carpetas legadas siguen presentes y no se borran en esta revisión**; su inventario y criterios de retiro están en `DIAGRAMAS/README.md` §3 y `REVISION_DOCUMENTAL.md`. | Comparar los 10 `.mmd` legados y 5 mockups legado con sus equivalentes antes de archivarlos; registrar lo que no esté cubierto. |
+| **DIAG-07** | **Consolidación** — migrar diagramas únicos a `DIAGRAMAS/` y revisar los legados | ✅ Fuentes/renderes canónicos migrados y catalogados en Lote G. Legados bajo `DIAGRAMAS/DIAGRAMAS_ENTREGA/` y `DIAGRAMAS/clases/01..09`; inventario y criterios en `DIAGRAMAS/README.md` §3 y `docs/archivo/README.md`. | Comparar los 10 `.mmd` legados y 5 mockups legado con sus equivalentes antes de archivarlos; registrar lo que no esté cubierto. |
 | **DIAG-08** | **`render.ps1` sale siempre con código 0.** No hay forma de que CI detecte un render roto | ✅ Hecho (Lote G): contador `$script:fallos` + `exit 1`; verificado con roto temporal (exit 1) y sin rotos (exit 0). De paso, `Invoke-Nativo` evita que el stderr del shim npm aborte el bucle en PS 5.1 | Contar los `FALLO` y devolver exit code distinto de 0 |
 | **DIAG-09** | **Mockups posteriores a las features**: estados de conexión/vacío, banner inline .NET y vista administrativa actual | ⬜ Por hacer; varias features existen, pero los diseños/renderes deben reflejar el código actual | Actualizar source `.excalidraw`, render y revisión visual. |
 | **DIAG-10** | Toolchain Mermaid en el entorno documentado | ✅ Hecho 2026-10-06; `mmdc`/Node disponibles y `render.ps1 -Solo mermaid` se registró con exit 0 | Revalidar al cambiar de equipo/entorno. |
@@ -492,7 +509,7 @@ para nuevos estados de producto, no de instalación del renderizador Mermaid.
 |---|---|---|---|
 | **SEC-05** | ~~`LISTAR_USUARIOS` sin autenticación~~ | ✅ **Cerrado** 2026-10-05 | §2. Guardas + fallo cerrado en el SPI + test parametrizado de 14 tipos + E2E |
 | **SEC-06** | Guardar el surrogate de `SEC-05` | ✅ **Cerrado** 2026-10-05 | §2. Automatizado con `requiereAutenticacion()` por defecto `true` y 2 tests que fijan el conjunto abierto |
-| SEG-01 | TLS en Python. Hoy solo Java y .NET. Implica cliente + operativa | ⬜ Por hacer | Aceptación: handshake + fail-fast como Java/.NET (`CAMBIAR`/vacía, almacén ausente, colisión de puertos). Se cierra junto con `PAT-05` |
+| SEG-01 | TLS y fail-fast en los tres clientes | 🟡 Implementado el 2026-10-08 | Validación temprana y almacén propio en cada cliente; falta registrar la matriz de handshake y revisar la operativa por formato (JKS en Java, PEM en Python/.NET). Se cierra junto con `PAT-05` tras aceptación |
 | SEG-02 | Paridad `.webp` en validación de imagen | ⬜ Por hacer | Matriz 3 clientes × (png/jpg/webp válido/inválido) |
 | SEG-03 | Rotación de secretos en producción | ✅ Hecho 2026-10-05 | El fail-fast se movió a `DataSourceAdapter.dataSource` porque en el `ApplicationRunner` corría **después** de que Spring creara el `DataSource`, y el síntoma era un `Access denied` que nunca nombraba la variable que faltaba |
 | SEG-04 | Alerta NuGet `SQLitePCLRaw.lib.e_sqlite3 2.1.6` | 🔴 Riesgo | Versión fijada a propósito. Decidir antes de producción: actualizar o aceptar con justificación registrada |
@@ -541,7 +558,7 @@ para nuevos estados de producto, no de instalación del renderizador Mermaid.
    administrativa. Registrar entorno y resultado en `GUIA_ACEPTACION.md`.
 3. **Riesgos de producción abiertos** — revisar `SEG-01`, `SEG-02` y `SEG-04` antes de publicar.
 4. **`DIAG-09` y cierre de `DIAG-07`** — actualizar mockups de estados/avisos y conciliar el
-   contenido de los diagramas legados; las recomendaciones están en `REVISION_DOCUMENTAL.md`.
+   contenido de los diagramas legados; la conciliación está en `DIAGRAMAS/README.md` §3.
 5. Continuar los refactors aún abiertos: `PAT-01` en Python/.NET, `PAT-VM`, `PAT-CMD`, `PAT-04`
    y `PAT-05`, según dependencias y riesgos descritos en `PLAN_PATRONES_UI.md`.
 6. Completar tareas de interfaz y accesibilidad todavía abiertas (`UIX-*`, `VIS-*`) según los
@@ -599,7 +616,7 @@ Nada instalado sin URL verificada ni prueba de funcionamiento. OJO técnico: no 
 - [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md) — fases, orden y criterios de aceptación.
 - [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md) — contrato funcional y no funcional.
 - [`PLAN.md`](PLAN.md) — arquitectura y decisiones de diseño.
-- [`PLAN_MEJORAS.md`](PLAN_MEJORAS.md) — diario de lo ya ejecutado.
+- [`docs/archivo/PLAN_MEJORAS-historico.md`](docs/archivo/PLAN_MEJORAS-historico.md) — diario de lo ya ejecutado.
 - [`DESPLIEGUE.md`](DESPLIEGUE.md) — mapa de despliegue.
 - [`GUIA_ACEPTACION.md`](GUIA_ACEPTACION.md) — pruebas automatizadas y matriz manual.
 - [`DIAGRAMAS/README.md`](DIAGRAMAS/README.md) — catálogo de diagramas.

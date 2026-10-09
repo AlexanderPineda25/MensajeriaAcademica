@@ -34,6 +34,7 @@ import universidad.mensajeria.servicios.InterfazServiciosDisponibles;
 import universidad.mensajeria.usuarios.InterfazUsuariosDisponibles;
 
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.Casos;
+import universidad.mensajeria.server.fachadadeservicios.casosdeuso.EntregaCaso;
 import universidad.mensajeria.server.conexionesclientes.InterfazConexionesClientes;
 import universidad.mensajeria.server.logdeeventos.InterfazLogDeEventos;
 import universidad.mensajeria.server.mensajes.InterfazMensajes;
@@ -41,16 +42,12 @@ import universidad.mensajeria.common.interno.TipoAccion;
 import universidad.mensajeria.server.transversal.fachada.Fachada;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -73,7 +70,7 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
      * Existe en usuarios_iniciales.csv, así la difusión persiste por usuario
      * y los desconectados la reciben al reconectar (pendientes/SYNC_LOGIN).
      */
-    static final String CUENTA_SISTEMA = "SERVIDOR";
+    public static final String CUENTA_SISTEMA = "SERVIDOR";
 
     private final InterfazProtocoloComunicacion protocolo;
     private final java.util.function.Supplier<InterfazClienteServidor> clienteServidor;
@@ -92,19 +89,11 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
 
     /**
      * Pool acotado SOLO para entrega TCP del abanico (broadcast/difusión).
-     * Los envíos bloqueantes no corren en el pool común ni en el de filtros:
-     * un cliente lento retiene como máximo un hilo de entrega. Daemon para
+     * Lo crea Fabrica (raiz de composicion) y lo recibe por constructor; un
+     * cliente lento retiene como máximo un hilo de entrega. Daemon para
      * no retener el apagado; se cierra en {@link #apagarEntrega()}.
      */
-    private final ThreadPoolExecutor poolEntrega = new ThreadPoolExecutor(
-            4, 16, 60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(10_000),
-            r -> {
-                Thread t = new Thread(r, "entrega-" + r.hashCode());
-                t.setDaemon(true);
-                return t;
-            },
-            new ThreadPoolExecutor.AbortPolicy());
+    private final java.util.concurrent.ExecutorService poolEntrega;
 
     /** Cierra el pool de entrega (lo invoca Fabrica al apagar el sistema). */
     public void apagarEntrega() {
@@ -120,7 +109,8 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
                               InterfazLogDeEventos eventos,
                               InterfazConexionesClientes conexiones,
                               LimitesDTO limites,
-                              Casos casos) {
+                              Casos casos,
+                              java.util.concurrent.ExecutorService poolEntrega) {
         this.protocolo = protocolo;
         this.clienteServidor = clienteServidor;
         this.servicios = servicios;
@@ -131,7 +121,25 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         this.conexiones = conexiones;
         this.limites = limites;
         this.casos = casos;
+        this.poolEntrega = poolEntrega;
+        this.rutasCola = Map.copyOf(rutasCola());
     }
+
+    /**
+     * Tabla de despacho de la cola (mismo patron que Despachador, sin switch):
+     * un tipo encolable nuevo es una entrada mas, no una rama nueva.
+     */
+    private Map<TipoMensaje, java.util.function.BiConsumer<Mensaje, IdSesion>> rutasCola() {
+        Map<TipoMensaje, java.util.function.BiConsumer<Mensaje, IdSesion>> rutas =
+                new java.util.EnumMap<>(TipoMensaje.class);
+        rutas.put(TipoMensaje.MENSAJE_TEXTO, this::procesarTexto);
+        rutas.put(TipoMensaje.MENSAJE_IMAGEN, this::procesarImagen);
+        rutas.put(TipoMensaje.MENSAJE_ARCHIVO, this::procesarArchivo);
+        rutas.put(TipoMensaje.BROADCAST, this::procesarDifusion);
+        return rutas;
+    }
+
+    private final Map<TipoMensaje, java.util.function.BiConsumer<Mensaje, IdSesion>> rutasCola;
 
     // ------------------------------------------------------- contrato Fachada
 
@@ -337,7 +345,7 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         }
         if (conexiones.remover(codigo, sesion)) {
             if (conexiones.sesionesDe(codigo).isEmpty()) {
-                emitirPresencia(codigo, false);
+                casos.entrega().emitirPresencia(codigo, false);
             }
             eventos.registrar(TipoAccion.DESCONECTADO,
                     "Sesion desconectada (" + motivo + ")", codigo,
@@ -358,30 +366,20 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
                 || trama.tipo() == TipoMensaje.BROADCAST) {
             mensajesProcesados.incrementAndGet();
         }
-        switch (trama.tipo()) {
-            case MENSAJE_TEXTO -> procesarTexto(trama, origen);
-            case MENSAJE_IMAGEN -> procesarImagen(trama, origen);
-            case MENSAJE_ARCHIVO -> procesarArchivo(trama, origen);
-            case BROADCAST -> procesarDifusion(trama, origen);
-            default -> LOG.warn("Trama no procesable en cola: {}", trama.tipo());
+        var ruta = rutasCola.get(trama.tipo());
+        if (ruta != null) {
+            ruta.accept(trama, origen);
+        } else {
+            LOG.warn("Trama no procesable en cola: {}", trama.tipo());
         }
     }
 
-    private String ipDestinatarioSnapshot(String codigoDestinatario) {
-        if (codigoDestinatario == null || codigoDestinatario.isBlank()) {
-            return null;
-        }
-        String ips = conexiones.sesionesDe(codigoDestinatario.trim()).stream()
-                .map(IdSesion::direccionIp)
-                .filter(ip -> ip != null && !ip.isBlank())
-                .distinct()
-                .sorted()
-                .collect(java.util.stream.Collectors.joining(", "));
-        return ips.isBlank() ? null : ips;
+    private void procesarDifusion(Mensaje trama, IdSesion origen) {
+        casos.difusion().difundir(trama, origen);
     }
 
     private void procesarTexto(Mensaje trama, IdSesion origen) {
-        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
+        String ipDestinatario = casos.entrega().fotoIpDestinatario(trama.destinatario());
         mensajes.procesarTexto(trama.remitente(), trama.destinatario(),
                         trama.contenido(), trama.ipRemitente(), ipDestinatario, trama.id())
                 .thenAccept(dto -> {
@@ -397,17 +395,17 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
                             .numPalabras(dto.numPalabras())
                             .ipRemitente(trama.ipRemitente())
                             .build();
-                    entregar(trama.destinatario(), entrega);
+                    casos.entrega().entregar(trama.destinatario(), entrega);
                     eventos.registrar(TipoAccion.MENSAJE_TEXTO,
                             bloque("TEXTO", LocalDateTime.now().toString(),
                                     trama.remitente(), trama.destinatario(), dto.hashSha256(),
                                     "%d caracteres, %d palabras".formatted(
                                             dto.numCaracteres(), dto.numPalabras())),
                             trama.remitente(), trama.ipRemitente(), null);
-                    responder(origen, trama.id(), TipoMensaje.ACK);
+                    casos.entrega().responder(origen, trama.id(), TipoMensaje.ACK);
                 })
                 .exceptionally(fallo -> {
-                    responderError(origen, trama, fallo);
+                    casos.entrega().responderError(origen, trama, fallo);
                     return null;
                 });
     }
@@ -417,10 +415,10 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         try {
             bytes = java.util.Base64.getDecoder().decode(trama.contenidoImagen());
         } catch (IllegalArgumentException e) {
-            responderError(origen, trama, e);
+            casos.entrega().responderError(origen, trama, e);
             return;
         }
-        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
+        String ipDestinatario = casos.entrega().fotoIpDestinatario(trama.destinatario());
         mensajes.procesarImagen(trama.remitente(), trama.destinatario(), bytes,
                         trama.nombreArchivo(), trama.mime(), trama.ipRemitente(),
                         ipDestinatario, trama.id())
@@ -435,20 +433,20 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
                             .mime(trama.mime())
                             .contenidoImagen(trama.contenidoImagen())
                             .hashSha256(dto.hashSha256())
-                            .etapasFiltrado(etapasJson(dto))
+                            .etapasFiltrado(EntregaCaso.etapasJson(dto))
                             .archivoId(dto.archivoId() == null ? null : String.valueOf(dto.archivoId()))
                             .ipRemitente(trama.ipRemitente())
                             .build();
-                    entregar(trama.destinatario(), entrega);
+                    casos.entrega().entregar(trama.destinatario(), entrega);
                     eventos.registrar(TipoAccion.MENSAJE_IMAGEN,
                             bloque("IMAGEN", LocalDateTime.now().toString(),
                                     trama.remitente(), trama.destinatario(), dto.hashSha256(),
-                                    "5 filtros aplicados"),
+                                    rutasResultado(dto)),
                             trama.remitente(), trama.ipRemitente(), null);
-                    responderImagen(origen, trama, dto);
+                    casos.entrega().responderImagen(origen, trama, dto);
                 })
                 .exceptionally(fallo -> {
-                    responderError(origen, trama, fallo);
+                    casos.entrega().responderError(origen, trama, fallo);
                     return null;
                 });
     }
@@ -458,10 +456,10 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
         try {
             bytes = java.util.Base64.getDecoder().decode(trama.contenidoImagen());
         } catch (IllegalArgumentException e) {
-            responderError(origen, trama, e);
+            casos.entrega().responderError(origen, trama, e);
             return;
         }
-        String ipDestinatario = ipDestinatarioSnapshot(trama.destinatario());
+        String ipDestinatario = casos.entrega().fotoIpDestinatario(trama.destinatario());
         mensajes.procesarArchivo(trama.remitente(), trama.destinatario(), bytes,
                         trama.nombreArchivo(), trama.mime(), trama.ipRemitente(),
                         ipDestinatario, trama.id())
@@ -479,278 +477,38 @@ public class FachadaDeServicios implements Fachada, SalidaClienteServidor.Fachad
                             .archivoId(dto.archivoId() == null ? null : String.valueOf(dto.archivoId()))
                             .ipRemitente(trama.ipRemitente())
                             .build();
-                    entregar(trama.destinatario(), entrega);
+                    casos.entrega().entregar(trama.destinatario(), entrega);
                     eventos.registrar(TipoAccion.MENSAJE_IMAGEN,
                             bloque("ARCHIVO", LocalDateTime.now().toString(),
                                     trama.remitente(), trama.destinatario(), dto.hashSha256(),
                                     trama.nombreArchivo() == null ? "archivo" : trama.nombreArchivo()),
                             trama.remitente(), trama.ipRemitente(), null);
-                    responder(origen, trama.id(), TipoMensaje.ACK);
+                    casos.entrega().responder(origen, trama.id(), TipoMensaje.ACK);
                 })
                 .exceptionally(fallo -> {
-                    responderError(origen, trama, fallo);
+                    casos.entrega().responderError(origen, trama, fallo);
                     return null;
                 });
     }
 
-    private void procesarDifusion(Mensaje trama, IdSesion origen) {
-        if (CUENTA_SISTEMA.equals(trama.remitente()) || "ADMINISTRADOR".equals(trama.remitente())) {
-            // Difusión del servidor A TODOS los registrados (no solo conectados):
-            // se persiste una copia por usuario (los desconectados la reciben
-            // por pendientes/SYNC_LOGIN) y se entrega en vivo a las sesiones vivas.
-            List<String> destinos = usuarios.listar().stream()
-                    .map(u -> u.codigo())
-                    .filter(codigo -> !CUENTA_SISTEMA.equalsIgnoreCase(codigo))
-                    .sorted()
-                    .toList();
-            List<CompletableFuture<?>> futuros = new ArrayList<>();
-            List<String> fallidos = new ArrayList<>();
-            AtomicInteger entregados = new AtomicInteger();
-            int hito = Math.max(1, destinos.size() / 4);
-            for (String codigo : destinos) {
-                futuros.add(mensajes.procesarTexto(CUENTA_SISTEMA, codigo,
-                                trama.contenido(), trama.ipRemitente())
-                        .thenAcceptAsync(dto -> {
-                            Mensaje entrega = Mensaje.builder()
-                                    .tipo(TipoMensaje.BROADCAST)
-                                    .id(trama.id())
-                                    .fechaHora(LocalDateTime.now().toString())
-                                    .remitente(CUENTA_SISTEMA)
-                                    .contenido(trama.contenido())
-                                    .ipRemitente(trama.ipRemitente())
-                                    .build();
-                            entregar(codigo, entrega);
-                            int hechos = entregados.incrementAndGet();
-                            if (hechos % hito == 0 || hechos == destinos.size()) {
-                                eventos.registrar(TipoAccion.BROADCAST,
-                                        "Difusión " + hechos + "/" + destinos.size() + " usuarios",
-                                        null, trama.ipRemitente(), trama.id());
-                            }
-                        }, poolEntrega)
-                        .exceptionally(fallo -> {
-                            synchronized (fallidos) {
-                                fallidos.add(codigo);
-                            }
-                            LOG.warn("No se pudo persistir difusion {} -> {}: {}",
-                                    CUENTA_SISTEMA, codigo, fallo.getMessage());
-                            return null;
-                        }));
-            }
-            CompletableFuture.allOf(futuros.toArray(new CompletableFuture[0]))
-                    .thenRun(() -> {
-                        int sesiones = conexiones.totalSesiones();
-                        eventos.registrar(TipoAccion.BROADCAST,
-                                "Difusion administrativa a " + destinos.size()
-                                        + " usuarios (" + sesiones + " sesiones vivas"
-                                        + ", fallos persistencia: " + fallidos.size() + ")",
-                                null, trama.ipRemitente(), trama.id());
-                        LOG.info("Difusion administrativa {} a {} usuarios (fallos: {})",
-                                trama.id(), destinos.size(), fallidos.size());
-                    });
-            return;
-        }
-        List<String> destinos = conexiones.codigosConectados();
-        List<CompletableFuture<?>> futuros = new ArrayList<>();
-        List<String> fallidos = new ArrayList<>();
-        AtomicInteger entregados = new AtomicInteger();
-        int hito = Math.max(1, destinos.size() / 4);
-        for (String codigo : destinos) {
-            String ipDestinatario = ipDestinatarioSnapshot(codigo);
-            futuros.add(mensajes.procesarTexto(trama.remitente(), codigo,
-                            trama.contenido(), trama.ipRemitente(), ipDestinatario, trama.id())
-                    .thenAcceptAsync(dto -> {
-                        Mensaje entrega = Mensaje.builder()
-                                .tipo(TipoMensaje.BROADCAST)
-                                .id(trama.id())
-                                .fechaHora(LocalDateTime.now().toString())
-                                .remitente(trama.remitente())
-                                .contenido(trama.contenido())
-                                .ipRemitente(trama.ipRemitente())
-                                .build();
-                        for (IdSesion s : conexiones.sesionesDe(codigo)) {
-                            if (origen != null && s.id().equals(origen.id())) {
-                                continue;
-                            }
-                            try {
-                                protocolo.enviar(s, entrega);
-                            } catch (Exception e) {
-                                LOG.warn("No se pudo difundir a {}: {}", codigo, e.getMessage());
-                            }
-                        }
-                        if (entregados.incrementAndGet() % hito == 0) {
-                            eventos.registrar(TipoAccion.BROADCAST,
-                                    "Broadcast " + entregados.get() + "/" + destinos.size()
-                                            + " usuarios",
-                                    null, trama.ipRemitente(), trama.id());
-                        }
-                    }, poolEntrega)
-                    .exceptionally(fallo -> {
-                        synchronized (fallidos) {
-                            fallidos.add(codigo);
-                        }
-                        LOG.warn("No se pudo persistir broadcast {} -> {}: {}",
-                                trama.remitente(), codigo, fallo.getMessage());
-                        return null;
-                    }));
-        }
-        CompletableFuture.allOf(futuros.toArray(new CompletableFuture[0]))
-                .thenRun(() -> {
-                    LOG.info("Broadcast de {} (fallos persistencia: {})",
-                            trama.remitente(), fallidos.size());
-                    responder(origen, trama.id(), TipoMensaje.ACK);
-                });
-    }
-
-    private void entregar(String codigo, Mensaje entrega) {
-        boolean alMenosUna = false;
-        for (IdSesion s : conexiones.sesionesDe(codigo)) {
-            try {
-                protocolo.enviar(s, entrega);
-                alMenosUna = true;
-            } catch (Exception e) {
-                LOG.warn("No se pudo entregar a {}: {}", codigo, e.getMessage());
-                conexiones.remover(codigo, s);
-            }
-        }
-        // Acuse de entrega al remitente (aunque esté offline queda persistido).
-        if (entrega.remitente() != null && entrega.id() != null) {
-            Mensaje acuse = Mensaje.builder()
-                    .tipo(TipoMensaje.MENSAJE_ENTREGADO)
-                    .fechaHora(LocalDateTime.now().toString())
-                    .remitente(codigo)
-                    .destinatario(entrega.remitente())
-                    .contenido(entrega.id())
-                    .build();
-            for (IdSesion s : conexiones.sesionesDe(entrega.remitente())) {
-                try {
-                    protocolo.enviar(s, acuse);
-                } catch (Exception e) {
-                    LOG.debug("No se pudo acusar entrega a {}: {}",
-                            entrega.remitente(), e.getMessage());
-                }
-            }
-            if (!alMenosUna) {
-                LOG.debug("Entrega offline a {} (id {}): igual se acusa", codigo, entrega.id());
-            }
-        }
-    }
-
-    /** Broadcast de presencia a todas las sesiones vivas. */
-    public void emitirPresencia(String codigo, boolean conectado) {
-        List<String> todos = conexiones.codigosConectados();
-        Mensaje aviso = Mensaje.builder()
-                .tipo(TipoMensaje.PRESENCIA)
-                .fechaHora(LocalDateTime.now().toString())
-                .codigo(codigo)
-                .contenido(conectado ? "conectado" : "desconectado")
-                .usuariosConectados(todos)
-                .build();
-        for (String destino : todos) {
-            for (IdSesion s : conexiones.sesionesDe(destino)) {
-                try {
-                    protocolo.enviar(s, aviso);
-                } catch (Exception e) {
-                    LOG.debug("No se pudo avisar presencia a {}: {}", destino, e.getMessage());
-                }
-            }
-        }
-    }
-
-    private void responder(IdSesion origen, String idSolicitud, TipoMensaje tipo) {
-        if (origen == null) {
-            return;
-        }
-        try {
-            protocolo.enviar(origen, Mensaje.builder()
-                    .tipo(tipo)
-                    .id(idSolicitud)
-                    .fechaHora(LocalDateTime.now().toString())
-                    .exito(true)
-                    .build());
-        } catch (Exception e) {
-            LOG.warn("No se pudo responder a {}: {}", origen, e.getMessage());
-        }
-    }
-
-    private void responderImagen(IdSesion origen, Mensaje trama, ResultadoMensajeDTO dto) {
-        if (origen == null) {
-            return;
-        }
-        try {
-            protocolo.enviar(origen, Mensaje.builder()
-                    .tipo(TipoMensaje.IMAGE_FILTERED_RESULT)
-                    .id(trama.id())
-                    .fechaHora(LocalDateTime.now().toString())
-                    .exito(true)
-                    .hashSha256(dto.hashSha256())
-                    .etapasFiltrado(etapasJson(dto))
-                    .archivoId(dto.archivoId() == null ? null : String.valueOf(dto.archivoId()))
-                    .build());
-        } catch (Exception e) {
-            LOG.warn("No se pudo responder a {}: {}", origen, e.getMessage());
-        }
-    }
-
-    private void responderError(IdSesion origen, Mensaje trama, Throwable fallo) {
-        if (origen == null) {
-            return;
-        }
-        Throwable causa = fallo instanceof java.util.concurrent.CompletionException
-                && fallo.getCause() != null ? fallo.getCause() : fallo;
-        String motivo = causa.getMessage() != null ? causa.getMessage() : "error interno";
-        if (causa instanceof universidad.mensajeria.common.interno.UsuarioNoEncontradoException
-                || causa instanceof IllegalArgumentException
-                || causa instanceof IllegalStateException) {
-            try {
-                protocolo.enviar(origen, Mensaje.builder()
-                        .tipo(TipoMensaje.ERROR)
-                        .id(trama.id())
-                        .fechaHora(LocalDateTime.now().toString())
-                        .exito(false)
-                        .mensajeError(motivo)
-                        .build());
-            } catch (Exception e) {
-                LOG.warn("No se pudo avisar error a {}: {}", origen, e.getMessage());
-            }
-        } else {
-            LOG.error("Error procesando {} de {}: {}", trama.tipo(), origen, motivo);
-            try {
-                protocolo.enviar(origen, Mensaje.builder()
-                        .tipo(TipoMensaje.ERROR)
-                        .id(trama.id())
-                        .fechaHora(LocalDateTime.now().toString())
-                        .exito(false)
-                        .mensajeError("error interno procesando " + trama.tipo())
-                        .build());
-            } catch (Exception e) {
-                LOG.warn("No se pudo avisar error a {}: {}", origen, e.getMessage());
-            }
-        }
-    }
-
-    private static String etapasJson(ResultadoMensajeDTO dto) {
-        StringBuilder json = new StringBuilder("[");
-        for (int i = 0; i < dto.traza().size(); i++) {
-            EventoEtapa etapa = dto.traza().get(i);
-            if (i > 0) {
-                json.append(",");
-            }
-            json.append("{\"etapa\":\"").append(etapa.etapa())
-                    .append("\",\"ms\":").append(etapa.ms())
-                    .append(",\"ruta\":\"").append(etapa.rutaSalida()).append("\"}");
-        }
-        return json.append("]").toString();
-    }
-
     /**
      * Bloque uniforme por mensaje entrante (RF-S36): fecha, remitente,
-     * destinatario, tipo, hash y resultado del procesamiento.
+     * destinatario, tipo, hash y resultado del procesamiento, en multilinea
+     * para consola y log. El escritorio lo reestructura en su panel.
      */
     static String bloque(String tipo, String fechaHora, String remitente, String destinatario,
                          String hash, String resultado) {
-        return "[mensaje] fecha=%s remitente=%s destinatario=%s tipo=%s hash=%s resultado=%s".formatted(
-                fechaHora, remitente, destinatario, tipo,
-                hash == null ? "-" : hash, resultado);
+        return "[mensaje]%n  fecha=%s%n  remitente=%s%n  destinatario=%s%n  tipo=%s%n  hash=%s%n  resultado=%s"
+                .formatted(fechaHora, remitente, destinatario, tipo,
+                        hash == null ? "-" : hash, resultado);
+    }
+
+    /** RF-S36: el resultado de IMAGEN nombra las 5 derivadas guardadas. */
+    static String rutasResultado(ResultadoMensajeDTO dto) {
+        if (dto == null || dto.rutasDerivadas() == null || dto.rutasDerivadas().isEmpty()) {
+            return "5 filtros aplicados";
+        }
+        return String.join(", ", dto.rutasDerivadas());
     }
 
     // ------------------------------------------------- SalidaClienteServidor

@@ -160,18 +160,19 @@ El sistema se compone de dos aplicaciones:
 | **RF-S48** | El pool se expone mediante una **interfaz** (por ejemplo `PoolDeConexiones`) y se crea mediante una **fábrica**, cumpliendo los principios de inversión de dependencias e inyección de dependencias. | Ajuste |
 | **RF-S49** | La consola y la vista de escritorio muestran el **estado del pool** (trabajadores en uso / disponibles / tamaño total). | Extra |
 
-### 3.9 Usabilidad de la vista administrativa del servidor (2026-10-06)
+### 3.9 Usabilidad de la vista administrativa del servidor (2026-10-06; Sesión B 2026-10-07)
 
 | ID | Requerimiento | Prioridad |
 |---|---|---|
 | **RF-S50** | La vista administrativa organiza los indicadores de Estado en una lista vertical adaptable, sin solapamiento al cambiar el tamaño de ventana. | Ajuste |
-| **RF-S51** | La pestaña Conectados ofrece la acción `Desconectar usuario` y un selector que contiene los códigos con sesiones activas; cuando la lista está vacía muestra `No hay usuarios activos` y deshabilita la acción. | Ajuste |
-| **RF-S52** | Al hacer doble clic en un usuario se abre una ficha reutilizable con secciones Resumen, Conexiones, Mensajes y Archivos. Incluye totales de mensajes/archivos, conexiones registradas, sesiones activas y contacto principal; mensajes y archivos se consultan en páginas de 50. El contacto principal cuenta mensajes enviados y recibidos y excluye `SERVIDOR`. | Ajuste |
+| **RF-S51** | La pestaña Conectados ofrece la acción `Desconectar usuario` y un selector con los usuarios de sesiones activas; lista y selector muestran `Nombre Apellidos [código]` y la selección en uno se refleja en el otro. Cuando la lista está vacía muestra `No hay usuarios activos` y deshabilita la acción. Añadido Sesión B 2026-10-07. | Ajuste |
+| **RF-S52** | Al hacer doble clic en un usuario se abre una ficha reutilizable con secciones Resumen, Conexiones, Mensajes y Archivos. Incluye totales de mensajes/archivos, conexiones registradas, sesiones activas y contacto principal; mensajes y archivos se consultan en páginas de 50. El contacto principal cuenta mensajes enviados y recibidos y excluye `SERVIDOR`. La sección Mensajes de la ficha tiene paridad con la vista Mensajes: filtro local por tipo, tabla + detalle con preview/descarga y divisor redimensionable; al cambiar de página conserva la selección por id. Añadido Sesión B 2026-10-07. | Ajuste |
 | **RF-S53** | La pestaña Mensajes permite ingresar un código o elegirlo de una lista; muestra caracteres y palabras en filas separadas, la IP histórica del remitente y las IP de sesiones activas del destinatario. Si no existe sesión activa para el destinatario muestra `No disponible`; no se persiste una IP destinataria histórica. | Ajuste |
-| **RF-S54** | El panel de contenido/imágenes de Informes solo aparece al consultar el informe de mensajes. | Ajuste |
-| **RF-S55** | Logs usa el espacio disponible de la pestaña. Pool presenta sus métricas en secciones visuales claras sin cambiar sus valores ni semántica. | Ajuste |
+| **RF-S54** | El panel de contenido/imágenes de Informes solo aparece al consultar el informe de mensajes. Informes se actualiza solo con `Actualizar`/`Exportar CSV` (sin auto-refresh que mueva scroll, selección o detalle); la vista lo indica con un texto de ayuda. Al actualizar conserva la fila por id o índice. Añadido Sesión B 2026-10-07. | Ajuste |
+| **RF-S55** | Logs usa el espacio disponible de la pestaña. Pool presenta sus métricas en secciones visuales claras sin cambiar sus valores ni semántica. La pestaña Usuarios presenta su tabla centrada (ancho acotado) y con desplazamiento adaptativo. Añadido Sesión B 2026-10-07. | Ajuste |
 | **RF-S56** | La acción de difusión administrativa conserva el envío a todos los usuarios y usa el rótulo `Enviar difusión`. | Ajuste |
 | **RF-S57** | Cerrar con X solicita confirmación para cerrar la ventana administrativa; cerrarla no detiene el listener TCP ni la consola JLine. JLine mejora títulos, comandos, tablas y eventos sin alterar los comandos existentes. | Ajuste |
+| **RF-S58** | Desconectar a un usuario (desde Conectados o desde la ficha/tabla de Usuarios) pide confirmación `Sí/No` nombrando al usuario visible; con `No` no se cierra ninguna sesión ni se llama a la fachada. Añadido Sesión B 2026-10-07. | Ajuste |
 
 ---
 
@@ -308,6 +309,7 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | **RNF-18** | Accesibilidad | Todo texto informativo cumple **WCAG AA (4.5:1)** en ambos temas; todo control de solo icono tiene nombre accesible; el estado de presencia no depende **solo** del color. Añadido 2026-10-05 (`UIX-17`, `UIX-19`, `UIX-20`). | Ajuste |
 | **RNF-19** | Pruebas de UI | La lógica de presentación se alcanza por una costura **pública**: los tests no necesitan llamar métodos privados. Añadido 2026-10-05 (criterio medible de `PAT-VM`). | Ajuste |
 | **RNF-20** | Documentación de diagramas | Existe diagrama de **casos de uso, secuencia, actividad, estados y despliegue**, más clases por componente de los **tres** clientes, cada uno derivado del código y con render revisado. Añadido 2026-10-05. | Ajuste |
+| **RNF-21** | Arquitectura verificada continua | **Todo proceso** (servidor, clientes Java/Python/.NET, protocolo) mantiene **capas y componentes, Clean Code, SOLID, inyección e inversión de dependencias con composition root** (sin localizadores estáticos ni `new` de implementaciones dentro de la presentación). Se verifica con **tests de arquitectura en verde** (ArchUnit en Java; equivalente declarado en Python/.NET si el módulo los tiene) más la suite del módulo. Un cambio que rompa una regla de dependencia o añada una dependencia prohibida **no se da por hecho**. Añadido 2026-10-07. | Obligatorio |
 
 ---
 
@@ -323,11 +325,12 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | **PD-06** | **Observer** | Notificación de eventos del servidor a las vistas para el refresco automático (RF-S42). | Ajuste |
 | **PD-07** | **Pipes & Filters** | Procesamiento de texto e imagen en etapas (RF-S33). | Extra |
 | **PD-08** | **Command, Strategy, Adapter** | Despacho de tramas a manejadores, intercambio de algoritmos (por ejemplo filtros) y adaptación de motores de BD. | Extra |
-| **PD-09** | **MVVM en la capa cliente** | La presentación se separa del estado con un ViewModel observable: el controlador o la ventana no acumulan estado de negocio ni logreachat-array de red. Añadido 2026-10-05 (`PAT-VM`). | Ajuste |
+| **PD-09** | **MVVM en la capa cliente** | La presentación se separa del estado con un ViewModel observable: el controlador o la ventana no acumulan estado de negocio ni lógica de red. Añadido 2026-10-05 (`PAT-VM`). | Ajuste |
 | **PD-10** | **Command en las acciones de UI** | Las acciones del usuario (enviar, adjuntar, responder, cargar anteriores, salir) se encapsulan en comandos con condición de habilitación, en lugar de estar cableadas a mano. Añadido 2026-10-05 (`PAT-CMD`). | Ajuste |
 | **PD-11** | **Composition root sin localizador estático** | Las dependencias se inyectan en las vistas; no se leen de un `static` ni de un atributo interno de otro objeto. Añadido 2026-10-05 (`PAT-01`). | Obligatorio |
 | **PD-12** | **Strategy/Adapter de transporte** | TCP y TLS se seleccionan por configuración detrás de un mismo contrato, con **validación de configuración homogénea en los 3 clientes**. Añadido 2026-10-05 (`PAT-05`, `SEG-01`). | Ajuste |
 | **PD-13** | **Repository con puerto declarado** | Todo acceso a la base local pasa por un puerto explícito e intercambiable, y el upsert usa la forma **portable** (`DELETE + INSERT`) sin sintaxis de motor. Añadido 2026-10-05 (`PAT-04`). | Ajuste |
+| **PD-14** | **Clean Code, SOLID y patrones verificables en todo el proyecto** | SRP/OCP/LSP/ISP/DIP, alta cohesión y bajo acoplamiento, nombres de dominio en español, métodos y clases acotados, sin código muerto (refuerza `RNF-16`); patrones **Fachada, Observer, Command, Strategy, Adapter, Factory, Repository, Pipes & Filters, Object Pool y MVVM** donde aplique cada proceso. La presentación solo depende de puertos/`ViewModel`/comandos; la creación vive en fábricas y composition roots (`FabricaCliente`, `FabricaControladores`, `InicioServidor`). Añadido 2026-10-07. | Obligatorio |
 
 ---
 
@@ -356,10 +359,12 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | Mensajería | RF-S07 a RF-S10, RF-C02, RF-C03, RF-C09 a RF-C14, RF-C17 a RF-C21 |
 | Procesamiento de texto e imágenes | RF-S11 a RF-S17, RF-S33 |
 | Persistencia y logs | RF-S18 a RF-S22, RF-C04, RF-C05, RF-C15, RF-C16 |
-| Informes | RF-S23 a RF-S26 |
+| Informes | RF-S23 a RF-S26, RF-S54 |
 | Consola y refresco automático | RF-S39 a RF-S42, RNF-11, RNF-12 |
+| Vista administrativa (conectados, ficha, desconexión) | RF-S50 a RF-S52, RF-S55, RF-S58 |
 | Object Pool y concurrencia | RF-S43 a RF-S49, RNF-09, PD-05 |
 | Arquitectura y diseño | RNF-01, RNF-02, RNF-10, PD-01 a PD-13 |
+| **Arquitectura continua de todo el proyecto** | **RNF-21, PD-14** |
 | **Autorización de tramas** | **RF-S34, RF-S35, PD-02** |
 | **Calidad de la interfaz** | RF-C23 a RF-C31, RNF-17, RNF-18, RNF-19, PD-09, PD-10, PD-11 |
 | **Persistencia local intercambiable** | PD-13, RNF-04 |
@@ -397,3 +402,7 @@ El servidor debe seguir la arquitectura de paquetes y componentes del diagrama *
 | **14** | **Auditoría 2026-10-05 — documentación de diagramas.** Exigencia de que existan diagramas de casos de uso, secuencia, actividad, estados y despliegue, más clases por componente de los **tres** clientes, todos derivados del código y con render revisado | **RNF-20** |
 | **15** | **Auditoría 2026-10-05 — persistencia local y transporte.** El upsert local debe ser portable y pasar por un puerto declarado; TCP y TLS se eligen por configuración detrás de un contrato único, con validación de configuración homogénea en los 3 clientes | **PD-12, PD-13** |
 | **16** | **Consola administrativa 2026-10-06.** Ficha de usuario con páginas de mensajes/archivos, estados vacíos explícitos, metadatos/IP disponibles, vista adaptativa, difusión y cierre aislado de la ventana administrativa | **RF-S50 a RF-S57** |
+| **17** | **Arquitectura continua de todo el proyecto 2026-10-07.** Clean Code, SOLID, capas/componentes, DI/IoC con composition root y patrones verificables pasan a exigencia permanente para servidor, los 3 clientes y protocolo, con tests de arquitectura en verde como criterio de hecho | **RNF-21, PD-14** |
+| **18** | **Sesión B vista administrativa 2026-10-07.** Conectados con `Nombre Apellidos [código]` y sync lista↔combo; confirmación Sí/No al desconectar; Usuarios centrado; ficha Mensajes con paridad (filtro local, detalle, divisor, selección por id); Informes manual sin auto-refresh con conservación de fila | **RF-S51, RF-S52, RF-S54, RF-S55, RF-S58** |
+| **19** | **Cierre de parciales y fidelidad 2026-10-08.** Bloque uniforme multilínea en consola con rutas de derivadas en IMAGEN; IP viva del destinatario en tabla y detalle de Mensajes; las 5 lecturas de casos de uso pasan por E10 (`InterfazMensajes`, pass-throughs sin flechas ni métodos netos nuevos) con candado en `DiagramaFidelidadTest` | **RF-S36, RF-S53** |
+| **20** | **Deuda SOLID/Clean Code saldada 2026-10-08.** `DifusionCaso` + `EntregaCaso` extraídos de la fachada (FachadaDeServicios 901→650); despacho de cola por tabla `EnumMap` en vez de `switch`; pool de entrega creado por `Fabrica`; `DetalleMensaje` extraído a clase propia (VistaEscritorio 1699→1418); fallback 50 MB unificado en `LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO`. Diagrama intacto: 0 flechas y 0 métodos netos nuevos | **PD-04, RNF-16** |

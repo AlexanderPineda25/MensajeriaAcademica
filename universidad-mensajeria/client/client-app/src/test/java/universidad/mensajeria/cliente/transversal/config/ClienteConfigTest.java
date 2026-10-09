@@ -41,6 +41,17 @@ class ClienteConfigTest {
     }
 
     @Test
+    void rechazaTlsHabilitadoMalFormadoEnLaConfiguracionReal() {
+        Properties props = new Properties();
+        props.setProperty("tls.habilitado", "si");
+
+        IllegalArgumentException fallo = assertThrows(IllegalArgumentException.class,
+                () -> ClienteConfig.desde(props));
+
+        assertTrue(fallo.getMessage().contains("tls.habilitado"));
+    }
+
+    @Test
     void leeFormatoCompartidoYPuertoInvalidoCaeADefecto() {
         Properties props = new Properties();
         props.setProperty("host", "192.168.1.10");

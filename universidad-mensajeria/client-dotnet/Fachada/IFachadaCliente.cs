@@ -9,6 +9,9 @@ namespace Mensajeria.Fachada
 {
     public interface IFachadaCliente
     {
+        /// <summary>Tamaño máximo de un archivo que se puede enviar.</summary>
+        const long MaxBytesArchivo = 52_428_800L;
+
         event Action<Dictionary<string, JsonElement>>? OnMensajeRecibido;
         event Action<Dictionary<string, JsonElement>>? OnCierre;
         event Action<Dictionary<string, JsonElement>>? OnPresencia;

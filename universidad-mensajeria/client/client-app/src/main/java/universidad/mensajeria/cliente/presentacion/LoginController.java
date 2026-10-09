@@ -149,17 +149,14 @@ public final class LoginController {
             });
             if (!Boolean.TRUE.equals(tarea.getValue())) {
                 // Credencial mala sin excepción: burbuja roja exacta, sin abrir el chat.
-                try {
-                    inicioSesion.desconectar();
-                } catch (Exception ignorada) {
-                    // ya fuera
-                }
+                inicioSesion.desconectar();
                 mostrarError("Usuario no registrado o datos incorrectos.");
                 return;
             }
             try {
                 navegacion.mostrarChat();
-            } catch (Exception ex) {
+            } catch (universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente
+                    | IOException ex) {
                 LOG.log(Level.WARNING, "No se pudo abrir la vista de chat", ex);
                 mostrarError("No se pudo abrir el chat. Intenta iniciar sesión de nuevo.");
             }

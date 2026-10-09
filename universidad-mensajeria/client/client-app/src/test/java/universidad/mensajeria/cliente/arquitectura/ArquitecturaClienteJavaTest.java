@@ -36,6 +36,15 @@ class ArquitecturaClienteJavaTest {
                 .or().haveSimpleName("RespuestaRed")
                 .or().haveSimpleName("TipoMensajeCliente")
                 .or().haveSimpleName("EstadoMensaje")
+                .or().haveSimpleName("ExcepcionCliente")
+                .or().haveSimpleName("ExcepcionHistorial")
+                .or().haveSimpleName("ExcepcionPersistencia")
+                .or().haveSimpleName("ExcepcionValidacion")
+                .or().haveSimpleName("ExcepcionSesion")
+                .or().haveSimpleName("ExcepcionOperacionNoSoportada")
+                .or().haveSimpleName("InterfazCoordinadorMensajeria")
+                .or().haveSimpleName("InterfazCoordinadorHistorial")
+                .or().haveSimpleName("InterfazGestorReconexion")
                 .should().dependOnClassesThat()
                 .resideInAnyPackage("universidad.mensajeria.common..",
                         "javafx..",
@@ -59,8 +68,20 @@ class ArquitecturaClienteJavaTest {
                 .or().haveSimpleName("InterfazChatCliente")
                 .or().haveSimpleName("InterfazArchivosConversacion")
                 .or().haveSimpleName("InterfazEventosCliente")
+                .or().haveSimpleName("InterfazCoordinadorMensajeria")
+                .or().haveSimpleName("InterfazCoordinadorHistorial")
+                .or().haveSimpleName("InterfazGestorReconexion")
                 .or().haveSimpleName("RespuestaRed")
                 .or().haveSimpleName("TipoMensajeCliente")
+                .or().haveSimpleName("InterfazReintentadorPendientes")
+                .or().haveSimpleName("InterfazSincronizadorDirectorio")
+                .or().haveSimpleName("InterfazLectorHistorialRemoto")
+                .or().haveSimpleName("ReceptorEntranteCliente")
+                .or().haveSimpleName("ReintentadorPendientesCliente")
+                .or().haveSimpleName("SincronizadorDirectorioCliente")
+                .or().haveSimpleName("ConstructorRecientes")
+                .or().haveSimpleName("LectorHistorialRemotoCliente")
+                .or().haveSimpleName("PublicadorEventosCliente")
                 .should().dependOnClassesThat()
                 .resideInAnyPackage("universidad.mensajeria.common.tipos..",
                         "universidad.mensajeria.common.codec..");
@@ -83,6 +104,11 @@ class ArquitecturaClienteJavaTest {
                 .that().haveSimpleName("ChatController")
                 .or().haveSimpleName("LoginController")
                 .or().haveSimpleName("GestorAdjuntosChat")
+                .or().haveSimpleName("BusquedaHistorialChat")
+                .or().haveSimpleName("PaginadorHistorialChat")
+                .or().haveSimpleName("GestorSalidaSesionChat")
+                .or().haveSimpleName("CargadorAdjuntoEntradaChat")
+                .or().haveSimpleName("RefrescadorContactosChat")
                 .should().dependOnClassesThat()
                 .resideInAnyPackage("..cliente.persistencia..",
                         "..cliente.componentes.conexion..",
@@ -96,6 +122,11 @@ class ArquitecturaClienteJavaTest {
                 .that().haveSimpleName("ChatController")
                 .or().haveSimpleName("LoginController")
                 .or().haveSimpleName("GestorAdjuntosChat")
+                .or().haveSimpleName("BusquedaHistorialChat")
+                .or().haveSimpleName("PaginadorHistorialChat")
+                .or().haveSimpleName("GestorSalidaSesionChat")
+                .or().haveSimpleName("CargadorAdjuntoEntradaChat")
+                .or().haveSimpleName("RefrescadorContactosChat")
                 .should().dependOnClassesThat()
                 .haveSimpleName("FachadaCliente");
         rule.check(CLIENTE);

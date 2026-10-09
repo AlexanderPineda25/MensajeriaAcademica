@@ -177,6 +177,16 @@ class HistorialLocalTest {
     }
 
     @Test
+    void etapasFiltradoSobrevivenPersistenciaYLecturaDeLaConversacion() throws Exception {
+        String etapas = "[{\"etapa\":\"grises\",\"ms\":12,\"ruta\":\"/privada/grises.png\"}]";
+        historial.guardar(new MensajeLocal("img-etapas", "B", "A", "MENSAJE_IMAGEN", null,
+                "h", null, null, "foto.png", null, 12L, "2026-01-01T10:00:00",
+                false, false, "ENTREGADO", "archivo-77", etapas));
+
+        assertEquals(etapas, historial.pagina("A", "B", 10, 0).get(0).etapasFiltrado());
+    }
+
+    @Test
     void consultaIdsNoLeidosSoloIncluyeEntrantesPendientes() throws Exception {
         historial.guardar(new MensajeLocal("in-1", "B", "A", "MENSAJE_TEXTO", "hola",
                 null, 4, 1, null, null, null, "2026-01-01T10:00:00", false, true,

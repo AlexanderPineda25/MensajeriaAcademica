@@ -12,7 +12,13 @@ import ssl
 import threading
 import uuid
 from transversal.protocolo import enviar, recibir
-from transversal.tls import TLS_PUERTO_DEFECTO, crear_contexto, validar_tls
+from transversal.tipo_mensaje import TipoMensaje
+from transversal.tls import (
+    TLS_PUERTO_DEFECTO,
+    crear_contexto,
+    interpretar_habilitado_tls,
+    validar_tls,
+)
 
 TIMEOUT_RESPUESTA_SEG = 15
 
@@ -24,8 +30,7 @@ class ConexionRed:
                  tls_confianza=""):
         self.host = host
         self.puerto = puerto
-        self.tls_habilitado = tls_habilitado is True \
-            or str(tls_habilitado).strip().lower() == "true"
+        self.tls_habilitado = interpretar_habilitado_tls(tls_habilitado)
         self.tls_puerto = tls_puerto
         self.tls_confianza = tls_confianza or ""
         self.sock = None
@@ -106,7 +111,7 @@ class ConexionRed:
     def _encaminar(self, msg):
         # CLOSE_NOTICE nunca completa un pendiente (carrera del KICK: el aviso
         # viaja con el id de la solicitud y el ACK llega despues).
-        if msg.get('tipo') == 'CLOSE_NOTICE':
+        if msg.get('tipo') == TipoMensaje.CLOSE_NOTICE:
             if self.on_cierre:
                 try:
                     self.on_cierre(msg)

@@ -72,6 +72,6 @@ echo   PC 2 (JavaFX):       dist\MensajeriaClienteJava\
 echo   PC 3 (Python):       dist\MensajeriaPython\
 echo   PC 4 (WPF .NET):     dist\MensajeriaWPF\
 echo.
-echo Consulta INSTRUCCIONES_4_PCS.md para la guia de configuracion de red y arranque.
+echo Consulta DESPLIEGUE.md para la guia de configuracion de red y arranque.
 echo ==============================================================================
 exit /b 0

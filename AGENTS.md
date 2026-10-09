@@ -1,91 +1,67 @@
 # AGENTS.md — guía de orientación rápida
 
-> **Para cualquier agente de IA o persona nueva.** Objetivo: entender cómo funciona el código en
-> **5 minutos**, sin leerse las ~9 600 líneas fuente ni los 4 200 de documentación.
->
-> Lee este archivo **primero**. Si con esto no te basta, el índice está en §9.
+> Para cualquier agente de IA o persona nueva. Objetivo: entender cómo funciona el código en
+> **5 minutos**. Si con esto no basta, el índice está en §8. El estado vigente y pendientes están en
+> `ESTADO_ROADMAP.md`; este archivo no registra ejecuciones ni historial.
 
 ## 1. Qué es esto, en 4 líneas
 
-Aplicación de escritorio **cliente/servidor** para mensajería de una comunidad académica
-universitaria. Un servidor central en **Java** y **tres clientes intercambiables** escritos en
-**JavaFX**, **PySide6** y **WPF**, que se hablan por **TCP + JSON** (no HTTP).
+Aplicación de escritorio **cliente/servidor** para mensajería académica. Un servidor central en
+**Java** y **tres clientes intercambiables** en **JavaFX**, **PySide6** y **WPF**, que se hablan por
+**TCP + JSON** (no HTTP).
 
-Todo lo que hay que saber del contrato de red cabe en una línea: **cabecera de 4 bytes
-big-endian con la longitud del contenido, seguido de JSON UTF-8**.
+Contrato de red en una línea: **cabecera de 4 bytes big-endian con la longitud, seguida de JSON
+UTF-8** (`universidad-mensajeria/common-protocol/PROTOCOLO.md`, `TramaCodec`).
 
 ## 2. Mapa del repositorio en 30 segundos
 
 ```
-ClienteServidor-main/
-├── AGENTS.md                 ← estás aquí
-├── INSTALACION.md            ← qué instalar (JDK 21+, Maven, Docker, Python, .NET)
-├── AUTOMATIZACION_ENTORNO.md ← preparar JDK/Maven de usuario en Windows sin elevar permisos
-├── REQUERIMIENTOS.md         ← QUÉ debe hacer (RF-*, RNF-*, PD-*)
-├── PLAN.md                   ← CÓMO está construido y por qué
-├── ESTADO_ROADMAP.md         ← estado y pendientes vigentes
-├── REVISION_DOCUMENTAL.md    ← propuestas de conservación/fusión/retiro; no borra archivos
-├── ANALISIS_TECNICO.md       ← auditoría con evidencia archivo:línea
-├── PLAN_PATRONES_UI.md       ← plan de refactor de clientes
-├── PLAN_ARQUITECTURA_CLIENTE_JAVA.md ← estado y pendientes de arquitectura JavaFX
-├── GUIA_ACEPTACION.md        ← cómo se comprueba
-├── DESPLIEGUE.md             ← operar / instalar / respaldar
-│
-├── DIAGRAMAS/                ← fuentes/renderes canónicos de diagramas y mockups
-├── DIAGRAMAS_ENTREGA/        ← legado aún conservado; revisar antes de retirar
-├── DIAGRAMAS_FINALES/        ← legado aún conservado; revisar antes de retirar
-│
-└── universidad-mensajeria/   ← EL MONOREPOS (solo aquí se compila)
-    ├── pom.xml               ← reactor Maven padre, java.version=21
-    ├── Dockerfile            ← build multi-stage maven:3.9+JDK21 → JRE21
-    ├── docker-compose.yml    ← mysql:8.4 + postgres:16 + oracle + servidor
-    │
-    ├── common-protocol/      ← CONTRATO COMPARTIDO, sin Spring y sin UI
-    │   ├── dto/              ←   25 records/enums + schema-local.sql canónico
-    │   └── codec/            ←   TramaCodec (framing JSON sobre Gson)
-    │
-    ├── server/               ← SERVIDOR Java 21 + Spring Boot 3.5.7
-    │   ├── int-*  (5 módulos)= PORTS:  solo interfaces. Sin Spring.
-    │   ├── comp-* (5 módulos)= ADAPTERS: implementaciones. Se cargan por ServiceLoader.
-    │   ├── utilerias/         ←   tuberías de filtros (Pipes & Filters)
-    │   └── servidor-app/     ←   ÚNICO módulo con Spring. Despliegable.
-    │
-    ├── client/               ← CLIENTE JAVA (el "principal")
-    │   ├── client-interfaces/←   puertos de login/chat, adjuntos, eventos y mapeo + records; fachada agregada conservada
-    │   └── client-app/       ←   adaptadores + FachadaCliente + JavaFX (FXML+CSS)
-    │
-    ├── client-python/        ← CLIENTE ESPEJO (PySide6 + qfluentwidgets, SQLite)
-    ├── client-dotnet/        ← CLIENTE ESPEJO (WPF + WPF-UI, SQLite)
-    └── client-dotnet.Tests/  ← tests xUnit (OJO: target net10.0, la app es net8.0)
+<raíz>/
+├── AGENTS.md, README.md, REQUERIMIENTOS.md (QUÉ, RF-*), PLAN.md (CÓMO), ESTADO_ROADMAP.md (qué falta)
+├── ANALISIS_TECNICO.md (auditoría histórica), PLAN_PATRONES_UI.md, PLAN_PARIDAD_CLIENTES.md
+├── PLAN_ARQUITECTURA_CLIENTE_JAVA.md, GUIA_ACEPTACION.md, DESPLIEGUE.md, INSTALACION.md
+├── contrato/          ← fuente ÚNICA de lo compartido: tokens JSON + generadores y verificadores
+├── DIAGRAMAS/         ← fuentes/renders canónicos (ver DIAGRAMAS/README.md); incluye legados migrados
+├── docs/archivo/      ← histórico, no normativo
+└── universidad-mensajeria/ ← EL MONOREPO (solo aquí se compila; java.version=21)
+    ├── pom.xml, Dockerfile, docker-compose.yml, empaquetar-todo.cmd
+    ├── common-protocol/ dto + codec (sin Spring, sin UI; TramaCodec + schema-local.sql canónico)
+    ├── server/  12 módulos: 5 int-* (puertos, sin Spring) + 5 comp-* (adaptadores) + utilerias + servidor-app
+    ├── client/  client-interfaces + client-app (JavaFX)
+    ├── client-python/ (PySide6 + qfluentwidgets, SQLite)
+    ├── client-dotnet/ (WPF .NET 8 + WPF-UI, SQLite)
+    └── client-dotnet.Tests/ (xUnit; OJO: apunta a net10.0, la app es net8.0-windows)
 ```
 
-**Dato clave:** `int-*` y `comp-*` **no usan Spring**. El único módulo con Spring es
-`servidor-app`, y lo compila **solo contra los `int-*`**: los adaptadores se descubren en runtime
-con `ServiceLoader` y se registran en `META-INF/services`. Por eso hay 5 `Proveedor*` que parecen
-no usar nadie.
+Total Maven: 19 módulos (3 raíz + 2 common-protocol + 12 server + 2 client) + POM padre.
+
+**Dato clave:** `int-*` y `comp-*` **no usan Spring**. El único módulo con Spring es `servidor-app`,
+que compila **solo contra los `int-*`** (los `comp-*` son `<scope>runtime</scope>`); los adaptadores
+se descubren con `ServiceLoader` vía `META-INF/services`. Los 5 `Proveedor*` parecen sin uso por eso.
 
 ## 3. Los 4 procesos y cómo se hablan
 
-| Proceso | Entry point | UI | BD local |
-|---|---|---|---|
-| **Servidor** | `server/servidor-app/src/main/java/.../ServerApplication.java` | JLine + JavaFX (consola y escritorio admin) | MySQL/Postgres/Oracle |
-| **Cliente JavaFX** | `client/client-app/.../ClienteMain.java` | JavaFX 22.0.2 + AtlantaFX 2.1.0 (FXML + CSS) | H2 por cuenta |
-| **Cliente Python** | `client-python/main.py` | PySide6 + PySide6-Fluent-Widgets | SQLite por cuenta |
-| **Cliente WPF** | `client-dotnet/App.xaml.cs` | WPF .NET 8 + WPF-UI | SQLite por cuenta |
+| Proceso | Entry point | UI / BD local |
+|---|---|---|
+| Servidor | `server/servidor-app/.../server/ServerApplication.java` | JLine + JavaFX 21.0.6 (admin) / MySQL 8.4 (Postgres 16 / Oracle opcionales) |
+| Cliente JavaFX | `client/client-app/.../cliente/ClienteMain.java` | JavaFX 22.0.2 + AtlantaFX 2.1.0 (FXML+CSS) / H2 por cuenta |
+| Cliente Python | `client-python/main.py` | PySide6 + PySide6-Fluent-Widgets / SQLite por cuenta |
+| Cliente WPF | `client-dotnet/App.xaml.cs` | WPF .NET 8 + WPF-UI / SQLite por cuenta |
 
 ```
 JavaFX ─┐
 Python ─┼── TCP/JSON ──▶ IP_SERVIDOR:5000 (TLS: 5001) ──▶ Servidor ──▶ MySQL
-WPF   ──┘                                                      │
-                                                               ├── uploads/<nombre [código]>/<hash>/
+WPF   ──┘                                                      ├── uploads/<nombre [código]>/<hash>/
                                                                └── logs/
 ```
+
+Puertos TCP por defecto en los 4 `client.properties`/`server.properties`: **5000 plano, 5001 TLS**.
+MySQL Docker: host **`localhost:3307`** → contenedor `mysql:3306` (los tests usan el host).
 
 **Las dos reglas que más se violan por ignorancia:**
 
 1. **`localhost` no sirve como dirección de servidor** en un cliente que está en otro PC.
-2. **Los clientes NUNCA tocan la base del servidor.** Solo el servidor → MySQL. Si ves un cliente
-   abriendo una conexión de base de datos, es un bug.
+2. **Los clientes NUNCA tocan la base del servidor.** Solo el servidor → MySQL.
 
 ## 4. Build y test: los comandos exactos
 
@@ -94,189 +70,143 @@ Set-Location universidad-mensajeria
 docker compose up -d mysql          # OBLIGATORIO: los tests de servidor fallan sin MySQL
 
 mvn -pl server/servidor-app,client/client-app -am test    # servidor + JavaFX
-mvn -pl client/client-app -am test                         # solo JavaFX
+mvn -pl client/client-app -am test                        # solo JavaFX
 ```
 
 El `-am` (**also-make**) no es opcional: compila los módulos hermanos (`common-protocol`,
-`client-interfaces`) de los que dependen.
+`client-interfaces`). Foco en un solo test:
 
 ```powershell
-Set-Location client-python
-.\.venv\Scripts\python.exe -m pytest tests        # o: -m unittest discover -s tests
-Set-Location ..
-dotnet test client-dotnet.Tests\Mensajeria.Tests.csproj    # requiere SDK 10
-dotnet build client-dotnet/Mensajera.csproj -c Release
+mvn -pl server/servidor-app -am test -Dtest=NombreTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn -pl client/client-app -am test -Dtest=NombreTest -Dsurefire.failIfNoSpecifiedTests=false
+Set-Location client-python; .\.venv\Scripts\python.exe -m pytest tests/test_modulo.py -k filtro
+dotnet test client-dotnet.Tests\Mensajeria.Tests.csproj --filter "FullyQualifiedName~Nombre"
 ```
 
-Evidencia consultada el 2026-10-06 (sin ejecutar suites durante esta revisión documental): los
-reportes Surefire existentes registran 94 casos de `servidor-app` (2 fallos de umbrales de
-rendimiento en `CargaMixtaTest`), 79 JavaFX, 48 adaptadores, 11 utilerías y 7 de protocolo. El
-último resultado registrado en el trabajo UIX-15 fue .NET 71/71 y build Release sin warnings ni
-errores. El último total Python anotado en el roadmap es 100; ejecutar de nuevo antes de una
-entrega. WPF apunta a `net8.0-windows`; sus pruebas a `net10.0`.
+```powershell
+# Verificación global de paridad (tokens + estado + puertos + 3 suites + build WPF): exit 0/1
+.\universidad-mensajeria\client-python\.venv\Scripts\python.exe contrato\verificar.py
+dotnet build client-dotnet/Mensajeria.csproj -c Release   # valida el XAML generado
+```
 
-### Generar las 4 distribuciones (esto es lo que se instala en cada PC)
+Notas que se adivinan mal:
+
+- `client-python/pyproject.toml` solo existe para `uv run`; las dependencias reales se fijan en
+  `requirements.txt` (`pillow`, `PySide6`, `PySide6-Fluent-Widgets`).
+- Tests WPF requieren **SDK 10** aunque la app sea `net8.0-windows`. No hay CI workflows en
+  `.github/`; la verificación es local (`contrato/verificar.py`).
+- Estado de suites: ver `ESTADO_ROADMAP.md` §1 y los reportes Surefire presentes. La base del
+  servidor **no está en verde** (fallos de umbral en `CargaMixtaTest`); no afirmarlo.
+
+### Distribuciones (lo que se instala en cada PC)
 
 ```powershell
 Set-Location universidad-mensajeria
-cmd dist\distribuir-servidor.cmd
-cmd client\dist-client.cmd
-cmd client-python\distribuir.cmd
-dotnet publish client-dotnet\Mensajeria.csproj -c Release -r win-x64 --self-contained true -o dist\MensajeriaWPF
+.\empaquetar-todo.cmd   # las 4: servidor + JavaFX + Python + `dotnet publish ... -o dist\MensajeriaWPF`
 ```
 
-Los 2 scripts de Java usan `mvn install`, **nunca `package`**:
-`dependency:copy-dependencies` resuelve los módulos hermanos desde el repo local y con `package`
-no están. Solo falla en máquinas limpias.
+Equivalentes por pieza: `dist\distribuir-servidor.cmd`, `client\dist-client.cmd`,
+`client-python\distribuir.cmd`. Los 2 scripts de Java usan **`mvn install`, nunca `package`**:
+`dependency:copy-dependencies` resuelve los módulos hermanos desde el repo local.
 
 ## 5. Invariantes — no romper esto
 
-Si tocas una de estas reglas, rompe algo que funciona aunque las suites sigan en verde.
+Rompes algo que funciona aunque las suites sigan en verde si tocas:
 
 | # | Invariante | Por qué |
 |---|---|---|
-| 1 | **El protocolo es neutro de lenguaje.** Serialización **Gson**, nunca serialización nativa de Java. Cualquier cliente en cualquier lenguaje debe poder leerlo | Es requisito de grado (`RNF-04`). Los 3 clientes reimplementan el framing |
-| 2 | **Tope de trama: 16 MiB** en `TramaCodec`. Los archivos viajan **fragmentados** (`ARCHIVO_INICIO` → N×`ARCHIVO_PARTE` → `ARCHIVO_FIN`) | Un JPEG de 8 MB no cabe cómodo en una línea de consola |
-| 3 | **`servidor-app` compila SOLO contra `int-*`.** Los `comp-*` son `runtime` | Si añades un `import` de un `comp-*` en `servidor-app`, rompes la inversión de dependencias |
-| 4 | **El pool es de hilos CONCRETOS con token bucket**, no un `ExecutorService`. `ManejadorConexion extends Thread` | El patrón Object Pool es requisito explícito (`RF-S43..S48`) |
-| 5 | **No existe registro de usuarios por red.** El alta es solo editar `usuarios_iniciales.csv` | `RF-S27`. Un intento por red debe responderse `ERROR` |
-| 6 | **Los filtros de imagen son SECUENCIALES y cada uno genera una imagen nueva que se guarda** (5 derivadas) | `RF-S16`, `RF-S17`. No es un `if/else` de filtros |
-| 7 | **Login incrementa "accesos"; presencia es estado de sesión viva.** No son lo mismo | Mezclarlos falsea los informes 2–4 |
-| 8 | **`LOGOUT` cierra una sesión; `KICK` cierra las OTRAS del mismo código.** La presencia se apaga al cerrar la última | `RF-S31`, y es lo que prueba `SMOKE-03` |
-| 9 | **La respuesta a un mensaje viaja como TEXTO ORDINARIO** con prefijo `Respuesta a Nombre [CÓDIGO]: "…"` | Sin vínculo estructurado. Cambiarlo rompe la interoperabilidad entre los 3 clientes |
-| 10 | **La base local se aísla por cuenta.** `historial_local.origen/destino` guardan el código como `TEXT`, **no** una FK | Afirmar integridad referencial ahí sería falso. El esquema local **no tiene claves foráneas** |
+| 1 | **Protocolo neutro de lenguaje.** Serialización **Gson**, nunca nativa de Java | `RNF-04`; los 3 clientes reimplementan el framing |
+| 2 | **Tope de trama: 16 MiB** (`TramaCodec.TAMANO_MAXIMO_TRAMA`). Archivos **fragmentados** (`ARCHIVO_INICIO` → N×`ARCHIVO_PARTE` → `ARCHIVO_FIN`) | Un adjunto grande no cabe en una trama |
+| 3 | **`servidor-app` compila SOLO contra `int-*`.** Los `comp-*` son `runtime` | Romperlo rompe la inversión de dependencias |
+| 4 | **Pool de hilos CONCRETOS con token bucket**, no `ExecutorService` (`ManejadorConexion extends Thread`) | Object Pool explícito (`RF-S43..S48`) |
+| 5 | **Sin registro por red.** Alta = editar `usuarios_iniciales.csv`; el intento por red responde `ERROR` | `RF-S27` |
+| 6 | **Filtros de imagen SECUENCIALES, cada uno genera y guarda una imagen nueva** (5 derivadas) | `RF-S16`, `RF-S17`; no es `if/else` |
+| 7 | **Login incrementa "accesos"; presencia = sesión viva.** No son lo mismo | Mezclarlos falsea informes 2–4 |
+| 8 | **`LOGOUT` cierra una sesión; `KICK` cierra las OTRAS del mismo código**; presencia off al cerrar la última | `RF-S31`; lo prueba `SMOKE-03` |
+| 9 | **Respuesta = TEXTO ORDINARIO** con prefijo `Respuesta a Nombre [CÓDIGO]: "…"` | Sin vínculo estructurado; cambiarlo rompe interoperabilidad |
+| 10 | **BD local aislada por cuenta, sin FKs.** `historial_local.origen/destino` son `TEXT` con el código | El esquema local **no tiene claves foráneas** |
+| 11 | **Paleta generada, no editada.** 4 CSS + 2 `.xaml` + `ui/tema_tokens.py` salen de `contrato/generar_tokens.py` | Se edita `contrato/tokens-diseno.json` y se regenera (`--check` en CI local) |
+| 12 | **Estados en `contrato/estado-mensaje.json`; comprobar, no asumir.** `PENDIENTE→ENVIADO→ENTREGADO→LEIDO` + `ERROR` terminal, en 5 copias / 3 lenguajes / 2 motores | Corre `contrato/verificar_estado_mensaje.py` si tocas una copia |
+| 13 | **Puertos en `contrato/puertos.json`: 23, no 12.** 9 viven en `client-app`/`presentacion` | Añadir un método sin añadirlo al JSON rompe `contrato/verificar_puertos.py` |
 
 ## 6. Trampas verificadas en el código
 
-Estas no se deducen leyendo: se comprobaron. Perder tiempo aquí es tiempo perdido.
+### 6.1 Parece muerto y NO lo es — no borrar sin comprobar framework/reflexión
 
-### 6.1 Lo que parece código muerto y **NO** lo es
+`LoginController` (0 refs Java; lo instancia `login.fxml` con `fx:controller=`), `ServerApplication` /
+`PasswordConfig` / `FlywayMigrationAdapter` / `JpaPersistenciaAdapter` / `DataSourceAdapter`
+(anotaciones Spring), los 5 `Proveedor*` (ServiceLoader), clases de estilo JavaFX en CSS
+(`.split-pane`, `.list-cell`, `.combo-box`), `FabricaDelDespachador.NULA` (contrato SPI),
+`FiltroMain` (CLI usada por su test). Reglas B1–B6 en `PLAN_PATRONES_UI.md` §2.1.
 
-| Parece muerto | Por qué vive |
-|---|---|
-| `LoginController` (0 referencias Java) | Lo instancia `login.fxml:15` con `fx:controller=` |
-| `ServerApplication`, `PasswordConfig`, `FlywayMigrationAdapter`, `JpaPersistenciaAdapter`, `DataSourceAdapter` | Anotaciones de Spring (`@SpringBootApplication`, `@Configuration`, `@Component`) |
-| Los 5 `Proveedor*` | Los carga `ServiceLoader` desde `META-INF/services` |
-| Los 49 archivos de test | Escaneo de classpath de JUnit |
-| `.split-pane`, `.list-cell`, `.combo-box` en los CSS | Clases de estilo **integradas** de JavaFX, se aplican en runtime |
-| `FabricaDelDespachador.NULA` | Contrato SPI obligatorio (`crear()`), aunque reciba 0 llamadas |
-| `FiltroMain` | CLI opcional documentada, usada por su test |
+### 6.2 Lo que SÍ es código muerto
 
-**Regla:** antes de borrar algo, `rg` no basta. Comprueba framework, reflexión y convención de
-toolkit. Está desarrollado en `PLAN_PATRONES_UI.md` §2.1 (reglas B1–B6).
+Foto con conteo en `ANALISIS_TECNICO.md` §2 (38 items al 2026-10-05; parte ya borrada):
+`sesionesInfo()`, `solicitarHistorialServidor()`, columna `ipDestinatario` (siempre NULL),
+`_guardar_propio()`, pinceles `Telegram*Brush`. **Verifica que el símbolo aún exista** antes de
+actuar.
 
-### 6.2 Lo que SÍ es código muerto (38 items inventariados)
+### 6.3 `SEC-05`/`SEC-06` están cerrados
 
-Lista exacta con conteo de referencias en `ANALISIS_TECNICO.md` §2. Ejemplos: `sesionesInfo()`,
-`solicitarHistorialServidor()`, `ipDestinatario` (columna siempre NULL), `_guardar_propio()`,
-9 pinceles `Telegram*Brush`, `ui/registro_window.py` (stub de 3 líneas). Es una fotografía de la
-auditoría 2026-10-05: revisar cierres y excepciones posteriores antes de tratar un símbolo como
-pendiente o muerto.
+Autenticación obligatoria por defecto; solo `LOGIN` público. Detalle vigente en
+`ESTADO_ROADMAP.md` §9; la auditoría conserva el historial.
 
-### 6.3 Hallazgo cerrado que hay que conocer
+### 6.4 Los 3 clientes no son espejos exactos — replicar la lógica en los 3
 
-**`SEC-05`/`SEC-06` están cerrados.** La autenticación es obligatoria por defecto para los comandos
-del SPI; solo `LOGIN` queda público. Guardas y pruebas parametrizadas/E2E cubren el contrato. La
-auditoría conserva la cadena histórica en `ANALISIS_TECNICO.md` §1; el estado de seguridad vigente
-está en `ESTADO_ROADMAP.md` §9.
-
-### 6.4 Diferencias entre los 3 clientes (no son espejos exactos)
-
-| | JavaFX | Python | .NET |
-|---|---|---|---|
-| ViewModel | parcial (`ChatViewModel` posee estado conversacional; coordinación JavaFX pendiente) | ninguno | parcial (`MensajeVM` solo) |
-| Frontera de vista | inyección por constructor desde `FabricaControladores`, con puertos por responsabilidad | **parchea** la fachada con `setattr` | `IFachadaCliente` inyectada |
-| Archivo mayor | `ChatController.java` 910 líneas (`ChatViewModel` y `GestorAdjuntosChat` separan responsabilidades) | `chat_window.py` **1 322** | `ChatWindow.xaml.cs` 790 |
-| Validación TLS fail-fast | ❌ | ✅ (`transversal/tls.py`) | ❌ |
-| Historial con interfaz | ✅ | ❌ **no tiene** | ✅ |
-
-Si tocas una lógica de negocio, **replícala en los 3** o rompe la matriz de 6 direcciones
+JavaFX tiene ViewModel parcial y frontera por constructor (`FabricaControladores`); Python **parchea**
+la fachada con `setattr` y no tiene interfaz de historial; .NET inyecta `IFachadaCliente`; solo
+Python valida TLS fail-fast (`transversal/tls.py`). Python partió su chat en componentes
+(`constructor_vista_chat`, `paginador_historial_chat`, …); .NET concentra el chat en
+`ChatWindow.xaml.cs`. Si tocas negocio, **replícala en los 3** o rompes la matriz de 6 direcciones
 (`GUIA_ACEPTACION.md`).
 
-### 6.5 La máquina de estados del mensaje está escrita 3 veces
+### 6.5 Detalles que rompen suposiciones
 
-`PENDIENTE → ENVIADO → ENTREGADO → LEIDO`, más `ERROR`, como un `CASE` SQL **idéntico** en los 3
-clientes (`HistorialLocal.java`, `historial_local.py`, `HistorialLocal.cs`). Si añades un estado,
-hay que acordarse de los 3 sitios o un cliente discrepa de otro. La referencia canónica está en
-`DIAGRAMAS/estados/st-mensaje.mmd`.
-
-### 6.6 Detalles que romperían una suposición
-
-- `ProtocoloComunicacion.enviar` declara `throws IOException` y la interfaz `throws Exception`: es
-  un *narrowing* legítimo.
-- `Usuarios` guarda el directorio en un `ConcurrentHashMap` **en memoria**. La tabla `usuarios` la
-  persiste `servidor-app`. Son dos cosas distintas.
-- `Servicios` trata un límite de `0` como **sin límite**.
-- El pool de red usa token bucket (`fichas`/`ultimoRecargoNs`), no una cola con semáforo.
-- Los tests E2E usan **semilla propia** (`src/test/resources/usuarios_iniciales.csv`): correr
-  tests desactiva cuentas reales en esa BD (el arranque normal las reactiva).
-- Los tests de servidor **requieren MySQL** y fallan a propósito sin él.
+- Estados `PENDIENTE→ENVIADO→ENTREGADO→LEIDO` + `ERROR` como `CASE` SQL **idéntico** en los 3
+  clientes; canónico en `DIAGRAMAS/estados/st-mensaje.mmd`.
+- Python y .NET **comparten el mismo SQLite** en un PC. .NET escribe fechas UTC con `Z`
+  (`ToString("O")`); Python normaliza aware→naive (`transversal/fechas._leer`, misma semántica que
+  `FormatoFecha.TryLeer`). Si añades fecha al historial, lee/escribe **ambos formatos** en los 3.
+  El servidor nunca envía zona (`LocalDateTime.now()`).
+- Tests E2E usan **semilla propia** (`src/test/resources/usuarios_iniciales.csv`) y **dejan
+  `activo=0`** en esa BD; el arranque normal reactiva. Si el login dice "usuario no registrado",
+  reactiva con `UPDATE usuarios SET activo=1`.
+- `Usuarios` = `ConcurrentHashMap` **en memoria**; la tabla `usuarios` la persiste `servidor-app`.
+- `Servicios` trata límite `0` como **sin límite**; el pool usa token bucket, no semáforo.
+- `ProtocoloComunicacion.enviar` declara `throws IOException` frente a `throws Exception` de la
+  interfaz: *narrowing* legítimo.
 
 ## 7. Cómo trabajar aquí
 
 | Si tu tarea es… | Empieza por | Antes de editar, lee |
 |---|---|---|
-| Entender una función de negocio | `REQUERIMIENTOS.md` busca el `RF-*` | `PROTOCOLO.md` si toca la red |
-| Tocar el servidor | `PLAN.md` §2 (arquitectura) y §9 (patrones) | `DIAGRAMAS/clases/arq-vista-general.mmd` |
-| Añadir una trama TCP | `PROTOCOLO.md` + `commands/Comandos.java` | **Regla 3 de §5**: nada de `comp-*` en `servidor-app` |
-| Tocar un cliente | `DIAGRAMAS/clases/clases-client-{java,dotnet,python}.mmd` | §6.4: **replicar en los 3** |
-| Cambiar la UI | `DIAGRAMAS/textos-ui.md` (literales exactos) + los mockups | `PLAN_PATRONES_UI.md` antes de añadir |
-| Arquitectura del cliente Java | `PLAN_ARQUITECTURA_CLIENTE_JAVA.md` (estado parcial; no declarar Clean Architecture completa) | `ESTADO_ROADMAP.md` §6 para hitos vigentes |
-| Cambiar el esquema | `db/migration/{mysql,postgres,oracle}/` (**los 3**) | `DIAGRAMAS/modelo-relacional/er-modelo-servidor.mmd` |
-| Añadir un filtro | `server/utilerias/` + `TuberiaFactory` | Regla 6 de §5: secuencial, cada uno genera imagen |
+| Función de negocio | `REQUERIMIENTOS.md` (el `RF-*`) | `universidad-mensajeria/common-protocol/PROTOCOLO.md` si toca red |
+| Servidor | `PLAN.md` §2 y §9 | `DIAGRAMAS/clases/arq-vista-general.mmd`; regla 3 de §5 |
+| Trama TCP | `universidad-mensajeria/common-protocol/PROTOCOLO.md` + `commands/Comandos.java` | Nada de `comp-*` en `servidor-app` |
+| Un cliente | `DIAGRAMAS/clases/clases-client-{java,dotnet,python}.mmd` | §6.4: **replicar en los 3** |
+| UI | `DIAGRAMAS/textos-ui.md` + mockups | `PLAN_PATRONES_UI.md` antes de añadir |
+| Arquitectura JavaFX | `PLAN_ARQUITECTURA_CLIENTE_JAVA.md` (parcial; no declarar Clean completa) | `ESTADO_ROADMAP.md` §6 |
+| Color/medida UI | `contrato/tokens-diseno.json` y regenerar | **Nunca editar CSS/`.xaml` generados** (`contrato/README.md`) |
+| Igualar clientes | `PLAN_PARIDAD_CLIENTES.md` | `contrato/verificar.py` (8 pasos) |
+| Esquema servidor | `server/servidor-app/src/main/resources/db/migration/{mysql,postgres,oracle}/` (**los 3**) | `DIAGRAMAS/modelo-relacional/er-modelo-servidor.mmd` |
+| Filtro imagen | `server/utilerias/` + `TuberiaFactory` | Regla 6 de §5 |
 | Documentar | `DIAGRAMAS/README.md` (regla de 3 pasos) | Un `.mmd` sin PNG **no cuenta** |
 
-## 8. Convenciones
+## 8. Convenciones e índice
 
-- **Idioma del dominio: español.** Nombres de dominio en español del negocio; nada de
-  `manager`, `util2`, `dataTmp`.
-- **Comentarios solo en contratos públicos y decisiones de *por qué*.** El *qué* lo dice el código.
-- **Sin hardcode:** `localhost:5000`, credenciales, rutas → `application.properties`,
-  `server.properties` o `client.properties` según el proceso.
-- **Java:** español en javadoc, identificadores de dominio en español, 17 módulos Maven.
-- **Python:** `snake_case`, type hints en las firmas públicas.
-- **C#:** `PascalCase` público, `camelCase` privado.
-- **Los literales de UI están dentro del código**, sin archivos de recurso. Si añades uno, que
-  coincida con los otros 2 clientes (ver `VIS-02` en `ESTADO_ROADMAP.md`).
-- **Excepciones de dominio** (`UsuarioNoEncontradoException`), no `RuntimeException` genérica.
-
-## 9. Índice: dónde está cada cosa
+- **Dominio en español** (nada de `manager`, `util2`); javadoc en español; **Python** `snake_case` +
+  hints públicos; **C#** `PascalCase` público / `camelCase` privado.
+- **Comentarios solo en contratos públicos y en el *por qué*.** Sin hardcode: `localhost:5000`,
+  credenciales, rutas → `application.properties` / `server.properties` / `client.properties`.
+- **Literales UI en código**, sin recursos; si añades uno, igual en los 3 clientes. Excepciones de
+  dominio (`UsuarioNoEncontradoException`), no `RuntimeException` genérica.
 
 | Pregunta | Archivo |
 |---|---|
-| Qué debe hacer el sistema | [`REQUERIMIENTOS.md`](REQUERIMIENTOS.md) |
-| Por qué está así | [`PLAN.md`](PLAN.md) |
-| Qué falta y en qué orden | [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md) |
-| Qué documentos conviene conservar, fusionar o retirar después de validar | [`REVISION_DOCUMENTAL.md`](REVISION_DOCUMENTAL.md) |
-| Dónde está cada clase | `DIAGRAMAS/` (`README.md` es el índice) |
-| Formato exacto de la trama | [`universidad-mensajeria/common-protocol/PROTOCOLO.md`](universidad-mensajeria/common-protocol/PROTOCOLO.md) |
-| Esquema local de los clientes | [`universidad-mensajeria/common-protocol/HISTORIAL_LOCAL.md`](universidad-mensajeria/common-protocol/HISTORIAL_LOCAL.md) |
-| Textos literales de la UI | [`DIAGRAMAS/textos-ui.md`](DIAGRAMAS/textos-ui.md) |
-| Problemas ya encontrados | [`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md) |
-| Cómo preparar un PC | [`INSTALACION.md`](INSTALACION.md), [`AUTOMATIZACION_ENTORNO.md`](AUTOMATIZACION_ENTORNO.md) |
-| Cómo operar y desplegar | [`DESPLIEGUE.md`](DESPLIEGUE.md) |
-| Cómo comprobar que funciona | [`GUIA_ACEPTACION.md`](GUIA_ACEPTACION.md) |
-
-### Mapa de unclick a un archivo
-
-| Necesito… | Abre |
-|---|---|
-| El servidor entero | `server/servidor-app/README.md` |
-| Solo el cliente JavaFX | `client/README.md` |
-| Solo el cliente Python | `client-python/README.md` |
-| Solo el cliente WPF | `client-dotnet/README.md` |
-| La tubería de filtros | `DIAGRAMAS/clases/clases-utilerias.mmd` |
-| Los 15 comandos TCP | `DIAGRAMAS/clases/comandos-servidor.mmd` |
-| Las 7 tablas del servidor | `DIAGRAMAS/modelo-relacional/er-modelo-servidor.mmd` |
-
-## 10. Estado del repo al 2026-10-06
-
-- `SEC-05`/`SEC-06` cerrados. No describir el directorio como accesible sin autenticación.
-- Los defectos `UIX-00a..00f` y varios lotes de interfaz están implementados. En WPF, UIX-15
-  migra avisos/errores recuperables a un banner inline y mantiene las tres confirmaciones modales.
-- La vista administrativa JavaFX tiene las pestañas Estado, Conectados, Usuarios, Mensajes,
-  Informes, Logs, Pool y Difundir, además de una ficha de usuario. JLine conserva sus comandos.
-- `DIAGRAMAS/` es la ubicación canónica de fuentes y renders. Las carpetas legadas todavía existen;
-  revisar `REVISION_DOCUMENTAL.md` y `DIAGRAMAS/README.md` §3 antes de retirar nada.
-- Los reportes de pruebas tienen fechas y dos fallos de umbral de rendimiento; consultar
-  `ESTADO_ROADMAP.md` §1. Esta guía no afirma una ejecución fresca de las suites.
+| Qué debe hacer / por qué así / qué falta | `REQUERIMIENTOS.md` / `PLAN.md` / `ESTADO_ROADMAP.md` |
+| Trama exacta / esquema local | `universidad-mensajeria/common-protocol/PROTOCOLO.md` / `universidad-mensajeria/common-protocol/HISTORIAL_LOCAL.md` |
+| Dónde está cada clase / textos UI | `DIAGRAMAS/` (`README.md` es el índice) / `DIAGRAMAS/textos-ui.md` |
+| Paridad / paleta / ¿siguen iguales? | `PLAN_PARIDAD_CLIENTES.md` / `contrato/tokens-diseno.json` / `contrato/verificar.py` |
+| Problemas ya encontrados | `ANALISIS_TECNICO.md` (histórico; el estado vigente manda en el roadmap) |
+| Preparar PC / operar / comprobar | `INSTALACION.md` (+`AUTOMATIZACION_ENTORNO.md`) / `DESPLIEGUE.md` / `GUIA_ACEPTACION.md` |
+| Servidor / JavaFX / Python / WPF | `server/servidor-app/README.md` / `client/README.md` / `client-python/README.md` / `client-dotnet/README.md` |

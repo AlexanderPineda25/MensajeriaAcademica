@@ -85,6 +85,13 @@ historial remoto.
   difundir en este cliente—. Texto e imagen juntos se envían como dos
   mensajes. Los estados son `✓` enviado, `✓✓` entregado y `✓✓` azul leído;
   se puede responder citando y descargar archivos recibidos.
+- Responder: doble-click sobre la burbuja (o botón `↩`) arma la cita y deja
+  el foco ya en "Escribe un mensaje", sin click extra; Enter envía.
+- Tema: oscuro por defecto (`tema=oscuro` en `client.properties`, `Tema`
+  cae a oscuro sin clave). El combo `Oscuro/Claro` cambia AtlantaFX +
+  `chat.css/chat-claro.css` y persiste la elección. El fondo del historial
+  es `fondos/fondo_chat_oscuro.jpg` en oscuro y `fondos/fondo_chat_claro.jpg`
+  en claro, detrás de las burbujas (celdas transparentes, burbujas opacas).
 - Sin red aparece el banner ámbar y los mensajes quedan en cola local con
   reintento automático; un rechazo definitivo del servidor marca ERROR en
   vez de reintentar para siempre.

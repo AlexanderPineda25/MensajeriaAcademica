@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Mensajeria.Componentes;
+using Mensajeria.Transversal.Dtos;
 using Xunit;
 
 namespace Mensajeria.Tests
@@ -19,6 +20,7 @@ namespace Mensajeria.Tests
         private readonly ConcurrentQueue<Dictionary<string, object?>> _empujes = new();
         private readonly List<Dictionary<string, JsonElement>> _recibidos = new();
         private readonly List<Dictionary<string, JsonElement>> _cierres = new();
+        private readonly ReceptorCaptura _receptor = new();
         private readonly ConexionRed _cn;
         private volatile bool _seguir = true;
 
@@ -30,6 +32,7 @@ namespace Mensajeria.Tests
             _hilo.Start();
             int puerto = ((IPEndPoint)_listener.LocalEndpoint).Port;
             _cn = new ConexionRed();
+            _cn.Suscribir(_receptor);
             _cn.OnMensajeRecibido += m => { lock (_recibidos) _recibidos.Add(m); };
             _cn.OnCierre += m => { lock (_cierres) _cierres.Add(m); };
             _cn.ConectarAsync("127.0.0.1", puerto).GetAwaiter().GetResult();
@@ -122,6 +125,9 @@ namespace Mensajeria.Tests
                 lock (_recibidos) return _recibidos.Exists(m =>
                     m["tipo"].GetString() == "BROADCAST");
             }));
+            Assert.True(Esperar(() => _receptor.Mensajes.TryPeek(out var mensaje)
+                && mensaje.Tipo == TipoMensajeCliente.BROADCAST
+                && mensaje.Contenido == "aviso"));
         }
 
         [Fact]
@@ -134,6 +140,27 @@ namespace Mensajeria.Tests
             Assert.True(Esperar(() => { lock (_cierres) return _cierres.Count == 1; }));
             lock (_cierres)
                 Assert.Equal("kick", _cierres[0]["mensajeError"].GetString());
+            Assert.True(Esperar(() => _receptor.Cierres.TryPeek(out var aviso)
+                && aviso.Tipo == TipoMensajeCliente.CLOSE_NOTICE
+                && aviso.MensajeError == "kick"));
+        }
+
+        [Fact]
+        public void CierreDelSocketSeEntregaAlReceptorTipado()
+        {
+            _cn.Desconectar();
+
+            Assert.True(Esperar(() => _receptor.Desconexiones > 0));
+        }
+
+        [Fact]
+        public void TipoDesconocidoSeReportaAlReceptorSinDetenerElLector()
+        {
+            _empujes.Enqueue(new Dictionary<string, object?>
+                { { "tipo", "TIPO_FUTURO" } });
+
+            Assert.True(Esperar(() => !_receptor.Errores.IsEmpty));
+            Assert.Contains("tipo desconocido", _receptor.Errores.TryPeek(out var error) ? error : "");
         }
 
         [Fact]
@@ -156,6 +183,20 @@ namespace Mensajeria.Tests
             await Assert.ThrowsAsync<TimeoutException>(() =>
                 _cn.Pedir(new Dictionary<string, object?> { { "tipo", "MUDO" } },
                     TimeSpan.FromSeconds(1)));
+        }
+
+        private sealed class ReceptorCaptura : IReceptorMensajes
+        {
+            public ConcurrentQueue<RespuestaRed> Mensajes { get; } = new();
+            public ConcurrentQueue<RespuestaRed> Cierres { get; } = new();
+            public ConcurrentQueue<string> Errores { get; } = new();
+            private int _desconexiones;
+            public int Desconexiones => Volatile.Read(ref _desconexiones);
+
+            public void AlRecibir(RespuestaRed mensaje) => Mensajes.Enqueue(mensaje);
+            public void AlCierre(RespuestaRed aviso) => Cierres.Enqueue(aviso);
+            public void AlError(string motivo) => Errores.Enqueue(motivo);
+            public void AlDesconexion() => Interlocked.Increment(ref _desconexiones);
         }
     }
 }

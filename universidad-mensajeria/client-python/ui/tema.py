@@ -2,7 +2,13 @@
 
 Los mismos tokens alimentan login y chat para que el cambio sea
 instantáneo y persistente (clave ``tema`` en client.properties).
+
+La paleta NO vive aquí: viene generada en :mod:`ui.tema_tokens` desde
+``contrato/tokens-diseno.json``, la fuente única de los tres clientes.
+Este módulo solo traduce los nombres canónicos a los que ya usaba el
+cliente Python, de modo que ``chat_window.py`` no cambia ni una línea.
 """
+from ui.tema_tokens import MAPA_LEGADO, TOKENS as _CANONICOS
 
 MODO_OSCURO = "oscuro"
 MODO_CLARO = "claro"
@@ -13,68 +19,43 @@ def normalizar(modo):
     return modo if modo in MODOS else MODO_OSCURO
 
 
+#: Nombre antiguo -> token canónico del que depende.
+_LEGADO_A_CANONICO = {viejo: nuevo for nuevo, viejo in MAPA_LEGADO.items()}
+
+#: La paleta real del cliente, con los nombres canónicos.
+TOKENS_CANONICOS = {
+    modo: {clave: valor for clave, valor in _CANONICOS[modo].items()}
+    for modo in MODOS
+}
+
+#: Diccionario con los nombres que ya usaba el cliente. Se mantiene porque
+#: `chat_window.py` y `login_window.py` lo consumen directamente.
 TOKENS = {
-    MODO_OSCURO: {
-        "ventana": "#0E1621",
-        "tarjeta": "#182533",
-        "tarjeta_borde": "#2A3B4D",
-        "cabecera": "#1F3A5F",
-        "texto": "#E8EEF2",
-        "texto_suave": "#A8B8C1",
-        "lista": "#0E1621",
-        "burbuja_propia": "#7B61B8",
-        "burbuja_propia_borde": "#6A4FA3",
-        "burbuja_ajena": "#182533",
-        "burbuja_ajena_borde": "#2A3B4D",
-        "remitente": "#C4B5FD",
-        "cuerpo_propia": "#FFFFFF",
-        "cuerpo_ajena": "#E8EEF2",
-        "fecha": "#C4B5FD",
-        "visto_leido": "#5EB1FF",
-        "visto_pendiente": "#A8B8C1",
-        "visto_otro": "#C4B5FD",
-        "cita_fondo": "#243447",
-        "cita_borde": "#A78BFA",
-        "cita_texto": "#C4B5FD",
-        "preview_fondo": "#243447",
-        "preview_borde": "#2A3B4D",
-        "preview_thumb_fondo": "#0E1621",
-    },
-    MODO_CLARO: {
-        "ventana": "#EEF1F6",
-        "tarjeta": "#FFFFFF",
-        "tarjeta_borde": "#D7DEE8",
-        "cabecera": "#1F3A5F",
-        "texto": "#202124",
-        "texto_suave": "#61717F",
-        "lista": "#F4F7F7",
-        "burbuja_propia": "#E1F5FE",
-        "burbuja_propia_borde": "#B3E5FC",
-        "burbuja_ajena": "#FFFFFF",
-        "burbuja_ajena_borde": "#E1E8E9",
-        "remitente": "#17635B",
-        "cuerpo_propia": "#24383D",
-        "cuerpo_ajena": "#24383D",
-        "fecha": "#57676E",
-        "visto_leido": "#1E88E5",
-        # UIX-17: visto_pendiente #8A9BA8 daba 2.86:1 sobre blanco y fecha
-        # #687A80 daba 4.48:1. Ambos oscuros a >= 5.5:1 (AA). El token
-        # 'prompt' #7A8A99 citado en el analisis ya no existe en este
-        # archivo (tokens muertos retirados); estos eran los que fallaban.
-        "visto_pendiente": "#5B6B73",
-        "visto_otro": "#61717F",
-        "cita_fondo": "#E6F4F2",
-        "cita_borde": "#147D73",
-        "cita_texto": "#147D73",
-        "preview_fondo": "#F0F4F4",
-        "preview_borde": "#DCE4E5",
-        "preview_thumb_fondo": "#FFFFFF",
-    },
+    modo: {viejo: TOKENS_CANONICOS[modo][canonico]
+           for viejo, canonico in _LEGADO_A_CANONICO.items()
+           if canonico in TOKENS_CANONICOS[modo]}
+    for modo in MODOS
 }
 
 
 def tokens(modo):
     return TOKENS[normalizar(modo)]
+
+
+def aplicar_tema_fluent(modo):
+    """Sincroniza el tema global de QFluentWidgets con el modo elegido.
+
+    Sin esto, `main.py` fijaba Theme.DARK al arrancar y los controles Fluent
+    (LineEdit, PasswordLineEdit, ComboBox, PrimaryPushButton) se quedaban
+    oscuros aunque la ventana pasara a claro. El acento sigue al token
+    `login.button.bg` del modo, que ya viene distinto por tema del contrato.
+    """
+    from PySide6.QtGui import QColor
+    from qfluentwidgets import Theme, setTheme, setThemeColor
+
+    modo = normalizar(modo)
+    setTheme(Theme.DARK if modo == MODO_OSCURO else Theme.LIGHT)
+    setThemeColor(QColor(TOKENS_CANONICOS[modo]["login.button.bg"]))
 
 
 def modo_por_indice(indice):

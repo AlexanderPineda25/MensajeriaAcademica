@@ -37,12 +37,13 @@ estados, despliegue y clases de Python/.NET.
 su render, y (3) alguien lo miró. Si `render.ps1` reporta un `FALLO`, el source está mal: no
 entregues source sin renderizar.
 
-### Cómo descubre los archivos (y por qué las carpetas viejas no se renderizan)
+### Cómo descubre los archivos
 
 `render.ps1` se ancla a `$raiz = Split-Path -Parent $MyInvocation.MyCommand.Path`, es decir **a su
-propia carpeta**. Recorre con `Get-ChildItem -Recurse`, así que cualquier subcarpeta **nueva** de
-`DIAGRAMAS/` se recoge sola. Pero `DIAGRAMAS_ENTREGA` y `DIAGRAMAS_FINALES` están **fuera** de
-`$raiz` y **nunca se regeneran**: sus PNG se hicieron a mano.
+propia carpeta**. Recorre con `Get-ChildItem -Recurse`, así que cualquier subcarpeta de
+`DIAGRAMAS/` se recoge sola, **incluido** `DIAGRAMAS/DIAGRAMAS_ENTREGA/`. Los renders
+legados se regeneran junto a los canónicos; si un legado duplicado estorba, se retira
+el archivo, no se toca el script.
 
 ### Limitaciones de `render.ps1` que hay que tener en cuenta al añadir diagramas
 
@@ -200,10 +201,13 @@ con veredicto Retirar/Fusionar de §3.2) y **no se borraron**.
 
 ### 3.1 Inventario actual y línea base anterior a DIAG-07
 
-Inventario físico consultado el 2026-10-06: `DIAGRAMAS/` contiene **45 `.mmd`**, con 45 PNG y
-45 SVG renderizados, más 15 fuentes `.excalidraw` y sus 15 PNG. Los legados conservan 4 `.mmd` +
-4 PNG en `DIAGRAMAS_ENTREGA/` y 6 `.mmd` + 6 PNG + 5 `.excalidraw` + 5 PNG en
-`DIAGRAMAS_FINALES/`. Los números «37 en 3 carpetas» de la auditoría eran la línea base anterior
+Inventario físico consultado el 2026-10-06, actualizado el 2026-10-07 tras la
+consolidación stageada: `DIAGRAMAS/` contiene **45 `.mmd`** canónicos, con PNG y
+SVG renderizados, más 15 fuentes `.excalidraw` y sus PNG. Los legados viven bajo
+`DIAGRAMAS/DIAGRAMAS_ENTREGA/` (8 archivos .mmd+PNG de flujo/ER) y los legados de
+clases FINALES migrados como `DIAGRAMAS/clases/01,02,04,09.*` (los `.mmd`/PNG
+huérfanos de `modelo-relacional/` y `mockups/` FINALES se retiraron en esa
+consolidación). Los números «37 en 3 carpetas» de la auditoría eran la línea base anterior
 a DIAG-07, no el inventario de hoy.
 
 - `DIAGRAMAS/` es el catálogo canónico: sus fuentes derivan del código y los `.sql` reales,
@@ -213,26 +217,27 @@ a DIAG-07, no el inventario de hoy.
   cada candidato se puede conservar, fusionar o retirar solo después de verificar que la versión
   canónica cubre sus relaciones y detalles.
 
-### 3.2 Archivos legados que aún están presentes y opciones de conciliación
+### 3.2 Archivos legados conciliados (tabla histórica 2026-10-06; rutas actualizadas el 2026-10-07)
 
-| Archivo que permanece físicamente | Equivalente/destino posible | Recomendación para revisión futura |
+| Archivo legado (ruta actual) | Equivalente/destino posible | Estado tras la consolidación |
 |---|---|---|
-| `DIAGRAMAS_ENTREGA/05-clases-servidor.mmd` + `.png` | `clases/clases-servidor-app.mmd`, `clases-inicio-vistas.mmd`, `clases-fachada-casos.mmd`, `clases-nucleo.mmd`, `clases-persistencia.mmd` | Comparar clases y relaciones exclusivas; retirar el legado solo si el conjunto canónico lo cubre. |
-| `DIAGRAMAS_ENTREGA/06-clases-cliente.mmd` + `.png` | `clases/clases-client-interfaces.mmd`, `clases-client-app.mmd`, `clases-client-python.mmd`, `clases-client-dotnet.mmd` | Fusionar la vista cruzada de toolkits si aporta relaciones únicas; después cotejar antes de retirar. |
-| `DIAGRAMAS_ENTREGA/07-er-servidor.mmd` + `.png` | `modelo-relacional/er-modelo-servidor.mmd` | Candidato a retiro tras comparar entidades, columnas y restricciones. |
-| `DIAGRAMAS_ENTREGA/08-er-local.mmd` + `.png` | `modelo-relacional/er-modelo-local.mmd` | Candidato a retiro tras comparar columnas y restricciones. |
-| `DIAGRAMAS_FINALES/clases/01-componentes-servidor.mmd` + `.png` | `clases/arq-vista-general.mmd`, `clases-servidor-app.mmd`, `clases-inicio-vistas.mmd` | Fusionar los detalles únicos; retirar solo si el contenido queda cubierto. |
-| `DIAGRAMAS_FINALES/clases/02-clases-puertos-adaptadores.mmd` + `.png` | Diagramas `clases-int-*`, `clases-componentes-*` y `clases-comp-*` | Candidato a retiro después de cotejar puertos, implementaciones y relaciones. |
-| `DIAGRAMAS_FINALES/clases/04-clases-cliente.mmd` + `.png` | Diagramas por toolkit y `clases/arq-flujo-datos.mmd` | Conservar hasta documentar sus relaciones cruzadas o fusionarlas en la vista de conjunto. |
-| `DIAGRAMAS_FINALES/clases/09-clases-base.mmd` + `.png` | Diagramas canónicos por módulo | Candidato a retiro si no contiene clases o relaciones únicas. |
-| `DIAGRAMAS_FINALES/modelo-relacional/er-mysql.mmd` + `.png` | `modelo-relacional/er-modelo-servidor.mmd` | Candidato a retiro tras cotejo; conservar si se necesita como versión histórica específica. |
-| `DIAGRAMAS_FINALES/modelo-relacional/er-sqlite.mmd` + `.png` | `modelo-relacional/er-modelo-local.mmd` | Candidato a retiro tras cotejar columnas y restricciones. |
-| `DIAGRAMAS_FINALES/mockups/mockup-login.*`, `mockup-chat.*`, `mockup-estados.*` | Fuentes/renderes homónimos de `DIAGRAMAS/mockups/` | Los nombres coinciden, pero los hashes son distintos. Comparar visual y semánticamente; elegir qué versión conservar o marcar como histórica. |
-| `DIAGRAMAS_FINALES/mockups/mockup-servidor-consola.*`, `mockup-servidor-escritorio.*` | Mockups homónimos de `DIAGRAMAS/mockups/` | Mantener hasta compararlos con las vistas actuales; actualizar los canónicos antes de retirar diseños previos. |
+| `DIAGRAMAS_ENTREGA/05-clases-servidor.mmd` + `.png` (ahora `DIAGRAMAS/DIAGRAMAS_ENTREGA/05-*`) | `clases/clases-servidor-app.mmd`, `clases-inicio-vistas.mmd`, `clases-fachada-casos.mmd`, `clases-nucleo.mmd`, `clases-persistencia.mmd` | Comparar clases y relaciones exclusivas; retirar el legado solo si el conjunto canónico lo cubre. |
+| `DIAGRAMAS_ENTREGA/06-clases-cliente.mmd` + `.png` (ahora `DIAGRAMAS/DIAGRAMAS_ENTREGA/06-*`) | `clases/clases-client-interfaces.mmd`, `clases-client-app.mmd`, `clases-client-python.mmd`, `clases-client-dotnet.mmd` | Fusionar la vista cruzada de toolkits si aporta relaciones únicas; después cotejar antes de retirar. |
+| `DIAGRAMAS_ENTREGA/07-er-servidor.mmd` + `.png` (ahora `DIAGRAMAS/DIAGRAMAS_ENTREGA/07-*`) | `modelo-relacional/er-modelo-servidor.mmd` | Candidato a retiro tras comparar entidades, columnas y restricciones. |
+| `DIAGRAMAS_ENTREGA/08-er-local.mmd` + `.png` (ahora `DIAGRAMAS/DIAGRAMAS_ENTREGA/08-*`) | `modelo-relacional/er-modelo-local.mmd` | Candidato a retiro tras comparar columnas y restricciones. |
+| `clases/01-componentes-servidor.mmd` + `.png` (migrado FINALES) | `clases/arq-vista-general.mmd`, `clases-servidor-app.mmd`, `clases-inicio-vistas.mmd` | Fusionar los detalles únicos; retirar solo si el contenido queda cubierto. |
+| `clases/02-clases-puertos-adaptadores.mmd` + `.png` (migrado FINALES) | Diagramas `clases-int-*`, `clases-componentes-*` y `clases-comp-*` | Candidato a retiro después de cotejar puertos, implementaciones y relaciones. |
+| `clases/04-clases-cliente.mmd` + `.png` (migrado FINALES) | Diagramas por toolkit y `clases/arq-flujo-datos.mmd` | Conservar hasta documentar sus relaciones cruzadas o fusionarlas en la vista de conjunto. |
+| `clases/09-clases-base.mmd` + `.png` (migrado FINALES) | Diagramas canónicos por módulo | Candidato a retiro si no contiene clases o relaciones únicas. |
+| ~~`DIAGRAMAS_FINALES/modelo-relacional/er-mysql.mmd` + `.png`~~ | `modelo-relacional/er-modelo-servidor.mmd` | Retirado en la consolidación; ver historial git. |
+| ~~`DIAGRAMAS_FINALES/modelo-relacional/er-sqlite.mmd` + `.png`~~ | `modelo-relacional/er-modelo-local.mmd` | Retirado en la consolidación; ver historial git. |
+| ~~`DIAGRAMAS_FINALES/mockups/mockup-login.*`, `mockup-chat.*`, `mockup-estados.*`~~ | Fuentes/renderes homónimos de `DIAGRAMAS/mockups/` | Retirados en la consolidación; canónicos en `DIAGRAMAS/mockups/`. |
+| ~~`DIAGRAMAS_FINALES/mockups/mockup-servidor-consola.*`, `mockup-servidor-escritorio.*`~~ | Mockups homónimos de `DIAGRAMAS/mockups/` | Retirados en la consolidación; canónicos en `DIAGRAMAS/mockups/`. |
 
 `.*` representa la fuente editable y su PNG. Las diferencias de hash no determinan cuál versión es
-válida. El historial de fuentes migradas se conserva en el texto de §3 y en `PLAN_MEJORAS.md`; la
-tabla anterior lista únicamente lo que permanece en las carpetas legadas a la fecha del inventario.
+válida. El historial de fuentes migradas se conserva en el texto de §3 y en
+`docs/archivo/PLAN_MEJORAS-historico.md`; la tabla anterior lista la conciliación
+aplicada el 2026-10-07. Las filas tachadas ya no existen en disco.
 No se retiró ningún archivo en esta revisión.
 
 ### 3.3 Cómo se ejecuta la consolidación

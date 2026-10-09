@@ -9,4 +9,10 @@ public record LimitesDTO(
         int maxConexionesPorUsuario,
         long maxTamanoArchivo
 ) {
+    /**
+     * Defecto 50 MB cuando no hay configuracion (server.properties ni BD).
+     * Unico dueño del literal: FragmentoArchivoCaso, InicioServidor y
+     * ConfiguracionLimites lo referencian en vez de repetirlo.
+     */
+    public static final long TAMANO_MAXIMO_POR_DEFECTO = 52_428_800L;
 }

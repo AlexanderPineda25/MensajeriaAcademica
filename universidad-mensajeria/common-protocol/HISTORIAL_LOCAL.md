@@ -36,7 +36,8 @@ DELETE FROM historial_local WHERE id_mensaje = ?;
 INSERT INTO historial_local (
     id_mensaje, origen, destino, tipo, contenido, hash_sha256,
     num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id
+    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id,
+    etapas_filtrado
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 ```
 
@@ -141,7 +142,7 @@ UPDATE historial_local SET contenido = ? WHERE id_mensaje = ?;
 
 ## 9. Migraciones, imágenes diferidas y acuses (Fases 15–16)
 
-`estado` y `archivo_id` forman parte del esquema canónico. Los tres clientes los agregan
+`estado`, `archivo_id` y `etapas_filtrado` forman parte del esquema canónico. Los tres clientes los agregan
 mediante migraciones locales aditivas e idempotentes, preservando los historiales existentes.
 Java conserva H2 y Python/.NET conservan SQLite; esto no cambia el protocolo TCP.
 

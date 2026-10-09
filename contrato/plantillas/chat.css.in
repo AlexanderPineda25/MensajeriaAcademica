@@ -1,0 +1,341 @@
+/* GENERADO por contrato/generar_tokens.py desde contrato/tokens-diseno.json.
+ * NO editar a mano: el cambio se hace en el JSON y se regenera.
+ * Plantilla comun a los dos temas: por eso `chat-claro.css` ya no puede quedarse
+ * sin un selector que `chat.css` si tenga (le faltaban .message-out .message-text,
+ * .message-out .image-caption y .message-out .message-time).
+ * Tema: {{tema}} */
+
+.root {
+    -fx-font-family: {{comunes.fuente}};
+    -fx-font-size: {{comunes.tamano_fuente}};
+    -fx-background-color: {{root.bg}};
+}
+
+.messenger-root, .split-pane {
+    -fx-background-color: {{root.bg}};
+    -fx-padding: 0;
+}
+
+.split-pane-divider {
+    -fx-padding: 0 0.5 0 0.5;
+    -fx-background-color: {{split.divider}};
+}
+
+.sidebar {
+    -fx-background-color: {{sidebar.bg}};
+    -fx-spacing: 11px;
+    -fx-min-width: 280px;
+}
+
+.conversation-pane {
+    -fx-background-color: {{root.bg}};
+    -fx-spacing: 0;
+}
+
+.sidebar-heading, .conversation-header {
+    -fx-padding: 10px 12px;
+    -fx-background-color: {{sidebar.bg}};
+    -fx-border-color: transparent transparent {{header.border.bottom}} transparent;
+}
+
+.sidebar-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 700;
+    -fx-text-fill: {{title.fg}};
+}
+
+.session-label, .conversation-presence, .status-label, .message-time {
+    -fx-text-fill: {{muted.fg}};
+    -fx-font-size: 11px;
+}
+
+.conversation-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+    -fx-text-fill: {{title.fg}};
+}
+
+.search-field, .filter-select, .message-input {
+    -fx-background-color: {{input.bg}};
+    -fx-background-radius: {{comunes.radio_campo}};
+    -fx-border-color: transparent;
+    -fx-text-fill: {{input.fg}};
+    -fx-prompt-text-fill: {{input.prompt}};
+}
+
+.search-field:focused, .message-input:focused {
+    -fx-background-color: {{input.focus.bg}};
+    -fx-border-color: {{input.focus.border}};
+    -fx-border-radius: {{comunes.radio_campo}};
+}
+
+.chat-list, .message-list {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+.message-list {
+    -fx-background-image: url("../fondos/fondo_chat_{{tema}}.jpg");
+    -fx-background-size: cover;
+    -fx-background-position: center center;
+    -fx-background-repeat: no-repeat;
+}
+
+.chat-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 1px 5px;
+}
+
+.chat-list .list-cell:filled:selected {
+    -fx-background-color: {{list.selected.bg}};
+    -fx-background-radius: {{comunes.radio_campo}};
+}
+
+.chat-list-row {
+    -fx-padding: 9px 7px;
+    -fx-min-height: 56px;
+}
+
+.presence-avatar {
+    -fx-background-color: {{avatar.bg}};
+    -fx-background-radius: 19px;
+}
+
+.chat-list-name {
+    -fx-font-weight: 700;
+    -fx-text-fill: {{name.fg}};
+}
+
+.chat-list-preview {
+    -fx-text-fill: {{preview.fg}};
+    -fx-font-size: 11px;
+}
+
+.unread-badge {
+    -fx-background-color: {{comunes.badge_bg}};
+    -fx-background-radius: {{comunes.radio_badge}};
+    -fx-text-fill: {{comunes.badge_fg}};
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-padding: 3px 6px;
+}
+
+.sidebar-actions {
+    -fx-padding: 8px 0 0 0;
+    -fx-border-color: {{sidebar.actions.border}} transparent transparent transparent;
+}
+
+.message-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.message-list .list-cell:filled:selected {
+    -fx-background-color: transparent;
+}
+
+.chat-message-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.message-bubble {
+    -fx-background-radius: {{comunes.radio_burbuja}};
+    -fx-effect: dropshadow(gaussian, {{bubble.shadow}}, 4, 0.12, 0, 1);
+}
+
+.message-in {
+    -fx-background-color: {{bubble.in.bg}};
+    -fx-border-color: {{bubble.in.border}};
+    -fx-border-radius: {{comunes.radio_burbuja}};
+}
+
+.message-out {
+    -fx-background-color: {{bubble.out.bg}};
+    -fx-border-color: {{bubble.out.border}};
+    -fx-border-radius: {{comunes.radio_burbuja}};
+}
+
+.message-sender {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: {{sender.fg}};
+}
+
+/* El lavanda del remitente no llega a 4.5:1 sobre la burbuja propia morada, asi que
+ * ahi se usa el token propio. En la burbuja ajena sigue siendo lavanda. */
+.message-out .message-sender {
+    -fx-text-fill: {{sender.out.fg}};
+}
+
+/* UIX-13: estados vacíos en vez de rectángulos en blanco. */
+.empty-placeholder {
+    -fx-font-size: 12px;
+    -fx-text-fill: {{muted.fg}};
+    -fx-alignment: center;
+    -fx-text-alignment: center;
+}
+
+/* UIX-04: cabecera de día entre mensajes de días distintos. */
+.day-separator {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: {{muted.fg}};
+    -fx-alignment: center;
+    -fx-padding: 8px 0 4px 0;
+}
+
+.message-text {
+    -fx-text-fill: {{body.fg}};
+    -fx-fill: {{body.fg}};
+    -fx-font-size: 13px;
+}
+
+/* UIX-06: coincidencia de búsqueda dentro del mensaje. */
+.message-highlight {
+    -fx-fill: {{highlight.fg}};
+    -fx-font-weight: bold;
+    -fx-underline: true;
+}
+
+.message-out .message-text {
+    -fx-text-fill: {{body.out.fg}};
+    -fx-fill: {{body.out.fg}};
+}
+
+.message-quote {
+    -fx-text-fill: {{quote.fg}};
+    -fx-font-size: 12px;
+    -fx-font-style: italic;
+    -fx-background-color: {{quote.bg}};
+    -fx-background-radius: 4px;
+    -fx-border-color: {{quote.border}};
+    -fx-border-width: 0 0 0 3px;
+    -fx-padding: 4px 4px 4px 8px;
+}
+
+.image-caption {
+    -fx-text-fill: {{caption.fg}};
+    -fx-font-size: 11px;
+}
+
+.message-out .image-caption {
+    -fx-text-fill: {{caption.out.fg}};
+}
+
+.image-placeholder {
+    -fx-alignment: center;
+    -fx-min-width: {{comunes.placeholder_ancho}}px;
+    -fx-min-height: {{comunes.placeholder_alto}}px;
+    -fx-background-color: {{placeholder.bg}};
+    -fx-background-radius: 4px;
+    -fx-text-fill: {{placeholder.fg}};
+    -fx-cursor: hand;
+}
+
+.message-footer {
+    -fx-padding: 2px 0 0 0;
+}
+
+.message-tick {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.message-read {
+    -fx-text-fill: {{tick.read}};
+}
+
+.message-unread {
+    -fx-text-fill: {{tick.unread}};
+}
+
+.message-out .message-time {
+    -fx-text-fill: {{time.out.fg}};
+}
+
+.reply-button, .icon-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: {{iconbutton.fg}};
+    -fx-font-size: 15px;
+    -fx-padding: 3px 7px;
+    -fx-background-radius: {{comunes.radio_campo}};
+    -fx-cursor: hand;
+}
+
+.reply-button:hover, .icon-button:hover {
+    -fx-background-color: {{iconbutton.hover.bg}};
+}
+
+.composer-area {
+    -fx-padding: 9px 14px 8px 14px;
+    -fx-spacing: 7px;
+    -fx-background-color: {{composer.bg}};
+    -fx-border-color: {{composer.border.top}} transparent transparent transparent;
+}
+
+.composer-row {
+    -fx-spacing: 9px;
+}
+
+.message-input {
+    -fx-padding: 8px;
+    -fx-pref-height: 58px;
+    -fx-max-height: 100px;
+}
+
+.send-button {
+    -fx-background-color: {{send.bg}};
+    -fx-background-radius: {{comunes.radio_campo}};
+    -fx-text-fill: {{comunes.boton_fg}};
+    -fx-font-weight: 700;
+    -fx-padding: 9px 15px;
+    -fx-cursor: hand;
+}
+
+.send-button:hover { -fx-background-color: {{send.hover.bg}}; }
+.send-button:disabled { -fx-opacity: 0.48; }
+
+.quiet-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4px;
+    -fx-text-fill: {{quiet.fg}};
+    -fx-padding: 6px 8px;
+    -fx-cursor: hand;
+}
+
+.quiet-button:hover { -fx-background-color: {{quiet.hover.bg}}; }
+
+.composer-footer { -fx-padding: 0 2px; }
+
+.reply-preview, .attachment-preview {
+    -fx-padding: 7px 9px;
+    -fx-background-color: {{replypreview.bg}};
+    -fx-background-radius: 4px;
+    -fx-border-color: transparent transparent transparent {{replypreview.border}};
+    -fx-border-width: 0 0 0 3px;
+}
+
+.reply-heading {
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-text-fill: {{replyheading.fg}};
+}
+
+.reply-text, .attachment-name {
+    -fx-text-fill: {{replytext.fg}};
+    -fx-font-size: 11px;
+}
+
+.status-label { -fx-padding: 2px 0; }
+
+.offline-banner {
+    -fx-background-color: {{comunes.banner_offline_bg}};
+    -fx-border-color: {{comunes.banner_offline_border}};
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-text-fill: {{comunes.banner_offline_fg}};
+    -fx-font-weight: 700;
+    -fx-padding: 9px 12px;
+}

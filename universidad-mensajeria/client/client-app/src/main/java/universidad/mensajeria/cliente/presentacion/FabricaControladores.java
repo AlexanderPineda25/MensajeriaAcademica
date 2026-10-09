@@ -26,7 +26,8 @@ public final class FabricaControladores {
     public Object crear(Class<?> tipo) {
         Supplier<?> constructor = constructores.get(tipo);
         if (constructor == null) {
-            throw new IllegalArgumentException("No hay fábrica para el controlador " + tipo.getName());
+            throw new universidad.mensajeria.cliente.transversal.excepciones.ExcepcionValidacion(
+                    "No hay fábrica para el controlador " + tipo.getName());
         }
         return constructor.get();
     }

@@ -222,7 +222,7 @@ public class InicioServidor implements ApplicationRunner, ExitCodeGenerator {
      * y el techo archivo.max-mb de server.properties (defecto 50 MB).
      */
     private long sistemaMaxArchivo() {
-        long techo = archivo == null ? 52_428_800L : archivo.maxBytes();
+        long techo = archivo == null ? LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO : archivo.maxBytes();
         try {
             return Math.min(persistencia.leerLimites().maxTamanoArchivo(), techo);
         } catch (Exception e) {

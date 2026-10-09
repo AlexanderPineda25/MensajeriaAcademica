@@ -20,7 +20,18 @@ public record MensajeLocal(
         boolean enviado,
         boolean descargado,
         String estado,
-        String archivoId) {
+        String archivoId,
+        String etapasFiltrado) {
+
+    /** Compatibilidad con filas que aún no incluyen metadatos del pipeline de imagen. */
+    public MensajeLocal(String idMensaje, String origen, String destino, String tipo,
+            String contenido, String hashSha256, Integer numCaracteres, Integer numPalabras,
+            String nombreArchivo, String rutaArchivo, Long tamanoArchivo, String fechaEnvio,
+            boolean enviado, boolean descargado, String estado, String archivoId) {
+        this(idMensaje, origen, destino, tipo, contenido, hashSha256, numCaracteres,
+                numPalabras, nombreArchivo, rutaArchivo, tamanoArchivo, fechaEnvio,
+                enviado, descargado, estado, archivoId, null);
+    }
 
     /** Compatibilidad con filas anteriores sin metadatos de archivo. */
     public MensajeLocal(
@@ -41,7 +52,7 @@ public record MensajeLocal(
             String estado) {
         this(idMensaje, origen, destino, tipo, contenido, hashSha256, numCaracteres,
                 numPalabras, nombreArchivo, rutaArchivo, tamanoArchivo, fechaEnvio,
-                enviado, descargado, estado, null);
+                enviado, descargado, estado, null, null);
     }
 
     /** Compatibilidad: sin estado explícito asume ENVIADO. */
@@ -62,6 +73,6 @@ public record MensajeLocal(
             boolean descargado) {
         this(idMensaje, origen, destino, tipo, contenido, hashSha256, numCaracteres,
                 numPalabras, nombreArchivo, rutaArchivo, tamanoArchivo, fechaEnvio,
-                enviado, descargado, "ENVIADO", null);
+                enviado, descargado, "ENVIADO", null, null);
     }
 }

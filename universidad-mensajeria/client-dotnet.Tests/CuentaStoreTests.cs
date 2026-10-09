@@ -55,7 +55,8 @@ namespace Mensajeria.Tests
                 var h = new HistorialLocal(store);
                 // Perspectiva mezclada en el archivo legado (bug original).
                 h.UpsertMensaje("m1", "A001", "B002", "MENSAJE_TEXTO", "hola",
-                    null, null, null, null, null, null, "2026-01-01T10:00:00", 0, 1, "ENTREGADO");
+                    null, null, null, null, null, null, "2026-01-01T10:00:00", 0, 1, "ENTREGADO",
+                    null, "[{\"etapa\":\"Sepia\",\"ms\":2}]");
                 h.RegistrarPendiente("p-a", "MENSAJE_TEXTO", "A001", "B002", "hola", null, null, "2026-01-01T10:00:00");
                 h.RegistrarPendiente("p-b", "MENSAJE_TEXTO", "B002", "A001", "otro", null, null, "2026-01-01T10:00:00");
             }
@@ -71,6 +72,7 @@ namespace Mensajeria.Tests
                 Assert.Single(conv);
                 //Origen A001 => enviado=1 para la cuenta A001.
                 Assert.Equal(1L, conv[0]["enviado"]);
+                Assert.Equal("[{\"etapa\":\"Sepia\",\"ms\":2}]", conv[0]["etapasFiltrado"]);
                 // Pendientes repartidos por origen: solo p-a.
                 var pends = h.ListarPendientes();
                 Assert.Single(pends);

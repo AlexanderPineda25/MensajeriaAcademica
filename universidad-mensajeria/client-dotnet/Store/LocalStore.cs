@@ -115,11 +115,18 @@ namespace Mensajeria.Store
 
             // Lee legado.
             var filas = new List<Dictionary<string, object?>>();
+            var columnasLegado = ColumnasTabla(connLeg, "historial_local");
+            string archivoIdSql = columnasLegado.Contains("archivo_id")
+                ? "archivo_id" : "NULL AS archivo_id";
+            string estadoSql = columnasLegado.Contains("estado")
+                ? "estado" : "'ENVIADO' AS estado";
+            string etapasSql = columnasLegado.Contains("etapas_filtrado")
+                ? "etapas_filtrado" : "NULL AS etapas_filtrado";
             using (var cmd = connLeg.CreateCommand())
             {
-                cmd.CommandText = @"SELECT id_mensaje, origen, destino, tipo, contenido, hash_sha256,
-                    num_caracteres, num_palabras, nombre_archivo, archivo_id, ruta_archivo,
-                    tamano_archivo, fecha_envio, enviado, descargado, estado
+                cmd.CommandText = $@"SELECT id_mensaje, origen, destino, tipo, contenido, hash_sha256,
+                    num_caracteres, num_palabras, nombre_archivo, {archivoIdSql}, ruta_archivo,
+                    tamano_archivo, fecha_envio, enviado, descargado, {estadoSql}, {etapasSql}
                     FROM historial_local";
                 try
                 {
@@ -144,11 +151,12 @@ namespace Mensajeria.Store
                 cmd.CommandText = @"
 INSERT INTO historial_local (id_mensaje, origen, destino, tipo, contenido, hash_sha256,
     num_caracteres, num_palabras, nombre_archivo, ruta_archivo, tamano_archivo,
-    fecha_envio, enviado, descargado, estado, archivo_id)
-VALUES (@id,@ori,@des,@tip,@con,@has,@nca,@npa,@nar,@rar,@tar,@fen,@env,@desca,@est,@aid)
+    fecha_envio, enviado, descargado, estado, archivo_id, etapas_filtrado)
+VALUES (@id,@ori,@des,@tip,@con,@has,@nca,@npa,@nar,@rar,@tar,@fen,@env,@desca,@est,@aid,@etapas)
 ON CONFLICT(id_mensaje) DO UPDATE SET
     descargado = MAX(excluded.descargado, historial_local.descargado),
     archivo_id = COALESCE(excluded.archivo_id, historial_local.archivo_id),
+    etapas_filtrado = COALESCE(excluded.etapas_filtrado, historial_local.etapas_filtrado),
     ruta_archivo = COALESCE(excluded.ruta_archivo, historial_local.ruta_archivo),
     estado = CASE
         WHEN historial_local.estado = 'LEIDO' OR excluded.estado = 'LEIDO' THEN 'LEIDO'
@@ -171,6 +179,7 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
                 cmd.Parameters.AddWithValue("@desca", f["descargado"] ?? 0);
                 cmd.Parameters.AddWithValue("@est", f["estado"]?.ToString() ?? "ENVIADO");
                 cmd.Parameters.AddWithValue("@aid", f["archivo_id"] ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@etapas", f["etapas_filtrado"] ?? DBNull.Value);
                 try { cmd.ExecuteNonQuery(); } catch { }
             }
             // Pendientes: solo los originados por esta cuenta.
@@ -258,20 +267,25 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
             try { return Convert.ToInt32(cmd.ExecuteScalar()) > 0; } catch { return false; }
         }
 
-        /// Unica migracion "anade estado + archivo_id si falta" (MUERTE-5).
+        private static HashSet<string> ColumnasTabla(SqliteConnection conn, string tabla,
+            SqliteTransaction? tx = null)
+        {
+            var columnas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"PRAGMA table_info({tabla})";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) columnas.Add(reader.GetString(1));
+            return columnas;
+        }
+
+        /// Migracion idempotente de columnas de historial.
         /// Antes existian dos copias: AsegurarColumnas (migracion de legado,
         /// sin transaccion y con los errores tragados) y MigrarHistorial
         /// (arranque, con transaccion). Mismo SQL, dos fuentes de verdad.
         private static void MigrarHistorial(SqliteConnection conn, SqliteTransaction? tx = null)
         {
-            var columnas = new HashSet<string>();
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tx;
-                cmd.CommandText = "PRAGMA table_info(historial_local)";
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read()) columnas.Add(reader.GetString(1));
-            }
+            var columnas = ColumnasTabla(conn, "historial_local", tx);
             if (!columnas.Contains("estado"))
             {
                 using var cmd = conn.CreateCommand();
@@ -284,6 +298,13 @@ ON CONFLICT(id_mensaje) DO UPDATE SET
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN archivo_id TEXT";
+                cmd.ExecuteNonQuery();
+            }
+            if (!columnas.Contains("etapas_filtrado"))
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = "ALTER TABLE historial_local ADD COLUMN etapas_filtrado TEXT";
                 cmd.ExecuteNonQuery();
             }
         }

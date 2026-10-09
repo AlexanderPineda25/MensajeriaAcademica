@@ -5,10 +5,24 @@ pintaba la cadena cruda (`2026-01-01 10:00:00` o `...T10:00:00` mezclados) y un
 mensaje de ayer parecía de hoy. Contrato compartido (VIS-02):
 "Hoy 10:00", "Ayer 10:00", "02-01 10:00", "02-01-2025 10:00".
 
-Acepta `yyyy-MM-ddTHH:mm:ss` (red) y `yyyy-MM-dd HH:mm:ss` (SQLite).
+Acepta `yyyy-MM-ddTHH:mm:ss` (red), `yyyy-MM-dd HH:mm:ss` (SQLite) y cadenas
+con zona horaria: la base SQLite la comparten los clientes por cuenta y el
+cliente .NET escribe UTC con sufijo `Z` (`DateTime.ToString("O")`).
 Lo ilegible devuelve "" en vez de romper la fila.
 """
 import datetime
+
+
+def _sin_zona(fecha):
+    """Deja el datetime naive en hora local (como `TryLeer` de .NET).
+
+    Las filas escritas por Python/Java son naive y las del cliente .NET llegan
+    aware; sin esta normalización mezclar ambas rompe con
+    `TypeError: can't subtract offset-naive and offset-aware datetimes`.
+    """
+    if fecha.tzinfo is None:
+        return fecha
+    return fecha.astimezone().replace(tzinfo=None)
 
 
 def _leer(fecha_envio):
@@ -17,12 +31,12 @@ def _leer(fecha_envio):
     texto = str(fecha_envio).strip()
     # fromisoformat acepta 'T' o espacio, microsegundos y zona horaria.
     try:
-        return datetime.datetime.fromisoformat(texto)
+        return _sin_zona(datetime.datetime.fromisoformat(texto))
     except ValueError:
         pass
     for formato in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
         try:
-            return datetime.datetime.strptime(texto[:19], formato)
+            return _sin_zona(datetime.datetime.strptime(texto[:19], formato))
         except ValueError:
             continue
     return None

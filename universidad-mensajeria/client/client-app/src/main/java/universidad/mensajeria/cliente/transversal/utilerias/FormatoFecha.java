@@ -77,10 +77,10 @@ public final class FormatoFecha {
         String normalizada = fechaEnvio.strip().replace(' ', 'T');
         try {
             return LocalDateTime.parse(normalizada);
-        } catch (Exception e) {
+        } catch (java.time.format.DateTimeParseException formatoInvalido) {
             try {
                 return LocalDate.parse(normalizada).atStartOfDay();
-            } catch (Exception e2) {
+            } catch (java.time.format.DateTimeParseException ilegible) {
                 return null;
             }
         }

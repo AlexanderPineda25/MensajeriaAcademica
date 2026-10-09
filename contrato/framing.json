@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "nota": [
+    "VECTORES DE PARIDAD DEL FRAMING (Fase 1.6 de PLAN_PARIDAD_CLIENTES.md).",
+    "",
+    "El framing es lo UNICO que los 3 clientes comparten literalmente:",
+    "  TRAMA = [4 bytes longitud BIG-ENDIAN][payload JSON en UTF-8]",
+    "",
+    "Cada vector fija un payload como CADENA EXACTA, no como objeto. Asi los 3",
+    "lenguajes pueden producir bytes identicos sin depender del orden de claves de su",
+    "serializador (Gson serializa un record en orden de declaracion; un dict de Python",
+    "y un Dictionary de C# no lo hacen). El orden de claves del JSON es irrelevante",
+    "para el protocolo; lo que NO es negociable es la longitud.",
+    "",
+    "`longitud` es el numero de BYTES UTF-8 del payload, nunca el de caracteres.",
+    "",
+    "Cada cliente debe implementar esto en su suite con el MISMO vector. Si un cliente",
+    "usa len(cadena) en vez de len(cadena.encode('utf-8')), falla en `multibyte_acentos`",
+    "y el header queda 4 bytes corto: el lector se descuadra y TODAS las tramas",
+    "siguientes se pierden. Ese es el fallo mas caro posible en el protocolo y no lo",
+    "detecta ninguna prueba de ida y vuelta, porque la ida y vuelta con el mismo bug",
+    "se cancela."
+  ],
+  "reglas": {
+    "longitud": "numero de BYTES del payload en UTF-8, escritos big-endian en 4 bytes",
+    "tope_trama": 16777216,
+    "tope_trama_comentario": "16 MiB. Los archivos no caben: viajan fragmentados (AGENTS.md invariante 2).",
+    "longitud_invalida": "0 y mayor que el tope deben rechazarse",
+    "trama_incompleta": "si el stream tiene menos bytes de los que anuncia la cabecera, es un error",
+    "tipo_obligatorio": "un JSON sin la clave `tipo` no es un mensaje valido"
+  },
+  "vectores": [
+    {
+      "nombre": "ack_minimo",
+      "descripcion": "El mensaje mas corto posible. Gson lo emite sin llaves adicionales.",
+      "payload": "{\"tipo\":\"ACK\"}",
+      "longitud": 14,
+      "trama_hex": "0000000e7b227469706f223a2241434b227d"
+    },
+    {
+      "nombre": "logout_minimo",
+      "descripcion": "LOGOUT no espera respuesta (fire-and-forget).",
+      "payload": "{\"tipo\":\"LOGOUT\"}",
+      "longitud": 17,
+      "trama_hex": "000000117b227469706f223a224c4f474f5554227d"
+    },
+    {
+      "nombre": "error_minimo",
+      "descripcion": "La respuesta de rechazo del servidor. Sin `exito` ni `mensajeError`.",
+      "payload": "{\"tipo\":\"ERROR\"}",
+      "longitud": 16,
+      "trama_hex": "000000107b227469706f223a224552524f52227d"
+    },
+    {
+      "nombre": "login_real",
+      "descripcion": "Login tipico. Comprueba que un payload con acentos de clave viaja bien.",
+      "payload": "{\"tipo\":\"LOGIN\",\"id\":\"v-1\",\"codigo\":\"A001\",\"contrasena\":\"Secreta123\"}",
+      "longitud": 69,
+      "trama_hex": "000000457b227469706f223a224c4f47494e222c226964223a22762d31222c22636f6469676f223a2241303031222c22636f6e74726173656e61223a2253656372657461313233227d"
+    },
+    {
+      "nombre": "mensaje_texto",
+      "descripcion": "Mensaje de texto 1-a-1 con los 5 campos que el servidor exige.",
+      "payload": "{\"tipo\":\"MENSAJE_TEXTO\",\"id\":\"m-1\",\"remitente\":\"A001\",\"destinatario\":\"B002\",\"contenido\":\"Hola\"}",
+      "longitud": 95,
+      "trama_hex": "0000005f7b227469706f223a224d454e53414a455f544558544f222c226964223a226d2d31222c2272656d6974656e7465223a2241303031222c2264657374696e61746172696f223a2242303032222c22636f6e74656e69646f223a22486f6c61227d"
+    },
+    {
+      "nombre": "multibyte_acentos",
+      "descripcion": "EL CASO QUE MATA. 53 caracteres pero 56 BYTES en UTF-8.",
+      "por_que": "Un `len(cadena)` en vez de `len(cadena.encode('utf-8'))` escribe 0x35 en vez de 0x38: cabecera 3 bytes corta, el lector se descuadra y se pierde todo lo que venga despues.",
+      "payload": "{\"tipo\":\"MENSAJE_TEXTO\",\"contenido\":\"Señor café año\"}",
+      "longitud": 56,
+      "caracteres": 53,
+      "trama_hex": "000000387b227469706f223a224d454e53414a455f544558544f222c22636f6e74656e69646f223a225365c3b16f7220636166c3a92061c3b16f227d"
+    }
+  ],
+  "rechazos": [
+    {
+      "nombre": "longitud_cero",
+      "trama_hex": "00000000",
+      "debe_fallar": true,
+      "motivo": "longitud <= 0"
+    },
+    {
+      "nombre": "longitud_sobre_el_tope",
+      "trama_hex": "02000000",
+      "debe_fallar": true,
+      "motivo": "33554432 > 16777216. Un atacante (o un bug) que anuncie 32 MiB no debe hacer que el cliente reserve esa memoria."
+    },
+    {
+      "nombre": "trama_incompleta",
+      "trama_hex": "000000ff4142",
+      "debe_fallar": true,
+      "motivo": "anuncia 255 bytes pero solo hay 2"
+    },
+    {
+      "nombre": "sin_tipo",
+      "trama_hex": "000000117b22746578746f223a22786f736861227d",
+      "debe_fallar": true,
+      "motivo": "el JSON no tiene la clave `tipo`, que es obligatoria"
+    },
+    {
+      "nombre": "json_roto",
+      "trama_hex": "000000057b226e",
+      "debe_fallar": true,
+      "motivo": "JSON truncado"
+    }
+  ],
+  "comprobacion_extra": {
+    "nulo_no_serializado": {
+      "explicacion": "Java (Gson sobre un record) omite los nulos. El servidor no distingue `null` de ausente, asi que serializarlos no rompe nada, pero el vector `{\"tipo\":\"ACK\"}` exige que no se anadan claves vacias: es lo que hace el servidor.",
+      "no_obligatorio": true
+    }
+  },
+  "nota_tls": [
+    "El framing NO cambia con TLS: es el mismo sobre el socket claro y sobre el cifrado.",
+    "Por eso el mismo vector sirve para probar el codec en los dos casos."
+  ]
+}

@@ -1,26 +1,31 @@
 -- ============================================================
 -- ESQUEMA LOCAL MULTILENGUAJE (contrato neutro)
 -- Fuente: common-protocol/dto/src/main/resources/schema-local.sql
--- Copia distribuible para que el cliente Python funcione sin el monorepo.
+-- Dialecto neutro: solo TEXT / INTEGER / REAL / BLOB (sin secuencias
+-- ni tipos de motor). Ejecutable tal cual en H2 y SQLite (y cualquier
+-- motor que soporte estos tipos). Ids clave natural o UUID en TEXT
+-- para no depender de AUTOINCREMENT.
+-- Las queries canónicas estan en HISTORIAL_LOCAL.md.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS historial_local (
-    id_mensaje     TEXT PRIMARY KEY,
-    origen         TEXT NOT NULL,
-    destino        TEXT NOT NULL,
-    tipo           TEXT NOT NULL,
+    id_mensaje     TEXT PRIMARY KEY,          -- id del mensaje en el servidor (uuid)
+    origen         TEXT NOT NULL,             -- codigo emisor
+    destino        TEXT NOT NULL,             -- codigo receptor
+    tipo           TEXT NOT NULL,             -- MENSAJE_TEXTO | MENSAJE_IMAGEN
     contenido      TEXT,
     hash_sha256    TEXT,
     num_caracteres INTEGER,
     num_palabras   INTEGER,
     nombre_archivo TEXT,
-    archivo_id     TEXT,
-    ruta_archivo   TEXT,
+    archivo_id     TEXT,                      -- id remoto para re-descargar imagen tras reiniciar
+    etapas_filtrado TEXT,                     -- etapas JSON del pipeline secuencial de imagen
+    ruta_archivo   TEXT,                      -- copia local del archivo descargado
     tamano_archivo INTEGER,
-    fecha_envio    TEXT NOT NULL,
-    enviado        INTEGER NOT NULL DEFAULT 0,
+    fecha_envio    TEXT NOT NULL,             -- ISO-8601 UTC
+    enviado        INTEGER NOT NULL DEFAULT 0, -- 1 si lo envio este cliente
     descargado     INTEGER NOT NULL DEFAULT 0,
-    estado         TEXT NOT NULL DEFAULT 'ENVIADO'
+    estado         TEXT NOT NULL DEFAULT 'ENVIADO' -- PENDIENTE | ENVIADO | ENTREGADO | LEIDO
 );
 
 CREATE INDEX IF NOT EXISTS idx_hist_conv
@@ -37,13 +42,13 @@ CREATE TABLE IF NOT EXISTS cache_usuarios (
 );
 
 CREATE TABLE IF NOT EXISTS pendientes_envio (
-    id             TEXT PRIMARY KEY,
-    tipo           TEXT NOT NULL,
+    id             TEXT PRIMARY KEY,          -- uuid generado por el cliente
+    tipo           TEXT NOT NULL,             -- MENSAJE_TEXTO | MENSAJE_IMAGEN | MENSAJE_LEIDO
     origen         TEXT NOT NULL,
     destino        TEXT NOT NULL,
     contenido      TEXT,
     nombre_archivo TEXT,
-    payload        BLOB,
+    payload        BLOB,                      -- bytes de la imagen si aplica
     fecha_creado   TEXT NOT NULL,
     intentos       INTEGER NOT NULL DEFAULT 0,
     ultimo_error   TEXT

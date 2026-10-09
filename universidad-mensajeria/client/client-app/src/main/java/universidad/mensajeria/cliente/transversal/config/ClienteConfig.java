@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionPersistencia;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionValidacion;
+import universidad.mensajeria.cliente.transversal.utilerias.ValidarTls;
 
 /**
  * Configuración del cliente (mismo formato client.properties en Java, Python
@@ -15,13 +18,17 @@ public record ClienteConfig(String host, int puerto, String dbUrl,
                             String dbUser, String dbPass, String idioma,
                             boolean tlsHabilitado, int tlsPuerto, String tlsConfianza) {
 
-    public static ClienteConfig cargar() throws Exception {
+    public static ClienteConfig cargar() throws ExcepcionPersistencia {
         Properties props = new Properties();
         try (InputStream in = ClienteConfig.class.getResourceAsStream("/client.properties")) {
             if (in == null) {
-                throw new IllegalStateException("Falta client.properties en el classpath");
+                throw new ExcepcionPersistencia("Falta client.properties en el classpath");
             }
             props.load(in);
+        } catch (ExcepcionPersistencia fallo) {
+            throw fallo;
+        } catch (java.io.IOException fallo) {
+            throw new ExcepcionPersistencia("no se pudo leer client.properties", fallo);
         }
 
         String rutaConfiguracion = System.getProperty("mensajeria.config");
@@ -31,9 +38,11 @@ public record ClienteConfig(String host, int puerto, String dbUrl,
         if (Files.exists(archivoExterno)) {
             try (Reader reader = Files.newBufferedReader(archivoExterno, StandardCharsets.UTF_8)) {
                 props.load(reader);
+            } catch (java.io.IOException fallo) {
+                throw new ExcepcionPersistencia("no se pudo leer " + archivoExterno, fallo);
             }
         } else if (rutaConfiguracion != null && !rutaConfiguracion.isBlank()) {
-            throw new IllegalStateException("No existe la configuración indicada: " + archivoExterno);
+            throw new ExcepcionPersistencia("No existe la configuración indicada: " + archivoExterno);
         }
         return desde(props);
     }
@@ -48,18 +57,19 @@ public record ClienteConfig(String host, int puerto, String dbUrl,
         }
         int tlsPuerto;
         try {
-            tlsPuerto = Integer.parseInt(props.getProperty("tls.puerto", "5001"));
+            tlsPuerto = Integer.parseInt(props.getProperty("tls.puerto",
+                    String.valueOf(ValidarTls.TLS_PUERTO_POR_DEFECTO)));
         } catch (NumberFormatException e) {
-            tlsPuerto = 5001;
+            tlsPuerto = ValidarTls.TLS_PUERTO_POR_DEFECTO;
         }
         if (tlsPuerto <= 0 || tlsPuerto > 65535) {
-            tlsPuerto = 5001;
+            tlsPuerto = ValidarTls.TLS_PUERTO_POR_DEFECTO;
         }
         return new ClienteConfig(host, puerto, dbUrl,
                 props.getProperty("db.user", "sa"),
                 props.getProperty("db.pass", ""),
                 props.getProperty("idioma", "es"),
-                Boolean.parseBoolean(props.getProperty("tls.habilitado", "false")),
+                ValidarTls.habilitadoDesdeTexto(props.getProperty("tls.habilitado", "false")),
                 tlsPuerto,
                 props.getProperty("tls.confianza", ""));
     }
@@ -67,10 +77,10 @@ public record ClienteConfig(String host, int puerto, String dbUrl,
     /** URL H2 estable y compartida solo entre instancias de la misma cuenta. */
     public String dbUrlParaCuenta(String codigo) {
         if (codigo == null || !codigo.matches("[A-Za-z0-9_-]{1,40}")) {
-            throw new IllegalArgumentException("codigo de cuenta invalido para la base local");
+            throw new ExcepcionValidacion("codigo de cuenta invalido para la base local");
         }
         if (!dbUrl.startsWith("jdbc:h2:")) {
-            throw new IllegalStateException("db.url debe usar H2 para aislar el historial por cuenta");
+            throw new ExcepcionValidacion("db.url debe usar H2 para aislar el historial por cuenta");
         }
         int opciones = dbUrl.indexOf(';');
         String base = opciones < 0 ? dbUrl : dbUrl.substring(0, opciones);

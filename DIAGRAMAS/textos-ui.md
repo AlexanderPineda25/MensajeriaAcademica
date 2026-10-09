@@ -1,4 +1,4 @@
-# Catálogo de textos de UI — 3 clientes (punto 10, PLAN_MEJORAS.md)
+# Catálogo de textos de UI — 3 clientes (punto 10, diario archivado en docs/archivo/PLAN_MEJORAS-historico.md)
 
 Congela el lenguaje visual común tras los puntos 1–9 (cita en tarjeta,
 login solo-lectura). Regla: los literales de la columna **Canónico** son los
@@ -43,10 +43,11 @@ Convenciones: `→` en el botón de entrar, `✕` para quitar cita/adjunto,
 | Selector de tema (pie del sidebar) | `Oscuro` / `Claro` | = | = | = (debajo de la fila de acciones) |
 | Etiqueta sesión | `Sesión activa · {Nombre [código]}` | `Mensajería⏎Sesión activa · {Nombre [código]}` (dos líneas) | `Sesión activa · {Nombre [código]}` | `Sesión activa · {Nombre [código]}` (Python antepone la línea `Mensajería` por su layout de dos líneas) |
 | Placeholder buscar | `Buscar nombre o código` | `Buscar nombre o código` | `Buscar nombre o código` | = |
-| Filtro | `Todos` / `Conectados` / `No leídos` | `Todos` / `Conectados` | `Todos` / `Conectados` | `Todos` / `Conectados` comunes; `No leídos` solo existe en Java (diferencia funcional documentada, no se toca) |
-| Presencia en fila | `En línea` / `Desconectado` (tooltip del avatar) | `en línea` / `desconectado` (segunda línea, `●`/`○`) | `en línea` / `desconectado` | `en línea` / `desconectado` en minúscula en filas y cabecera; `En línea` con mayúscula solo como tooltip/estado aislado en Java |
-| Fila sin mensajes (Java) | `Sin mensajes aún` | — (la fila Python siempre muestra presencia) | — | Solo Java (preview de `RecienteChat`); se conserva |
-| Contador no leídos | insignia numérica | `({N})` tras la identidad | Sin contador (no se toca) | Cada cliente conserva su mecanismo; el número mostrado es el mismo dato |
+| Filtro | `Todos` / `Conectados` / `No leídos` | `Todos` / `Conectados` / `Con no leídos` | `Todos` / `Conectados` / `Con no leídos` | El filtro de no leídos existe en los 3; difiere solo el literal (`No leídos` Java / `Con no leídos` Python y .NET) |
+| Presencia en fila | `En línea` / `Desconectado` (tooltip del avatar) | punto de color `●`/`○` en la tarjeta (sin texto) | `en línea` / `desconectado` | Desde 2026-10-08 la tarjeta Python es la de Java (punto + nombre + preview + insignia + hora relativa) sin el texto de presencia; `en línea`/`desconectado` sigue en la cabecera |
+| Fila sin mensajes | `Sin mensajes aún` | `Sin mensajes aún` | — | Literal compartido Java/Python (preview de `RecienteChat` vacío); .NET no muestra preview |
+| Contador no leídos | insignia numérica | insignia numérica (píldora verde a la derecha) | insignia/trazo propio | El número mostrado es el mismo dato en los 3; Python ya no lleva `({N})` en el texto de la fila |
+| Orden de la lista | recientes por fecha (presencia solo desempata) | recientes por fecha (presencia solo desempata) | recientes por fecha (presencia desempata) | Tipo WhatsApp en los 3 desde 2026-10-08: la presencia no reordena; contactos sin conversación al final |
 | Banner offline | `⛔ Sin conexión — mensajes en cola local, se reintentan solos` | = | = | = (idéntico en los 3) |
 | Estado directorio | `Actualizando directorio y presencia…` / `Recientes: {N}` | `{N} contactos en línea` / `Sin conexión: directorio local · cola activa` / `Conectando...` (inicial) | `{N} contactos en línea` | Formatos propios por cliente (distinta fuente de datos local); el conteo `{N} contactos en línea` es idéntico en Python/.NET |
 

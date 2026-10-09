@@ -1,0 +1,1242 @@
+{
+  "version": 1,
+  "nota": [
+    "CONTRATO DE PUERTOS DEL CLIENTE (Fase 0.4 de PLAN_PARIDAD_CLIENTES.md).",
+    "",
+    "`client-interfaces` es la especificacion normativa. Extracto aqui para poder",
+    "verificar que los 3 clientes ofrecen la misma superficie, sin depender de leer",
+    "codigo Java.",
+    "",
+    "Dos reglas que hacen que esto sea un contrato y no una lista de interfaces:",
+    "  1. CERO dependencias. Ni JavaFX, ni Gson, ni java.sql, ni el DTO del protocolo.",
+    "     ArchUnit lo vigila (ArquitecturaClienteJavaTest, 6 reglas).",
+    "  2. Los records son DATOS, no comportamiento. Se replican en Python como",
+    "     dataclasses frozen y en C# como records.",
+    "",
+    "Metodos marcados `opcional: true` existen como `default` en Java: el adaptador",
+    "puede no soportarlos y lanza ExcepcionOperacionNoSoportada. El llamante ya trata",
+    "IOException, asi que se conserva la substitucion (LSP)."
+  ],
+  "modulo": {
+    "java": "universidad-mensajeria/client/client-interfaces",
+    "nota": [
+      "El cliente Java esta partido en DOS modulos Maven, y eso no es cosmetico:",
+      "`client-interfaces` no tiene ni un bloque <dependencies>. Un verificador que",
+      "busque solo en client-app dara falsos negativos (sucedio con los ticks)."
+    ]
+  },
+  "excepciones": [
+    {
+      "java": "ExcepcionCliente",
+      "base": "Exception",
+      "python": "ClienteError",
+      "csharp": "ClienteException",
+      "nota": "La raiz. checked en Java."
+    },
+    {
+      "java": "ExcepcionHistorial",
+      "base": "ExcepcionCliente",
+      "python": "HistorialError",
+      "csharp": "HistorialException"
+    },
+    {
+      "java": "ExcepcionPersistencia",
+      "base": "ExcepcionCliente",
+      "python": "PersistenciaError",
+      "csharp": "PersistenciaException"
+    },
+    {
+      "java": "ExcepcionValidacion",
+      "base": "IllegalArgumentException",
+      "python": "ValueError",
+      "csharp": "ArgumentException",
+      "nota": "NO hereda de ExcepcionCliente: es runtime. En Python basta ValueError; en C#, ArgumentException."
+    },
+    {
+      "java": "ExcepcionSesion",
+      "base": "IllegalStateException",
+      "python": "SesionError",
+      "csharp": "SesionException",
+      "nota": "Tampoco hereda de ExcepcionCliente. Rechazo del servidor o sesion cerrada: no se reintenta."
+    },
+    {
+      "java": "ExcepcionOperacionNoSoportada",
+      "base": "IOException",
+      "python": "OperacionNoSoportada",
+      "csharp": "OperacionNoSoportadaException",
+      "nota": "Extiende IOException a proposito: es lo que permite que un puerto declare una operacion opcional sin romper el LSP de los llamantes."
+    }
+  ],
+  "records": [
+    {
+      "nombre": "MensajeLocal",
+      "java": "transversal/records/MensajeLocal.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "nota": "17 componentes. Es la fila de `historial_local`. `destino == \"*\"` marca una difusion propia.",
+      "componentes": [
+        "String idMensaje",
+        "String origen",
+        "String destino",
+        "String tipo",
+        "String contenido",
+        "String hashSha256",
+        "Integer numCaracteres",
+        "Integer numPalabras",
+        "String nombreArchivo",
+        "String rutaArchivo",
+        "Long tamanoArchivo",
+        "String fechaEnvio",
+        "boolean enviado",
+        "boolean descargado",
+        "String estado",
+        "String archivoId",
+        "String etapasFiltrado"
+      ]
+    },
+    {
+      "nombre": "RecienteChat",
+      "java": "transversal/records/RecienteChat.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "nota": "Una fila de la lista de contactos: quien es, que dijo, cuantos sin leer y si esta en linea.",
+      "componentes": [
+        "String otro",
+        "String ultimoContenido",
+        "String ultimoTipo",
+        "String fechaUltimo",
+        "int noLeidos",
+        "boolean conectado"
+      ]
+    },
+    {
+      "nombre": "PendienteEnvio",
+      "java": "transversal/records/PendienteEnvio.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "nota": "La cola offline. `payload` son bytes CRUDOS, no Base64: al reintentar se vuelve a fragmentar. Ver AGENTS.md invariante 2.",
+      "componentes": [
+        "String id",
+        "String tipo",
+        "String origen",
+        "String destino",
+        "String contenido",
+        "String nombreArchivo",
+        "byte[] payload",
+        "String fechaCreado",
+        "int intentos",
+        "String ultimoError"
+      ]
+    },
+    {
+      "nombre": "UsuarioLocal",
+      "java": "transversal/records/UsuarioLocal.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "componentes": [
+        "String codigo",
+        "String nombres",
+        "String apellidos",
+        "String programa",
+        "boolean conectado",
+        "String fechaRegistro",
+        "String actualizado"
+      ]
+    },
+    {
+      "nombre": "RespuestaRed",
+      "java": "transversal/records/RespuestaRed.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "nota": [
+        "25 componentes: la adaptacion del DTO `Mensaje` del protocolo a datos neutros.",
+        "Es lo que permite que la capa 3 (fachada, presentacion) no importe nada de `common.tipo`.",
+        "Python y .NET hoy trabajan con `dict`/`JsonElement` sueltos: este record es el",
+        "contrato que deben cumplir al tipar sus DTO (Fase 1.4)."
+      ],
+      "componentes": [
+        "TipoMensajeCliente tipo",
+        "String id",
+        "String fechaHora",
+        "String codigo",
+        "String nombres",
+        "String apellidos",
+        "String programa",
+        "String remitente",
+        "String destinatario",
+        "String contenido",
+        "String hashSha256",
+        "Integer numCaracteres",
+        "Integer numPalabras",
+        "String etapasFiltrado",
+        "String nombreArchivo",
+        "Long tamanoArchivo",
+        "String archivoId",
+        "String mime",
+        "String contenidoImagen",
+        "Integer pagina",
+        "Integer totalPaginas",
+        "Boolean exito",
+        "String mensajeError",
+        "List<String> usuariosConectados",
+        "String tipoOriginal"
+      ]
+    },
+    {
+      "nombre": "EventoCliente",
+      "java": "transversal/records/EventoCliente.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "nota": "Evento de dominio ya adaptado: no se filtra un JsonElement por la presentacion.",
+      "componentes": [
+        "Tipo tipo",
+        "String remitente",
+        "String destinatario"
+      ],
+      "enums": {
+        "Tipo": [
+          "PRESENCIA",
+          "SESION_CERRADA",
+          "ACUSE_ENTREGA",
+          "ACUSE_LECTURA",
+          "MENSAJE"
+        ]
+      }
+    },
+    {
+      "nombre": "PaginaHistorialRemota",
+      "java": "transversal/records/PaginaHistorialRemota.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "componentes": [
+        "int recibidos",
+        "int pagina",
+        "int totalPaginas"
+      ]
+    },
+    {
+      "nombre": "ResultadoOperacion",
+      "java": "transversal/records/ResultadoOperacion.java",
+      "python": "dataclass(frozen=True)",
+      "csharp": "sealed record",
+      "estado": "SIN USAR",
+      "nota": "Existe en el contrato pero NADIE lo consume: la fachada devuelve `boolean` en los envios. Se conserva por compatibilidad; no lo ports si no hace falta."
+    }
+  ],
+  "enums": [
+    {
+      "nombre": "TipoMensajeCliente",
+      "java": "transversal/records/TipoMensajeCliente.java",
+      "python": "enum.Enum (str)",
+      "csharp": "enum",
+      "nota": [
+        "Espejo 1:1 del `TipoMensaje` de common-protocol/dto, 28 valores.",
+        "El mapeo es por NOMBRE EXACTO (`TipoMensajeCliente.valueOf(mensaje.tipo().name())`),",
+        "no por ordinal: reordenar el enum del protocolo no debe romper el cliente.",
+        "Python y .NET ya tienen sus propios listados; este contrato obliga a que coincidan."
+      ],
+      "valores": [
+        "LOGIN",
+        "LOGIN_RESPUESTA",
+        "REGISTRO",
+        "LOGOUT",
+        "CLOSE_NOTICE",
+        "KICK",
+        "MENSAJE_TEXTO",
+        "MENSAJE_IMAGEN",
+        "MENSAJE_ARCHIVO",
+        "ARCHIVO_INICIO",
+        "ARCHIVO_PARTE",
+        "ARCHIVO_FIN",
+        "IMAGE_FILTERED_RESULT",
+        "BROADCAST",
+        "MENSAJE_ENTREGADO",
+        "MENSAJE_LEIDO",
+        "PRESENCIA",
+        "LISTAR_CONECTADOS",
+        "LISTAR_CONECTADOS_RESPUESTA",
+        "LISTAR_USUARIOS",
+        "LISTAR_USUARIOS_RESPUESTA",
+        "HISTORIAL_REQ",
+        "HISTORIAL_PAGE",
+        "DESCARGAR_ARCHIVO",
+        "DESCARGAR_ARCHIVO_RESPUESTA",
+        "SYNC_LOGIN",
+        "ACK",
+        "ERROR"
+      ]
+    },
+    {
+      "nombre": "EstadoConexion",
+      "java": "transversal/EstadoConexion.java",
+      "python": "enum.Enum",
+      "csharp": "enum",
+      "nota": [
+        "4 estados observables. `degradado` decide si se muestra el banner ambar:",
+        "CONECTANDO y CONECTADO van sin banner, SIN_RED y SESION_CERRADA con banner.",
+        "Los textos van dentro del enum y son literales de UI (contrato/estado-mensaje.json",
+        "y el catalogo DIAGRAMAS/textos-ui.md): si divergen entre clientes, el usuario lo ve."
+      ],
+      "valores": [
+        {
+          "nombre": "CONECTANDO",
+          "texto": "Conectando…",
+          "degradado": false
+        },
+        {
+          "nombre": "CONECTADO",
+          "texto": "En línea",
+          "degradado": false
+        },
+        {
+          "nombre": "SIN_RED",
+          "texto": "Sin conexión — mensajes en cola local, se reintentan solos",
+          "degradado": true
+        },
+        {
+          "nombre": "SESION_CERRADA",
+          "texto": "Sesión cerrada",
+          "degradado": true
+        }
+      ]
+    }
+  ],
+  "puertos": [
+    {
+      "nombre": "InterfazConexionRed",
+      "capa": 1,
+      "java": "componentes/conexion/InterfazConexionRed.java",
+      "python": "puertos/conexion.py::ConexionRed (a crear en Fase 2)",
+      "csharp": "Componentes/IConexionRed.cs",
+      "rol": "Transporte TCP/TLS. Es el unico que conoce tramas, sockets y el DTO del protocolo.",
+      "metodos": [
+        {
+          "firma": "void conectar()",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "void desconectar()"
+        },
+        {
+          "firma": "boolean conectado()"
+        },
+        {
+          "firma": "void suscribir(ReceptorMensajes receptor)"
+        },
+        {
+          "firma": "RespuestaRed login(String codigo, String contrasena)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed enviarTexto(String remitente, String destinatario, String contenido)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed enviarTexto(String id, String remitente, String destinatario, String contenido)",
+          "lanzar": "IOException",
+          "nota": "default: delega a la anterior. El id lo usa la cola de reintento."
+        },
+        {
+          "firma": "RespuestaRed enviarImagen(String remitente, String destinatario, String nombreArchivo, String mime, String contenidoBase64)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed enviarImagen(String id, String remitente, String destinatario, String nombreArchivo, String mime, String contenidoBase64)",
+          "lanzar": "IOException",
+          "nota": "default."
+        },
+        {
+          "firma": "RespuestaRed enviarArchivo(String remitente, String destinatario, String nombreArchivo, String mime, String contenidoBase64)",
+          "lanzar": "IOException",
+          "opcional": true,
+          "nota": "default: lanza ExcepcionOperacionNoSoportada. Trama unica; superada por la fragmentada."
+        },
+        {
+          "firma": "RespuestaRed enviarArchivo(String id, String remitente, String destinatario, String nombreArchivo, String mime, String contenidoBase64)",
+          "lanzar": "IOException",
+          "nota": "default."
+        },
+        {
+          "firma": "RespuestaRed enviarArchivoFragmentado(String id, String remitente, String destinatario, String nombreArchivo, String mime, byte[] contenido)",
+          "lanzar": "IOException",
+          "nota": "default: degrada a trama unica. Recibe bytes CRUDOS porque el corte en trozos solo tiene sentido sobre el archivo. Unica via que supera 16 MiB por trama."
+        },
+        {
+          "firma": "RespuestaRed difundir(String remitente, String contenido)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed difundir(String id, String remitente, String contenido)",
+          "lanzar": "IOException",
+          "nota": "default."
+        },
+        {
+          "firma": "RespuestaRed listarConectados()",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed expulsar(String codigo)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed solicitarHistorial(String remitente, String destinatario, int pagina)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "RespuestaRed descargarArchivo(String archivoId)",
+          "lanzar": "IOException"
+        },
+        {
+          "firma": "void logout()",
+          "lanzar": "IOException",
+          "nota": "SIN respuesta esperada: el servidor avisa con CLOSE_NOTICE. Fire-and-forget; un await aqui colgaría la UI."
+        },
+        {
+          "firma": "RespuestaRed enviarLectura(String lector, String autor, String idOriginal)",
+          "lanzar": "IOException",
+          "opcional": true,
+          "nota": "default: lanza ExcepcionOperacionNoSoportada. Tambien fire-and-forget: devuelve un ACK sintetico sin ir al servidor."
+        },
+        {
+          "firma": "RespuestaRed listarUsuarios()",
+          "lanzar": "IOException",
+          "opcional": true,
+          "nota": "default: lanza ExcepcionOperacionNoSoportada."
+        }
+      ]
+    },
+    {
+      "nombre": "ReceptorMensajes",
+      "capa": 1,
+      "java": "componentes/conexion/ReceptorMensajes.java",
+      "python": "puertos/conexion.py::ReceptorMensajes (Protocol) (a crear en Fase 2)",
+      "csharp": "Componentes/IReceptorMensajes.cs (a crear en Fase 2)",
+      "rol": "Los 4 callbacks que el lector invoca. Es el unico camino por el que algo asincrono entra en la aplicacion.",
+      "metodos": [
+        {
+          "firma": "void alRecibir(RespuestaRed mensaje)",
+          "nota": "Texto, imagen, archivo o broadcast entrante (ya persistido)."
+        },
+        {
+          "firma": "void alCierre(RespuestaRed aviso)",
+          "nota": "El servidor cerro o expulso esta sesion. Se atiende ANTES de la correlacion por id, porque tras un KICK el aviso lleva el id de la peticion."
+        },
+        {
+          "firma": "void alError(String motivo)",
+          "nota": "Error asincrono sin peticion pendiente."
+        },
+        {
+          "firma": "void alDesconexion()",
+          "nota": "Socket roto: operar en modo offline. Solo lo notifica el lector vigente (guarda de generacion, PAT-03)."
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazHistorialLocal",
+      "capa": 2,
+      "java": "componentes/historial/InterfazHistorialLocal.java",
+      "python": "puertos/historial.py::HistorialLocal (Protocol) (a crear en Fase 2)",
+      "csharp": "Componentes/IHistorialLocal.cs",
+      "rol": "La base local por cuenta. 20 metodos: CRUD de mensajes, no leidos, blobs, etapas de imagen y la cola offline.",
+      "metodos": [
+        {
+          "firma": "default void prepararCuenta(String codigo)",
+          "lanzar": "ExcepcionCliente",
+          "opcional": true
+        },
+        {
+          "firma": "void guardar(MensajeLocal mensaje)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<MensajeLocal> pagina(String remitente, String destinatario, int limite, int offset)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "int contar(String remitente, String destinatario)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<MensajeLocal> buscar(String remitente, String destinatario, String patron, int limite)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void marcarDescargado(String idMensaje, String rutaArchivo)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void marcarEstado(String idMensaje, String estado)",
+          "lanzar": "ExcepcionCliente",
+          "nota": "La precedencia la fija contrato/estado-mensaje.json, no este metodo."
+        },
+        {
+          "firma": "void marcarLeidosDe(String yo, String otro)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<String> idsNoLeidos(String yo, String otro)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<RecienteChat> recientes(String yo)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "Optional<String> blobPorId(String idMensaje)",
+          "lanzar": "ExcepcionCliente",
+          "nota": "Base64."
+        },
+        {
+          "firma": "Optional<String> archivoIdPorId(String idMensaje)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void actualizarArchivoId(String idMensaje, String archivoId)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void actualizarEtapasFiltrado(String idMensaje, String etapasFiltrado)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void actualizarContenido(String idMensaje, String base64)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<PendienteEnvio> pendientes()",
+          "lanzar": "ExcepcionCliente",
+          "nota": "En orden por fecha_creado ASC: el reintento es en orden."
+        },
+        {
+          "firma": "void registrarPendiente(PendienteEnvio pendiente)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void incrementarIntento(String id, String ultimoError)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void eliminarPendiente(String id)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "Optional<PendienteEnvio> pendientePorId(String id)",
+          "lanzar": "ExcepcionCliente"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazCacheUsuarios",
+      "capa": 2,
+      "java": "componentes/cache/InterfazCacheUsuarios.java",
+      "python": "puertos/cache.py::CacheUsuarios (Protocol)",
+      "csharp": "Componentes/ICacheUsuarios.cs",
+      "rol": "Directorio en memoria con LRU. Evita ir a la base en cada fila de la lista de contactos.",
+      "metodos": [
+        {
+          "firma": "void guardar(UsuarioLocal usuario)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "default void reemplazarDirectorio(List<UsuarioLocal> usuarios)",
+          "lanzar": "ExcepcionCliente",
+          "opcional": true,
+          "nota": "default: bucle de guardar()."
+        },
+        {
+          "firma": "List<UsuarioLocal> listar()",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "Optional<UsuarioLocal> porCodigo(String codigo)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void marcarConectados(List<String> codigos)",
+          "lanzar": "ExcepcionCliente"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazAutenticacion",
+      "capa": 2,
+      "java": "componentes/autenticacion/InterfazAutenticacion.java",
+      "python": "puertos/autenticacion.py::Autenticacion (Protocol)",
+      "csharp": "Componentes/IAutenticacion.cs",
+      "rol": "Valida la entrada y delega en la red. NO guarda contrasenas: la custodia temporal es del GestorReconexion.",
+      "metodos": [
+        {
+          "firma": "boolean login(String codigo, String contrasena)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void logout()",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void olvidarSesion()"
+        },
+        {
+          "firma": "String codigoActual()"
+        },
+        {
+          "firma": "boolean sesionAbierta()"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazMapeadorDatosServidor",
+      "capa": 1,
+      "java": "componentes/protocolo/InterfazMapeadorDatosServidor.java",
+      "python": "puertos/mapeador.py::MapeadorDatos (Protocol) (a crear en Fase 2)",
+      "csharp": "Componentes/IMapeadorDatos.cs (a crear en Fase 2)",
+      "rol": "Del JSON crudo a los records neutros. Es el UNICO punto donde el cliente parsea a mano.",
+      "metodos": [
+        {
+          "firma": "List<UsuarioLocal> mapearDirectorio(String json)",
+          "nota": "Lee: codigo, nombres, apellidos, programa, conectado."
+        },
+        {
+          "firma": "List<MensajeLocal> mapearPaginaHistorial(String json, String codigoSesion)",
+          "nota": "Lee: id, remitente, destinatario, tipo, contenido, hashSha256, numCaracteres, numPalabras, nombreArchivo, tamanoArchivo, fechaEnvio, archivoId."
+        },
+        {
+          "firma": "String normalizarTipoMensaje(String tipo)"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazAlmacenLocal",
+      "capa": 1,
+      "java": "persistencia/InterfazAlmacenLocal.java",
+      "python": "store/database.py::Database",
+      "csharp": "Store/LocalStore.cs",
+      "rol": "Apertura y esquema de la base local.",
+      "nota": "Vive en client-app, no en client-interfaces, PORQUE devuelve java.sql.Connection. Es la unica excepcion a la regla de la capa 2 sin SQL, y esta documentada aqui para que no parezca un descuido.",
+      "metodos": [
+        {
+          "firma": "Connection abrir()",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void prepararCuenta(String codigo)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "int inicializar()",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "void cerrar()"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazChatCliente",
+      "capa": 3,
+      "java": "fachada/InterfazChatCliente.java",
+      "python": "fachada/IFachadaChat (a crear en Fase 2.1)",
+      "csharp": "Fachada/IFachadaChatCliente.cs (a crear en Fase 2)",
+      "rol": "La superficie que el chat usa. Extiende InterfazArchivosConversacion e InterfazEventosCliente.",
+      "extiende": [
+        "InterfazArchivosConversacion",
+        "InterfazEventosCliente"
+      ],
+      "metodos": [
+        {
+          "firma": "String codigoActual()"
+        },
+        {
+          "firma": "EstadoConexion estadoConexion()"
+        },
+        {
+          "firma": "void alCambiarEstado(Consumer<EstadoConexion> observador)",
+          "nota": "Entrega el estado actual de inmediato, no espera al siguiente cambio."
+        },
+        {
+          "firma": "void quitarObservadorEstado(Consumer<EstadoConexion> observador)"
+        },
+        {
+          "firma": "boolean conectado()"
+        },
+        {
+          "firma": "void desconectar()"
+        },
+        {
+          "firma": "void cerrarSesionRemota()"
+        },
+        {
+          "firma": "void logout()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void expulsarOtrasSesiones()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<UsuarioLocal> directorioLocal()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<UsuarioLocal> sincronizarDirectorio()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<RecienteChat> recientes()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<String> refrescarPresencia()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void marcarLeidos(String otro)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void marcarLeidosFondo(String otro)",
+          "nota": "Sin throws: el acuse va en segundo plano y no debe romper la UI."
+        },
+        {
+          "firma": "boolean enviarTexto(String destinatario, String contenido)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarImagen(String destinatario, byte[] bytes, String nombreArchivo, String mime)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarArchivo(String destinatario, byte[] bytes, String nombreArchivo, String mime)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<MensajeLocal> conversacion(String otro, int limite, int offset)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "int contarConversacion(String otro)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<String> buscarEnHistorial(String otro, String patron)",
+          "lanzar": "ExcepcionCliente, IOException"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazArchivosConversacion",
+      "capa": 3,
+      "java": "fachada/InterfazArchivosConversacion.java",
+      "python": "fachada/IFachadaChat (a crear)",
+      "csharp": "Fachada/IFachadaChatCliente.cs (a crear en Fase 2)",
+      "metodos": [
+        {
+          "firma": "PaginaHistorialRemota traerHistorial(String otro, int pagina)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "byte[] descargarImagen(String idMensaje)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "byte[] descargarContenidoArchivo(String archivoId)",
+          "lanzar": "ExcepcionCliente, IOException"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazFachadaCliente",
+      "capa": 3,
+      "java": "fachada/InterfazFachadaCliente.java",
+      "python": "fachada/fachada_cliente.py::FachadaCliente",
+      "csharp": "Fachada/IFachadaCliente.cs",
+      "extiende": [
+        "InterfazInicioSesion",
+        "InterfazChatCliente"
+      ],
+      "rol": "La fachada agregada. Es lo unico que la presentacion ve.",
+      "metodos": [
+        {
+          "firma": "Executor fondo()",
+          "nota": "El hilo de fondo de la UI. En Python, un ThreadPoolExecutor; en C#, un TaskScheduler."
+        },
+        {
+          "firma": "void cerrar()"
+        },
+        {
+          "firma": "List<String> listarConectados()",
+          "lanzar": "ExcepcionCliente, IOException"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazInicioSesion",
+      "capa": 3,
+      "java": "fachada/InterfazInicioSesion.java",
+      "python": "fachada/IFachadaChat (a crear)",
+      "csharp": "Fachada/IFachadaChatCliente.cs (a crear en Fase 2)",
+      "metodos": [
+        {
+          "firma": "boolean login(String codigo, String contrasena)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void desconectar()"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazCoordinadorMensajeria",
+      "capa": 3,
+      "java": "fachada/InterfazCoordinadorMensajeria.java",
+      "python": "fachada/coordinador_mensajeria.py (a crear en Fase 2)",
+      "csharp": "Fachada/ICoordinadorMensajeria.cs (a crear en Fase 2)",
+      "rol": "Guardar primero, intentar por red, guardar pendiente si falla. Se separa de la fachada para que esta decida CUANDO y no COMO.",
+      "metodos": [
+        {
+          "firma": "boolean enviarTexto(String yo, String destinatario, String contenido)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "boolean enviarImagen(String yo, String destinatario, byte[] bytes, String nombreArchivo, String mime)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "boolean enviarArchivo(String yo, String destinatario, byte[] bytes, String nombreArchivo, String mime)",
+          "lanzar": "ExcepcionCliente"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazCoordinadorHistorial",
+      "capa": 3,
+      "java": "fachada/InterfazCoordinadorHistorial.java",
+      "python": "fachada/coordinador_historial.py (a crear en Fase 2)",
+      "csharp": "Fachada/ICoordinadorHistorial.cs (a crear en Fase 2)",
+      "metodos": [
+        {
+          "firma": "List<MensajeLocal> conversacion(String yo, String otro, int limite, int offset)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "int contarConversacion(String yo, String otro)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<String> buscarEnHistorial(String yo, String otro, String patron, int limite)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "Optional<String> blobMensaje(String idMensaje)",
+          "lanzar": "ExcepcionCliente"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazGestorReconexion",
+      "capa": 3,
+      "java": "fachada/InterfazGestorReconexion.java",
+      "python": "fachada/gestor_reconexion.py (a crear en Fase 2)",
+      "csharp": "Fachada/IGestorReconexion.cs (a crear en Fase 2)",
+      "rol": "Backoff y custodia temporal de credenciales.",
+      "metodos": [
+        {
+          "firma": "void guardarSesion(String codigo, String contrasena)",
+          "nota": "Solo para reconectar. Al cerrar sesion se olvida."
+        },
+        {
+          "firma": "void olvidarSesion()"
+        },
+        {
+          "firma": "void programarReconexion()"
+        },
+        {
+          "firma": "void cerrar()"
+        },
+        {
+          "firma": "static int esperaSegundos(int intento)",
+          "nota": "Tabla {1,2,4,8,16,30} con clamp por indice. El cliente Python tiene que usar la MISMA tabla o reconecta mas rápido que Java."
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazSincronizadorDirectorio",
+      "capa": 3,
+      "java": "fachada/InterfazSincronizadorDirectorio.java",
+      "python": "fachada/sincronizador_directorio.py (a crear en Fase 2)",
+      "csharp": "Fachada/ISincronizadorDirectorio.cs (a crear en Fase 2)",
+      "metodos": [
+        {
+          "firma": "List<String> listarConectados()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<UsuarioLocal> directorioLocal()",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "List<UsuarioLocal> sincronizarDirectorio()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<String> refrescarPresencia()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void asegurarEnCache(String codigo)",
+          "lanzar": "ExcepcionCliente, IOException"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazReintentadorPendientes",
+      "capa": 3,
+      "java": "fachada/InterfazReintentadorPendientes.java",
+      "python": "fachada/reintentador_pendientes.py (a crear en Fase 2)",
+      "csharp": "Fachada/IReintentadorPendientes.cs (a crear en Fase 2)",
+      "rol": "Reenvia la cola offline en orden, con break en el primer fallo.",
+      "metodos": [
+        {
+          "firma": "int reintentarPendientes()",
+          "lanzar": "ExcepcionCliente, IOException",
+          "nota": "Devuelve cuantos salieron. 0 si no hay sesion o no hay red."
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazLectorHistorialRemoto",
+      "capa": 3,
+      "java": "fachada/InterfazLectorHistorialRemoto.java",
+      "python": "fachada/lector_historial.py (a crear en Fase 2)",
+      "csharp": "Fachada/ILectorHistorialRemoto.cs (a crear en Fase 2)",
+      "metodos": [
+        {
+          "firma": "List<MensajeLocal> conversacion(String otro, int limite, int offset)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "int contarConversacion(String otro)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<String> buscarEnHistorial(String otro, String patron)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "PaginaHistorialRemota traerHistorial(String otro, int pagina)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "Optional<String> blobMensaje(String idMensaje)",
+          "lanzar": "ExcepcionCliente"
+        },
+        {
+          "firma": "byte[] descargarImagen(String idMensaje)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "byte[] descargarContenidoArchivo(String archivoId)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "RespuestaRed descargarArchivo(String archivoId)",
+          "lanzar": "ExcepcionCliente, IOException"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazChatViewModel",
+      "capa": 3,
+      "java": "presentacion/InterfazChatViewModel.java",
+      "python": "ui/chat_view_model.py (a crear en Fase 2)",
+      "csharp": "ViewModels/IChatViewModel.cs (a crear en Fase 2)",
+      "rol": "El estado observable del chat. Es lo que la vista consulta; no toca socket, protocolo ni persistencia.",
+      "metodos": [
+        {
+          "firma": "static boolean puedeEnviar(String texto, boolean adjunto, boolean hayDestino, boolean enviaindo)",
+          "nota": "Regla del boton Enviar. Esta en la interfaz y no en el controlador: asi los 3 clientes la evaluan en el mismo sitio."
+        },
+        {
+          "firma": "Executor tareasFondo()"
+        },
+        {
+          "firma": "BooleanProperty enviandoProperty()"
+        },
+        {
+          "firma": "BooleanProperty adjuntoDisponibleProperty()"
+        },
+        {
+          "firma": "BooleanProperty hayDestinoProperty()"
+        },
+        {
+          "firma": "ObjectProperty<MensajeLocal> respuestaSeleccionadaProperty()"
+        },
+        {
+          "firma": "ObjectProperty<EstadoConexion> estadoConexionProperty()"
+        },
+        {
+          "firma": "Map<String, UsuarioLocal> directorio()"
+        },
+        {
+          "firma": "ObservableList<RecienteChat> recientes()"
+        },
+        {
+          "firma": "byte[] adjuntoBytes()"
+        },
+        {
+          "firma": "String adjuntoNombre()"
+        },
+        {
+          "firma": "String adjuntoMime()"
+        },
+        {
+          "firma": "int offsetActual()"
+        },
+        {
+          "firma": "void setOffsetActual(int offset)"
+        },
+        {
+          "firma": "void prepararAdjunto(byte[] bytes, String nombre, String mime)"
+        },
+        {
+          "firma": "void limpiarAdjunto()"
+        },
+        {
+          "firma": "void seleccionarRespuesta(MensajeLocal mensaje)"
+        },
+        {
+          "firma": "MensajeLocal respuestaSeleccionada()"
+        },
+        {
+          "firma": "void cancelarRespuesta()"
+        },
+        {
+          "firma": "String nombreVisible(String codigo)"
+        },
+        {
+          "firma": "List<RecienteChat> filtrar(List<RecienteChat> lista, String query, String filtro)",
+          "nota": "Filtros Todos / Conectados / No leidos."
+        },
+        {
+          "firma": "boolean enviarTexto(String destinatario, String texto, MensajeLocal respuesta)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarAdjunto(String destinatario, boolean esImagen)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<MensajeLocal> cargarConversacion(String otro, int limite, int offset)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "int contarConversacion(String otro)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<String> buscarHistorial(String otro, String patron)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<UsuarioLocal> directorioLocal()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "List<RecienteChat> cargarRecientes()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "String codigoActual()"
+        },
+        {
+          "firma": "void suscribirEventos(Consumer<EventoCliente> observador)"
+        },
+        {
+          "firma": "void desuscribirEventos(Consumer<EventoCliente> observador)"
+        },
+        {
+          "firma": "void alCambiarEstado(Consumer<EstadoConexion> observador)"
+        },
+        {
+          "firma": "void quitarObservadorEstado(Consumer<EstadoConexion> observador)"
+        },
+        {
+          "firma": "int cantidadObservadoresEventos()"
+        },
+        {
+          "firma": "boolean conectado()"
+        },
+        {
+          "firma": "void desconectar()"
+        },
+        {
+          "firma": "void logout()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void expulsarOtrasSesiones()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void cerrarSesionRemota()"
+        },
+        {
+          "firma": "void sincronizarDirectorio()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void refrescarPresencia()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarTexto(String destinatario, String texto)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarImagen(String destinatario, byte[] bytes, String nombre, String mime)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean enviarArchivo(String destinatario, byte[] bytes, String nombre, String mime)",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void marcarLeidosEnFondo(String otro)"
+        },
+        {
+          "firma": "void detener()"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazNavegacionCliente",
+      "capa": 3,
+      "java": "presentacion/InterfazNavegacionCliente.java",
+      "python": "ui/navegacion.py (a crear en Fase 2)",
+      "csharp": "Views/INavegacionCliente.cs (a crear en Fase 2)",
+      "rol": "Cambio de ventana y tema. Es lo que permite testear la presentacion sin abrir un Stage.",
+      "metodos": [
+        {
+          "firma": "void mostrarLogin()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "void mostrarChat()",
+          "lanzar": "ExcepcionCliente, IOException"
+        },
+        {
+          "firma": "boolean confirmar(String pregunta)",
+          "nota": "Confirmacion modal. 4 usos en Java: cerrar login, cerrar chat, salir, salir en todas."
+        },
+        {
+          "firma": "void avisarProximoLogin(String motivo)"
+        },
+        {
+          "firma": "String consumirAviso()",
+          "nota": "Devuelve el aviso pendiente y lo limpia: el login lo muestra una vez."
+        },
+        {
+          "firma": "void aplicarTema(Scene escena, boolean login)"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazGestorAdjuntos",
+      "capa": 3,
+      "java": "presentacion/InterfazGestorAdjuntos.java",
+      "python": "ui/gestor_adjuntos.py (a crear en Fase 2)",
+      "csharp": "Views/IGestorAdjuntos.cs (a crear en Fase 2)",
+      "rol": "Carga perezosa de imagenes, paginacion remota y descarga. separated del controlador por SRP.",
+      "metodos": [
+        {
+          "firma": "boolean imagenFallida(String idMensaje)"
+        },
+        {
+          "firma": "int paginaRemota(String conversacion)"
+        },
+        {
+          "firma": "Integer totalPaginasRemotas(String conversacion)"
+        },
+        {
+          "firma": "void registrarPaginaRemota(String conversacion, int siguiente, int total)"
+        },
+        {
+          "firma": "boolean hayMasHistorialRemoto(String conversacion)"
+        },
+        {
+          "firma": "void registrarPaginaDeMensaje(String idMensaje, int pagina)"
+        },
+        {
+          "firma": "void cambiarConversacion()"
+        },
+        {
+          "firma": "void detener()"
+        },
+        {
+          "firma": "void cargarImagenVisible(MensajeLocal item)"
+        },
+        {
+          "firma": "void reintentarImagen(MensajeLocal item)"
+        },
+        {
+          "firma": "void descargarArchivo(MensajeLocal item)"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazFabricaAdjuntos",
+      "capa": 3,
+      "java": "presentacion/InterfazFabricaAdjuntos.java",
+      "python": "ui/gestor_adjuntos.py (a crear en Fase 2)",
+      "csharp": "Views/IFabricaAdjuntos.cs (a crear en Fase 2)",
+      "rol": "Inyecta las dependencias del gestor de adjuntos sin que la vista las conozca.",
+      "metodos": [
+        {
+          "firma": "InterfazGestorAdjuntos crear(InterfazChatViewModel viewModel, Executor fondo, ListView<FilaChat> listaMensajes, Supplier<String> conversacionActual, Consumer<String> mostrarEstado)"
+        }
+      ]
+    },
+    {
+      "nombre": "FlujoConversacion",
+      "capa": 3,
+      "java": "presentacion/FlujoConversacion.java",
+      "python": "ui/flujo_conversacion.py (a crear en Fase 2)",
+      "csharp": "Views/IFlujoConversacion.cs (a crear en Fase 2)",
+      "rol": "Invierte el sentido: RefrescadorContactosChat notifica al controlador en vez de tocarlo directamente.",
+      "metodos": [
+        {
+          "firma": "void alSeleccionar(RecienteChat actual)"
+        },
+        {
+          "firma": "void pintar(String conversacion, List<MensajeLocal> pagina, int total, int offset)"
+        }
+      ]
+    },
+    {
+      "nombre": "InterfazEventosCliente",
+      "capa": 3,
+      "java": "fachada/InterfazEventosCliente.java",
+      "python": "fachada/IFachadaChat (a crear)",
+      "csharp": "Fachada/IFachadaChatCliente.cs (a crear en Fase 2)",
+      "rol": "Bus de eventos (Observer). Lo consume la presentacion, no la fachada.",
+      "metodos": [
+        {
+          "firma": "void suscribirEventos(Consumer<EventoCliente> observador)"
+        },
+        {
+          "firma": "void desuscribirEventos(Consumer<EventoCliente> observador)"
+        },
+        {
+          "firma": "int cantidadObservadoresEventos()"
+        }
+      ]
+    }
+  ],
+  "invariantes_de_capa": [
+    "La capa 2 (puertos) no importa JavaFX, Gson, java.sql ni el DTO del protocolo. ArchUnit lo vigila con 6 reglas.",
+    "La presentacion no depende de persistencia ni de adaptadores de red.",
+    "Los controladores y el ViewModel no dependen de FachadaCliente ni de adaptadores concretos.",
+    "Todo se inyecta desde FabricaCliente (composition root). No hay localizador de servicios.",
+    "Las excepciones tienen 3 familias (checked / runtime / IOException). Un catch por tipo no es intercambiable entre ellas."
+  ]
+}

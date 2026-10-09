@@ -1,0 +1,33 @@
+# Plantilla de ui/tema_tokens.py (cliente Python).
+#
+# Solo contiene el mapa de equivalencia: token canonico -> nombre que el cliente
+# Python ya usaba. El generador lo lee con una expresion regular y produce el
+# .py final; aqui no se escribe ni un solo color.
+#
+# Formato: una linea por entrada, dos cadenas separadas por dos puntos.
+# El generador falla si alguno de estos tokens no existe en tokens-diseno.json.
+
+"root.bg": "ventana",
+"login.card.bg": "tarjeta",
+"login.card.border": "tarjeta_borde",
+"login.header.bg": "cabecera",
+"title.fg": "texto",
+"muted.fg": "texto_suave",
+"root.bg.lista": "lista",
+"bubble.out.bg": "burbuja_propia",
+"bubble.out.border": "burbuja_propia_borde",
+"bubble.in.bg": "burbuja_ajena",
+"bubble.in.border": "burbuja_ajena_borde",
+"sender.fg": "remitente",
+"body.out.fg": "cuerpo_propia",
+"body.fg": "cuerpo_ajena",
+"muted.fg.fecha": "fecha",
+"tick.read": "visto_leido",
+"tick.unread": "visto_pendiente",
+"tick.unread.otro": "visto_otro",
+"quote.bg": "cita_fondo",
+"quote.border": "cita_borde",
+"quote.fg": "cita_texto",
+"replypreview.bg": "preview_fondo",
+"replypreview.border": "preview_borde",
+"placeholder.thumb.bg": "preview_thumb_fondo",

@@ -468,11 +468,12 @@ conteos y ausencias quedaron **superados por DIAG-07/08**. El índice canónico 
 > `note "x" as N1` en `classDiagram-v2`, y en `flowchart` las etiquetas
 > `[...]` con `"`, `(...)`, `;` o `<` deben entrecomillarse.
 
-**Estado posterior (2026-10-06):** `DIAGRAMAS/` contiene 45 fuentes Mermaid, cada una con render
+**Estado posterior (2026-10-06, rutas actualizadas 2026-10-07):** `DIAGRAMAS/` contiene 45 fuentes Mermaid, cada una con render
 PNG y SVG en el inventario actual; se conservan 15 fuentes `.excalidraw` con PNG. `mmdc`/Node
-están disponibles en el entorno documentado. Los 10 fuentes Mermaid que permanecen en
-`DIAGRAMAS_ENTREGA/` y `DIAGRAMAS_FINALES/` y los mockups duplicados no se eliminaron; requieren
-revisión de cobertura/versión antes de archivarlos. Ver `DIAGRAMAS/README.md` §3.
+están disponibles en el entorno documentado. Los legados viven ahora bajo
+`DIAGRAMAS/DIAGRAMAS_ENTREGA/` y `DIAGRAMAS/clases/01..09`; los duplicados de
+`modelo-relacional/` y `mockups/` FINALES se retiraron en la consolidación.
+Ver `DIAGRAMAS/README.md` §3. Al ser instantánea de auditoría, este §6 no se reescribe.
 
 ## 7. Índice de hallazgos
 

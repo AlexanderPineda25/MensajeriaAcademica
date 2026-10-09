@@ -20,9 +20,26 @@
   <ItemGroup>
     <Compile Include="..\client-dotnet\Componentes\*.cs" />
     <Compile Include="..\client-dotnet\Transversal\*.cs" />
+    <!-- Fase 1.4: los DTO tipados viven en su propia carpeta, que el glob de
+         un nivel de arriba no cubre. Sin esta linea los tests de DTO no compilarian. -->
+    <Compile Include="..\client-dotnet\Transversal\Dtos\*.cs" />
     <Compile Include="..\client-dotnet\Store\*.cs" />
+    <Compile Include="..\client-dotnet\Composicion\*.cs" />
+    <Compile Include="..\client-dotnet\Fachada\Servicios\*.cs" />
     <Compile Include="..\client-dotnet\Fachada\FachadaCliente.cs" />
     <Compile Include="..\client-dotnet\Fachada\IFachadaCliente.cs" />
+  </ItemGroup>
+
+  <!-- Los vectores de framing NO se copian a mano: se enlaza el fichero UNICO del
+       contrato (contrato/framing.json), que es lo quecodifican los tests de los tres
+       clientes. Si el contrato cambia, los tres tests cambian a la vez. -->
+  <ItemGroup>
+    <None Include="..\..\contrato\framing.json" Link="contrato\framing.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\contrato\puertos.json" Link="contrato\puertos.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- El DDL local tiene UNA sola copia, la de client-dotnet (MUERTE-5/PAT-06).

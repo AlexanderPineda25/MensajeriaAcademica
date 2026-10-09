@@ -42,6 +42,8 @@
                 </Border>
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,10">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <ui:Button Content="KICK otras" Click="BtnKickOtras_Click"
+                                   AutomationProperties.Name="Cerrar otras sesiones" Margin="0,0,6,0"/>
                         <ui:Button Content="Salir" Click="BtnSalir_Click" Margin="0,0,6,0"/>
                         <ui:Button Content="Salir en todos" Click="BtnSalirTodos_Click"/>
                     </StackPanel>
@@ -86,14 +88,16 @@
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                         <ui:Button x:Name="btnAnteriores" Content="↑ Cargar mensajes anteriores"
-                                   Click="BtnAnteriores_Click" Visibility="Collapsed"/>
+                                   Click="BtnAnteriores_Click" Visibility="Collapsed"
+                                   AutomationProperties.Name="Cargar mensajes anteriores"/>
                         <!-- UIX-14: gira mientras se trae historial. -->
                         <ProgressBar x:Name="barraProgreso" Width="90" Height="12" Margin="8,0,0,0"
                                      IsIndeterminate="True" Visibility="Collapsed"
                                      VerticalAlignment="Center"/>
                         <!-- UIX-16: baja a lo nuevo sin perder el punto de lectura. -->
                         <ui:Button x:Name="btnNuevos" Content="↓ Nuevos" Click="BtnNuevos_Click"
-                                   Visibility="Collapsed" Margin="8,0,0,0"/>
+                                   Visibility="Collapsed" Margin="8,0,0,0"
+                                   AutomationProperties.Name="Ir a mensajes nuevos"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -120,8 +124,8 @@
                                 TextChanged="TxtBuscarHistorial_TextChanged"
                                 KeyDown="TxtBuscarHistorial_KeyDown"/>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <ui:Button Content="↑" Click="BtnBuscarAnterior_Click" AutomationProperties.Name="Anterior" ToolTipService.ToolTip="Anterior (Mayús+Enter)" Margin="8,0,0,0"/>
-                        <ui:Button Content="↓" Click="BtnBuscarSiguiente_Click" AutomationProperties.Name="Siguiente" ToolTipService.ToolTip="Siguiente (Enter)" Margin="4,0,0,0"/>
+                        <ui:Button Content="↑" Click="BtnBuscarAnterior_Click" AutomationProperties.Name="Anterior coincidencia" ToolTipService.ToolTip="Anterior (Mayús+Enter)" Margin="8,0,0,0"/>
+                        <ui:Button Content="↓" Click="BtnBuscarSiguiente_Click" AutomationProperties.Name="Siguiente coincidencia" ToolTipService.ToolTip="Siguiente (Enter)" Margin="4,0,0,0"/>
                         <TextBlock x:Name="txtBuscarContador" Foreground="{DynamicResource MutedBrush}" FontSize="11"
                                    VerticalAlignment="Center" Margin="8,0,0,0"/>
                         <ui:Button Content="✕" Click="BtnBuscarCerrar_Click" AutomationProperties.Name="Cerrar búsqueda" ToolTipService.ToolTip="Cerrar (Esc)" Margin="4,0,0,0"/>
@@ -135,7 +139,7 @@
                         Margin="16,10,16,0" Padding="8,4">
                     <DockPanel LastChildFill="True">
                         <Button Content="✕" DockPanel.Dock="Right"
-                                 Click="BtnQuitarRespuesta_Click" AutomationProperties.Name="Quitar respuesta" Padding="6,1" Margin="8,0,0,0"
+                                 Click="BtnQuitarRespuesta_Click" AutomationProperties.Name="Cancelar respuesta" Padding="6,1" Margin="8,0,0,0"
                                  VerticalAlignment="Center"/>
                         <TextBlock x:Name="txtRespuesta" Foreground="{DynamicResource CitaTextBrush}"
                                    TextTrimming="CharacterEllipsis" TextWrapping="Wrap"
@@ -161,7 +165,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <ui:Button Grid.Column="0" Content="＋" Click="BtnAdjuntar_Click" AutomationProperties.Name="Adjuntar archivo" Margin="0,0,8,0" MinWidth="44" ToolTipService.ToolTip="Adjuntar archivo (Todos *.*)"/>
+                    <ui:Button Grid.Column="0" Content="＋" Click="BtnAdjuntar_Click" AutomationProperties.Name="Adjuntar imagen" Margin="0,0,8,0" MinWidth="44" ToolTipService.ToolTip="Adjuntar archivo (Todos *.*)"/>
 <ui:TextBox x:Name="txtMensaje" Grid.Column="1" MinHeight="42" TextWrapping="Wrap"
                                  AcceptsReturn="True"
                                  TextChanged="TxtMensaje_TextChanged" KeyDown="TxtMensaje_KeyDown"
@@ -169,11 +173,12 @@
                     <ui:Button x:Name="btnEnviar" Grid.Column="2" Content="Enviar" Appearance="Primary" Click="BtnEnviar_Click" MinWidth="82"/>
                 </Grid>
             </StackPanel>
-            <Grid>
-                <ListBox x:Name="lstMensajes" Background="{DynamicResource ChatBgBrush}" BorderThickness="0"
+            <Grid x:Name="panelMensajes" Background="{DynamicResource ChatBgBrush}">
+                <ListBox x:Name="lstMensajes" Background="Transparent" BorderThickness="0"
                      HorizontalContentAlignment="Stretch"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     VirtualizingPanel.ScrollUnit="Pixel"
                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                      AllowDrop="True" Drop="ZonaEnvio_Drop" DragOver="ZonaEnvio_DragOver"
                      MouseDoubleClick="LstMensajes_DoubleClick"
@@ -209,6 +214,10 @@
                                        ToolTipService.ToolTip="Click para ampliar · doble-click para responder"
                                        Visibility="{Binding MostrarImagen}" Loaded="MessageImage_Loaded"
                                        PreviewMouseLeftButtonUp="MessageImage_Click"/>
+                                <TextBlock Text="{Binding LeyendaEtapasFiltrado}"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="10"
+                                           TextWrapping="Wrap" Margin="0,3,0,0"
+                                           Visibility="{Binding MostrarEtapasFiltrado}"/>
                                 <TextBlock Text="{Binding EstadoImagen}" Foreground="{DynamicResource MutedBrush}" FontSize="11" Margin="0,4,0,0"
                                            Visibility="{Binding MostrarImagen}"/>
                                 <Button Content="Reintentar imagen" HorizontalAlignment="Left" Margin="0,3,0,0"

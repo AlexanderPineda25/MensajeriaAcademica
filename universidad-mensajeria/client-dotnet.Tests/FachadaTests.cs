@@ -69,6 +69,17 @@ namespace Mensajeria.Tests
         }
 
         [Fact]
+        public async Task KickSolicitaCerrarOtrasSesionesSinCerrarLaActual()
+        {
+            await _f.ExpulsarOtrasSesionesAsync();
+
+            var solicitud = Assert.Single(_red.Peticiones, p =>
+                (string?)p.GetValueOrDefault("tipo") == "KICK");
+            Assert.Equal("A001", solicitud["codigo"]);
+            Assert.Equal("A001", _f.UsuarioActual);
+        }
+
+        [Fact]
         public void AcuseActualizaElMismoRegistroPorId()
         {
             _f.EnviarTextoAsync("B002", "hola").GetAwaiter().GetResult();
@@ -161,6 +172,43 @@ namespace Mensajeria.Tests
         }
 
         [Fact]
+        public void ImagenEntrantePersisteEtapasFiltradoDelPush()
+        {
+            const string etapas = "[{\"etapa\":\"EscalaGrises\",\"ms\":6,\"ruta\":\"privada/01.png\"}]";
+            _red.Recibir(Doc(new Dictionary<string, object?>
+            {
+                ["tipo"] = "MENSAJE_IMAGEN",
+                ["id"] = "imagen-push",
+                ["remitente"] = "B002",
+                ["destinatario"] = "A001",
+                ["fechaHora"] = "2026-10-08T10:00:00Z",
+                ["etapasFiltrado"] = etapas,
+                ["archivoId"] = "archivo-push"
+            }));
+
+            var fila = Assert.Single(_f.CargarHistorial("B002"));
+
+            Assert.Equal(etapas, fila["etapasFiltrado"]);
+            Assert.Equal("archivo-push", fila["archivoId"]);
+        }
+
+        [Fact]
+        public async Task HistorialRemotoPersisteEtapasFiltradoRecibido()
+        {
+            const string etapas = "[{\"etapa\":\"Reduccion\",\"ms\":14,\"ruta\":\"privada/05.png\"}]";
+            _red.HistorialRemotoJson = "[{\"id\":\"imagen-remota\",\"remitente\":\"B002\","
+                + "\"destinatario\":\"A001\",\"tipo\":\"MENSAJE_IMAGEN\","
+                + "\"fechaEnvio\":\"2026-10-08T10:00:00Z\",\"etapasFiltrado\":"
+                + JsonSerializer.Serialize(etapas) + "}]";
+
+            await _f.TraerHistorialAsync("B002", 0);
+
+            var fila = Assert.Single(_f.CargarHistorial("B002"));
+            Assert.Equal("imagen-remota", fila["id"]);
+            Assert.Equal(etapas, fila["etapasFiltrado"]);
+        }
+
+        [Fact]
         public async Task ConectarConservaLaConexionInyectada()
         {
             await _f.ConectarAsync();
@@ -178,6 +226,27 @@ namespace Mensajeria.Tests
                 { "contenido", "conectado" }, { "usuariosConectados", new[] { "A001", "B002" } }
             }));
             Assert.True(notificada);
+        }
+
+        [Fact]
+        public void FachadaRegistraElReceptorTipadoYConservaLosEventosDeVista()
+        {
+            int cierres = 0;
+            int desconexiones = 0;
+            _f.OnCierre += _ => cierres++;
+            _f.OnDesconectado += () => desconexiones++;
+
+            _red.Recibir(Doc(new Dictionary<string, object?>
+                { { "tipo", "MENSAJE_TEXTO" }, { "id", "tipado-1" },
+                  { "remitente", "B002" }, { "contenido", "hola" } }));
+            _red.CerrarSesion();
+            _red.Caer();
+
+            Assert.Contains(_avisos, mensaje =>
+                mensaje.TryGetValue("id", out var id) && id.GetString() == "tipado-1");
+            Assert.Equal(1, cierres);
+            Assert.Equal(EstadoConexion.SesionCerrada, _f.EstadoConexion);
+            Assert.Equal(1, desconexiones);
         }
 
         [Fact]
@@ -205,6 +274,7 @@ namespace Mensajeria.Tests
         {
             public bool Caida { get; set; }
             public int Conexiones { get; private set; }
+            public string? HistorialRemotoJson { get; set; }
             public List<Dictionary<string, object?>> Peticiones { get; } = new();
             public event Action<Dictionary<string, JsonElement>>? OnMensajeRecibido;
             public event Action<Dictionary<string, JsonElement>>? OnCierre;
@@ -255,7 +325,12 @@ namespace Mensajeria.Tests
                     "MENSAJE_IMAGEN" => Doc(new Dictionary<string, object?>
                         { { "tipo", "IMAGE_FILTERED_RESULT" }, { "id", id }, { "exito", true },
                           { "hashSha256", "hi" }, { "etapasFiltrado", "[]" }, { "archivoId", "7" } }),
+                    "HISTORIAL_REQ" => Doc(new Dictionary<string, object?>
+                        { { "tipo", "HISTORIAL_PAGE" }, { "id", id },
+                          { "contenido", HistorialRemotoJson ?? "[]" }, { "totalPaginas", 1 } }),
                     "BROADCAST" => Doc(new Dictionary<string, object?>
+                        { { "tipo", "ACK" }, { "id", id }, { "exito", true } }),
+                    "KICK" => Doc(new Dictionary<string, object?>
                         { { "tipo", "ACK" }, { "id", id }, { "exito", true } }),
                     "LISTAR_CONECTADOS" => Doc(new Dictionary<string, object?>
                         { { "tipo", "LISTAR_CONECTADOS_RESPUESTA" }, { "id", id },

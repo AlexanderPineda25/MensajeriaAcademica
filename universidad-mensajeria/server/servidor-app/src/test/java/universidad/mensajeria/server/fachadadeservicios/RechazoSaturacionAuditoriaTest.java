@@ -33,8 +33,9 @@ class RechazoSaturacionAuditoriaTest {
                 mock(InterfazMensajes.class),
                 eventos,
                 mock(InterfazConexionesClientes.class),
-                new LimitesDTO(1, 1, 52_428_800L),
-                mock(Casos.class));
+                new LimitesDTO(1, 1, LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO),
+                mock(Casos.class),
+                mock(java.util.concurrent.ExecutorService.class));
 
         fachada.alRechazoPorSaturacion("10.0.0.5", 1);
 

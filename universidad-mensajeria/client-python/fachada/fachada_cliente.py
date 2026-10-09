@@ -7,32 +7,27 @@ Espejo de FachadaCliente Java (Fase 5):
 - Errores del servidor (destinatario invalido, limites) se elevan, no se
   tragan: el fire-and-forget quedo reservado solo para LOGOUT.
 """
-import datetime
-import uuid
-import base64
-import binascii
-import hashlib
-import mimetypes
-import os
-import json
-from pathlib import Path
 from componentes.conexion_red import ConexionRed
 from componentes.autenticacion import Autenticacion
 from componentes.historial_local import HistorialLocal
+from fachada.servicios.coordinador_mensajeria import CoordinadorMensajeriaCliente
+from fachada.servicios.coordinador_mensajeria import (
+    ARCHIVO_MAX_BYTES as _ARCHIVO_MAX_BYTES,
+    PARTE_MAX_BYTES as _PARTE_MAX_BYTES,
+)
+from fachada.servicios.lector_historial_remoto import LectorHistorialRemotoCliente
+from fachada.servicios.reintentador_pendientes import (
+    INTERVALO_FLUSH_MINIMO_SEGUNDOS,
+    INTERVALO_FLUSH_SEGUNDOS,
+    ReintentadorPendientesCliente,
+)
+from fachada.servicios.sincronizador_directorio import SincronizadorDirectorioCliente
+from fachada.servicios.publicador_eventos import PublicadorEventosCliente
+from fachada.servicios.receptor_entrante import ReceptorEntranteCliente
+from fachada.servicios.gestor_reconexion import GestorReconexionSesion
 from store.database import Database
 from transversal.config import Config
-from transversal.estado_conexion import (
-    CONECTADO,
-    CONECTANDO,
-    SESION_CERRADA,
-    SIN_RED,
-)
-
 DESTINO_BROADCAST = "*"
-# Fragmentación de archivos (contrato congelado Pista 1)
-_PARTE_MAX_BYTES = 1 * 1024 * 1024   # 1 MiB de datos crudos por parte
-_ARCHIVO_MAX_BYTES = 50 * 1024 * 1024  # límite: 50 MB
-
 
 class FachadaCliente:
     def __init__(self, on_mensaje_recibido_ui=None, on_cierre_ui=None,
@@ -45,10 +40,6 @@ class FachadaCliente:
         self.on_cierre_ui = on_cierre_ui
         self.on_desconexion_ui = on_desconexion_ui
         self.on_presencia_ui = on_presencia_ui
-        # PAT-03: estado de conexion observable. Antes la vista se enteraba de
-        # la caida por un texto que se cambiaba de paso y el banner offline solo
-        # se movia dentro del resultado de `directorio`.
-        self.estado_conexion = SIN_RED
         self.on_estado_ui = None
         try:
             tls_puerto = int(self.config.get("tls.puerto", 5001) or 5001)
@@ -66,53 +57,97 @@ class FachadaCliente:
         )
         self.autenticacion = autenticacion or Autenticacion(self.conexion)
         self.codigo_actual = None
+        self._coordinador_mensajeria = CoordinadorMensajeriaCliente(
+            self.conexion,
+            historial_actual=lambda: self.historial,
+            codigo_actual=lambda: self.codigo_actual,
+            exigir_sesion=self._exigir_sesion,
+            reintentar_pendientes=lambda: self.reintentar_pendientes(),
+        )
+        self._lector_historial = LectorHistorialRemotoCliente(
+            self.conexion,
+            historial_actual=lambda: self.historial,
+            codigo_actual=lambda: self.codigo_actual,
+            exigir_sesion=self._exigir_sesion,
+        )
+        self._reintentador_pendientes = ReintentadorPendientesCliente(
+            self.conexion,
+            historial_actual=lambda: self.historial,
+            codigo_actual=lambda: self.codigo_actual,
+            reintentar_callback=lambda: self.reintentar_pendientes(),
+        )
+        self._sincronizador_directorio = SincronizadorDirectorioCliente(
+            self.conexion,
+            historial_actual=lambda: self.historial,
+            codigo_actual=lambda: self.codigo_actual,
+            exigir_sesion=self._exigir_sesion,
+        )
+        self._gestor_reconexion = GestorReconexionSesion(
+            conexion=self.conexion,
+            autenticacion=self.autenticacion,
+            publicar_estado=lambda estado: self.on_estado_ui(estado)
+            if self.on_estado_ui else None,
+            codigo_actual=lambda: self.codigo_actual,
+            fijar_codigo=lambda codigo: setattr(self, "codigo_actual", codigo),
+            preparar_cuenta=self._preparar_cuenta,
+            exigir_sesion=self._exigir_sesion,
+            iniciar_flush=self.iniciar_flush_pendientes,
+            detener_flush=self.detener_flush_pendientes,
+        )
+        self._publicador_eventos = PublicadorEventosCliente(
+            on_mensaje=self.on_mensaje_recibido_ui,
+            on_presencia=self.on_presencia_ui,
+            on_cierre=self.on_cierre_ui,
+            on_desconexion=self.on_desconexion_ui,
+        )
+        self._receptor_entrante = ReceptorEntranteCliente(
+            historial_actual=lambda: self.historial,
+            codigo_actual=lambda: self.codigo_actual,
+            estado_actual=lambda: self.estado_conexion,
+            cambiar_estado=self._cambiar_estado,
+            sincronizador=self._sincronizador_directorio,
+            publicador=self._publicador_eventos,
+            gestor_reconexion=self._gestor_reconexion,
+        )
 
     # ---------------------------------------------------------- ciclo de vida
+    @property
+    def estado_conexion(self):
+        return self._gestor_reconexion.estado
+
+    @property
+    def _flush_hilo(self):
+        """Hilo del flush, expuesto para conservar la API de pruebas existente."""
+        return self._reintentador_pendientes._flush_hilo
+
     def _cambiar_estado(self, nuevo):
-        """PAT-03: unico punto donde cambia el estado de conexion."""
-        if nuevo == self.estado_conexion:
-            return
-        self.estado_conexion = nuevo
-        if self.on_estado_ui:
-            try:
-                self.on_estado_ui(nuevo)
-            except Exception:
-                pass
+        return self._gestor_reconexion.cambiar_estado(nuevo)
+
+    def iniciar_flush_pendientes(self, periodo_segundos=INTERVALO_FLUSH_SEGUNDOS):
+        return self._reintentador_pendientes.iniciar_flush_pendientes(periodo_segundos)
+
+    def detener_flush_pendientes(self):
+        return self._reintentador_pendientes.detener_flush_pendientes()
+
+    def flush_activo(self):
+        return self._reintentador_pendientes.flush_activo()
+
+    def _bucle_flush(self, periodo_segundos, parar):
+        return self._reintentador_pendientes._bucle_flush(periodo_segundos, parar)
 
     def conectar(self):
-        self._cambiar_estado(CONECTANDO)
-        try:
-            self.conexion.conectar()
-            self._cambiar_estado(CONECTADO)
-        except Exception:
-            self._cambiar_estado(SIN_RED)
-            raise
+        return self._gestor_reconexion.conectar()
 
     def desconectar(self):
-        if self.codigo_actual:
-            try:
-                self.conexion.enviar_async({
-                    "tipo": "LOGOUT",
-                    "codigo": self.codigo_actual,
-                    "fechaHora": datetime.datetime.now().isoformat()
-                })
-            except Exception:
-                pass
-        self.conexion.desconectar()
-        self.codigo_actual = None
-        self._cambiar_estado(SIN_RED)
+        return self._gestor_reconexion.desconectar()
 
     def login(self, codigo, contrasena):
-        if not self.conexion.conectado:
-            self.conectar()
-        resp = self.autenticacion.login(codigo, contrasena)
-        if resp.get("exito"):
-            self._cambiar_estado(CONECTADO)
-            self.fijar_cuenta(codigo)
-        return resp
+        return self._gestor_reconexion.login(codigo, contrasena)
 
     def fijar_cuenta(self, codigo):
-        self.codigo_actual = codigo
+        return self._gestor_reconexion.fijar_cuenta(codigo)
+
+    def _preparar_cuenta(self, codigo):
         if hasattr(self.db, "para_cuenta"):
             self.db = self.db.para_cuenta(codigo)
             self.historial = HistorialLocal(self.db)
@@ -121,516 +156,64 @@ class FachadaCliente:
 
     # ------------------------------------------------------------------ red
     def listar_conectados(self):
-        self._exigir_sesion()
-        req = {
-            "tipo": "LISTAR_CONECTADOS",
-            "codigo": self.codigo_actual,
-            "fechaHora": datetime.datetime.now().isoformat()
-        }
-        resp = self.conexion.pedir(req)
-        conectados = resp.get("usuariosConectados") or []
-        self.historial.marcar_conectados(conectados)
-        for codigo in conectados:
-            self._asegurar_en_cache(codigo)
-        return conectados
+        return self._sincronizador_directorio.listar_conectados()
 
     def listar_usuarios(self):
-        """Directorio completo desde LISTAR_USUARIOS_RESPUESTA.contenido (JSON).
-
-        El servidor envia el arreglo en `contenido`, no en `usuarios`
-        (ListarCaso.java, igual que lee FachadaCliente Java). Si la red
-        falla o el contenido es ilegible/vacio se conserva la cache local.
-        """
-        self._exigir_sesion()
-        resp = self.conexion.pedir({
-            "tipo": "LISTAR_USUARIOS",
-            "codigo": self.codigo_actual,
-            "fechaHora": datetime.datetime.now().isoformat()
-        })
-        contenido = resp.get("contenido")
-        if not contenido or not str(contenido).strip():
-            raise RuntimeError("directorio de usuarios no disponible")
-        try:
-            filas = json.loads(contenido)
-        except (TypeError, ValueError) as error:
-            raise RuntimeError("directorio de usuarios ilegible") from error
-        if not isinstance(filas, list):
-            raise RuntimeError("directorio de usuarios ilegible")
-        ahora = datetime.datetime.now().isoformat()
-        usuarios = []
-        for usuario in filas:
-            if not isinstance(usuario, dict):
-                continue
-            codigo = usuario.get("codigo")
-            if not codigo or not str(codigo).strip():
-                continue
-            usuarios.append({
-                "codigo": codigo,
-                "nombres": usuario.get("nombres") or "",
-                "apellidos": usuario.get("apellidos") or "",
-                "programa": usuario.get("programa") or "",
-                "conectado": bool(usuario.get("conectado")),
-            })
-        if not usuarios:
-            raise RuntimeError("directorio incompleto; se conserva la caché local")
-        for usuario in usuarios:
-            self.historial.actualizar_cache_usuario(
-                usuario["codigo"], usuario["nombres"], usuario["apellidos"],
-                usuario["programa"], int(usuario["conectado"]), "", ahora)
-        self.historial.marcar_conectados(
-            [u["codigo"] for u in usuarios if u["conectado"]])
-        return self.historial.listar_cache_usuarios()
+        return self._sincronizador_directorio.listar_usuarios()
 
     def expulsar_otras_sesiones(self):
-        self._exigir_sesion()
-        resp = self.conexion.pedir({
-            "tipo": "KICK", "codigo": self.codigo_actual,
-            "fechaHora": datetime.datetime.now().isoformat()
-        })
-        self._lanzar_si_error(resp, "no se pudieron cerrar las otras sesiones")
-        return True
+        return self._gestor_reconexion.expulsar_otras_sesiones()
 
     def enviar_texto(self, destinatario, texto, id_msg=None):
-        """True si salio por red (ACK); False si quedo en pendientes."""
-        self._exigir_sesion()
-        if not destinatario or not texto:
-            raise ValueError("destinatario y contenido son obligatorios")
-        id_msg = id_msg or str(uuid.uuid4())
-        fecha = datetime.datetime.now().isoformat()
-
-        # Persistir ANTES del envio con estado PENDIENTE
-        self.historial.guardar_mensaje(
-            id_msg, self.codigo_actual, destinatario, "MENSAJE_TEXTO", texto,
-            fecha, num_caracteres=len(texto), num_palabras=len(texto.split()),
-            enviado=1, descargado=1, estado="PENDIENTE")
-
-        req = {
-            "id": id_msg,
-            "tipo": "MENSAJE_TEXTO",
-            "remitente": self.codigo_actual,
-            "destinatario": destinatario,
-            "contenido": texto,
-            "fechaHora": fecha
-        }
-        try:
-            resp = self.conexion.pedir(req)
-        except (ConnectionError, TimeoutError, OSError):
-            self.historial.guardar_pendiente(id_msg, "MENSAJE_TEXTO",
-                                             self.codigo_actual, destinatario,
-                                             texto, "", None, fecha)
-            return False
-
-        try:
-            self._lanzar_si_error(resp, "envio rechazado")
-        except Exception:
-            self.historial.marcar_estado(id_msg, "ERROR")
-            raise
-
-        # Paridad Java: el ACK no trae hash; conteos locales.
-        # Marcar estado ENVIADO (monotónico: no degrada si ya llegó ENTREGADO o LEIDO)
-        self.historial.marcar_estado(id_msg, "ENVIADO")
-        return True
+        return self._coordinador_mensajeria.enviar_texto(destinatario, texto, id_msg)
 
     def enviar_imagen(self, destinatario, ruta_archivo, id_msg=None):
-        """True si salio por red (IMAGE_FILTERED_RESULT); False si pendiente."""
-        self._exigir_sesion()
-        if not destinatario:
-            raise ValueError("destinatario es obligatorio")
-        with open(ruta_archivo, "rb") as f:
-            crudos = f.read()
-        if not crudos:
-            raise ValueError("la imagen esta vacia")
-        b64 = base64.b64encode(crudos).decode('utf-8')
-        id_msg = id_msg or str(uuid.uuid4())
-        fecha = datetime.datetime.now().isoformat()
-        nombre = ruta_archivo.replace('\\', '/').split('/')[-1]
-
-        # Persistir ANTES del envio con estado PENDIENTE
-        self.historial.guardar_mensaje(
-            id_msg, self.codigo_actual, destinatario, "MENSAJE_IMAGEN",
-            "[Imagen]", fecha, nombre_archivo=nombre, ruta_archivo=ruta_archivo,
-            tamano_archivo=len(crudos), enviado=1, descargado=1, estado="PENDIENTE")
-
-        req = {
-            "id": id_msg,
-            "tipo": "MENSAJE_IMAGEN",
-            "remitente": self.codigo_actual,
-            "destinatario": destinatario,
-            "contenidoImagen": b64,
-            "nombreArchivo": nombre,
-            "fechaHora": fecha
-        }
-        try:
-            resp = self.conexion.pedir(req)
-        except (ConnectionError, TimeoutError, OSError):
-            self.historial.guardar_pendiente(id_msg, "MENSAJE_IMAGEN",
-                                             self.codigo_actual, destinatario,
-                                             "", nombre, crudos, fecha)
-            return False
-
-        try:
-            self._lanzar_si_error(resp, "envio rechazado", ok_tipos=("IMAGE_FILTERED_RESULT",))
-        except Exception:
-            self.historial.marcar_estado(id_msg, "ERROR")
-            raise
-
-        archivo_id = resp.get("archivoId")
-        hash_sha256 = resp.get("hashSha256") or ""
-        if archivo_id:
-            self.historial.actualizar_archivo_id(id_msg, archivo_id)
-        if hash_sha256:
-            self.historial.actualizar_hash(id_msg, hash_sha256)
-        self.historial.marcar_estado(id_msg, "ENVIADO")
-        return True
+        return self._coordinador_mensajeria.enviar_imagen(destinatario, ruta_archivo, id_msg)
 
     def enviar_archivo(self, destinatario, ruta_archivo, id_msg=None, on_progreso=None):
-        """Envía cualquier archivo usando el protocolo fragmentado (contrato Pista 1).
-
-        Protocolo: ARCHIVO_INICIO → N × ARCHIVO_PARTE → ARCHIVO_FIN (ACK).
-        Partes de hasta 1 MiB de datos crudos (base64 ocupa ~1.33 MiB en trama).
-        Rechaza archivos >50 MB antes de intentar el envío.
-        on_progreso(partes_enviadas, total_partes) se llama tras cada parte.
-        """
-        self._exigir_sesion()
-        if not destinatario:
-            raise ValueError("destinatario es obligatorio")
-        ruta = Path(ruta_archivo)
-        datos = ruta.read_bytes()
-        if len(datos) > _ARCHIVO_MAX_BYTES:
-            raise ValueError(
-                f"Archivo demasiado grande: {len(datos)/1024/1024:.1f} MB (máx 50 MB)")
-        sha256 = hashlib.sha256(datos).hexdigest()
-        nombre = ruta.name
-        mime = mimetypes.guess_type(str(ruta))[0] or "application/octet-stream"
-        id_msg = id_msg or str(uuid.uuid4())
-        fecha = datetime.datetime.now().isoformat()
-        partes = [datos[i:i + _PARTE_MAX_BYTES]
-                  for i in range(0, len(datos), _PARTE_MAX_BYTES)]
-        total_partes = max(1, len(partes))
-
-        # Persistir ANTES del envío con estado PENDIENTE
-        self.historial.guardar_mensaje(
-            id_msg, self.codigo_actual, destinatario, "MENSAJE_ARCHIVO",
-            "[Archivo]", fecha, nombre_archivo=nombre,
-            tamano_archivo=len(datos), enviado=1, descargado=1, estado="PENDIENTE")
-
-        try:
-            # ARCHIVO_INICIO (claves del contrato: nombreArchivo, tamanoArchivo…)
-            inicio = self.conexion.pedir({
-                "id": id_msg,
-                "tipo": "ARCHIVO_INICIO",
-                "remitente": self.codigo_actual,
-                "destinatario": destinatario,
-                "nombreArchivo": nombre,
-                "mime": mime,
-                "tamanoArchivo": len(datos),
-                "totalPartes": total_partes,
-                "fechaHora": fecha,
-            })
-            self._lanzar_si_error(inicio, "inicio de transferencia rechazado")
-
-            # ARCHIVO_PARTE × N (archivoId = id de transferencia, una en vuelo)
-            for i, parte in enumerate(partes):
-                parte_resp = self.conexion.pedir({
-                    "id": f"{id_msg}#p{i}",
-                    "tipo": "ARCHIVO_PARTE",
-                    "remitente": self.codigo_actual,
-                    "archivoId": id_msg,
-                    "indiceParte": i,
-                    "contenidoImagen": base64.b64encode(parte).decode("utf-8"),
-                    "fechaHora": fecha,
-                })
-                self._lanzar_si_error(parte_resp, f"parte {i + 1}/{total_partes} rechazada")
-                if on_progreso:
-                    on_progreso(i + 1, total_partes)
-
-            # ARCHIVO_FIN — el servidor valida SHA-256, encola y responde ACK.
-            # El archivoId real lo recibe el destinatario en el MENSAJE_ARCHIVO.
-            resp = self.conexion.pedir({
-                "id": f"{id_msg}#fin",
-                "tipo": "ARCHIVO_FIN",
-                "remitente": self.codigo_actual,
-                "archivoId": id_msg,
-                "hashSha256": sha256,
-                "fechaHora": fecha,
-            })
-        except (ConnectionError, TimeoutError, OSError):
-            self.historial.guardar_pendiente(
-                id_msg, "MENSAJE_ARCHIVO",
-                self.codigo_actual, destinatario,
-                "", nombre, datos, fecha)
-            return False
-
-        try:
-            self._lanzar_si_error(resp, "archivo rechazado")
-        except Exception:
-            self.historial.marcar_estado(id_msg, "ERROR")
-            raise
-
-        archivo_id = resp.get("archivoId")
-        if archivo_id:
-            self.historial.actualizar_archivo_id(id_msg, archivo_id)
-        self.historial.marcar_estado(id_msg, "ENVIADO")
-        return True
+        return self._coordinador_mensajeria.enviar_archivo(
+            destinatario, ruta_archivo, id_msg, on_progreso)
 
     def difundir(self, texto):
-        self._exigir_sesion()
-        if not texto:
-            raise ValueError("el contenido no puede estar vacio")
-        id_msg = str(uuid.uuid4())
-        fecha = datetime.datetime.now().isoformat()
-        resp = self.conexion.pedir({
-            "id": id_msg,
-            "tipo": "BROADCAST",
-            "remitente": self.codigo_actual,
-            "contenido": texto,
-            "fechaHora": fecha
-        })
-        self._lanzar_si_error(resp, "difusion rechazada")
-        self.historial.guardar_mensaje(id_msg, self.codigo_actual, DESTINO_BROADCAST,
-                                       "BROADCAST", texto, fecha)
-        return True
+        return self._coordinador_mensajeria.difundir(texto)
 
     def descargar_archivo(self, archivo_id, ruta_destino, on_progreso=None):
-        """DESCARGAR_ARCHIVO bajo demanda (Fase 6/§7.2): guarda bytes en disco.
-
-        on_progreso(bytes_escritos, total_bytes) se llama al finalizar la descarga.
-        Retorna ruta_destino escrita.
-        """
-        self._exigir_sesion()
-        if archivo_id is None or str(archivo_id).strip() == "":
-            raise RuntimeError("la descarga necesita el identificador del archivo")
-        resp = self.conexion.pedir({
-            "tipo": "DESCARGAR_ARCHIVO",
-            "archivoId": str(archivo_id),
-            "fechaHora": datetime.datetime.now().isoformat()
-        })
-        self._lanzar_si_error(resp, "descarga rechazada",
-                              ok_tipos=("DESCARGAR_ARCHIVO_RESPUESTA",))
-        b64 = resp.get("contenidoImagen") or ""
-        datos = base64.b64decode(b64)
-        with open(ruta_destino, "wb") as f:
-            f.write(datos)
-        if on_progreso:
-            on_progreso(len(datos), len(datos))
-        return ruta_destino
+        return self._lector_historial.descargar_archivo(archivo_id, ruta_destino, on_progreso)
 
     def marcar_descargado(self, id_mensaje, ruta_archivo):
-        self.historial.marcar_descargado(id_mensaje, ruta_archivo)
+        return self._lector_historial.marcar_descargado(id_mensaje, ruta_archivo)
 
     def obtener_imagen(self, id_mensaje, ruta_destino):
-        """Carga una imagen desde caché o la solicita por archivoId."""
-        fila = self.historial.obtener_por_id(id_mensaje)
-        if not fila:
-            raise RuntimeError("imagen no encontrada en el historial")
-        ruta_local = fila.get("ruta_archivo")
-        if ruta_local and os.path.isfile(ruta_local):
-            return ruta_local
-        archivo_id = fila.get("archivo_id")
-        if not archivo_id:
-            contenido = fila.get("contenido") or ""
-            try:
-                crudos = base64.b64decode(contenido, validate=True)
-            except (binascii.Error, ValueError):
-                raise RuntimeError("el servidor no entregó el identificador de esta imagen")
-            if not crudos:
-                raise RuntimeError("la imagen local está vacía")
-            with open(ruta_destino, "wb") as imagen:
-                imagen.write(crudos)
-            self.marcar_descargado(id_mensaje, ruta_destino)
-            return ruta_destino
-        ruta = self.descargar_archivo(archivo_id, ruta_destino)
-        self.marcar_descargado(id_mensaje, ruta)
-        return ruta
+        return self._lector_historial.obtener_imagen(id_mensaje, ruta_destino)
 
     def marcar_leidos(self, otro):
-        self._exigir_sesion()
-        for id_mensaje in self.historial.ids_no_leidos(self.codigo_actual, otro):
-            id_pendiente = "lectura:" + id_mensaje
-            if not any(p["id"] == id_pendiente for p in self.historial.obtener_pendientes()):
-                self.historial.guardar_pendiente(
-                    id_pendiente, "MENSAJE_LEIDO", self.codigo_actual, otro,
-                    id_mensaje, None, None, datetime.datetime.now().isoformat())
-        self.historial.marcar_estado_de_conversacion(self.codigo_actual, otro, "LEIDO")
-        return self.reintentar_pendientes()
+        return self._coordinador_mensajeria.marcar_leidos(otro)
 
     # -------------------------------------------------------------- historial
     def obtener_conversacion(self, destinatario, limit=50, offset=0):
-        return self.historial.obtener_conversacion(self.codigo_actual, destinatario,
-                                                   limit=limit, offset=offset)
+        return self._lector_historial.obtener_conversacion(destinatario, limit, offset)
 
     def contar_conversacion(self, destinatario):
-        return self.historial.contar_conversacion(self.codigo_actual, destinatario)
+        return self._lector_historial.contar_conversacion(destinatario)
 
     def buscar_en_historial(self, destinatario, patron, limite=200):
-        """UIX-06: ids con el patrón (de más nuevo a más viejo)."""
-        return [m["id_mensaje"]
-                for m in self.historial.buscar_en_conversacion(
-                    self.codigo_actual, destinatario, patron, limite)]
+        return self._lector_historial.buscar_en_historial(destinatario, patron, limite)
 
     def traer_historial(self, destinatario, pagina):
-        self._exigir_sesion()
-        resp = self.conexion.pedir({
-            "tipo": "HISTORIAL_REQ", "remitente": self.codigo_actual,
-            "destinatario": destinatario, "pagina": pagina,
-            "fechaHora": datetime.datetime.now().isoformat()
-        })
-        self._lanzar_si_error(resp, "historial rechazado", ok_tipos=("HISTORIAL_PAGE",))
-        contenido = resp.get("contenido") or "[]"
-        try:
-            filas = json.loads(contenido)
-        except (TypeError, ValueError) as error:
-            raise RuntimeError("pagina remota ilegible") from error
-        for fila in filas:
-            id_mensaje = fila.get("id")
-            origen = fila.get("remitente")
-            destino = fila.get("destinatario")
-            tipo = fila.get("tipo")
-            if not id_mensaje or not origen or not destino or not tipo:
-                continue
-            propio = origen == self.codigo_actual
-            es_img = (tipo == "MENSAJE_IMAGEN")
-            es_arch = (tipo == "MENSAJE_ARCHIVO")
-            contenido_hist = "[Imagen]" if es_img else ("[Archivo]" if es_arch else fila.get("contenido"))
-            fecha_remota = fila.get("fechaEnvio") or datetime.datetime.now().isoformat()
-            # La fila viva (UUID del remitente) y la remota (id numerico del
-            # servidor) son el mismo mensaje: fusionar, no duplicar burbujas.
-            conocido = self.historial.buscar_equivalente(
-                origen, destino, tipo, fila.get("hashSha256") or "",
-                fila.get("contenido") or "", fecha_remota)
-            if conocido:
-                self.historial.actualizar_metadatos_remotos(
-                    conocido, hash_sha256=fila.get("hashSha256") or None,
-                    num_caracteres=fila.get("numCaracteres"),
-                    num_palabras=fila.get("numPalabras"),
-                    nombre_archivo=fila.get("nombreArchivo") or None,
-                    tamano_archivo=fila.get("tamanoArchivo"),
-                    archivo_id=fila.get("archivoId"),
-                    estado="ENVIADO" if propio else "ENTREGADO")
-                continue
-            self.historial.guardar_mensaje(
-                id_mensaje, origen, destino, tipo,
-                contenido_hist,
-                fecha_remota,
-                hash_sha256=fila.get("hashSha256") or "",
-                num_caracteres=fila.get("numCaracteres") or 0,
-                num_palabras=fila.get("numPalabras") or 0,
-                nombre_archivo=fila.get("nombreArchivo") or "",
-                tamano_archivo=fila.get("tamanoArchivo") or 0,
-                enviado=1 if propio else 0,
-                archivo_id=fila.get("archivoId"),
-                estado="ENVIADO" if propio else "ENTREGADO")
-        return int(resp.get("totalPaginas") or 0)
+        return self._lector_historial.traer_historial(destinatario, pagina)
 
     def pendientes(self):
-        return self.historial.obtener_pendientes()
+        return self._reintentador_pendientes.pendientes()
 
     def reintentar_pendientes(self):
-        """Reenvia pendientes en orden con ACK; devuelve cuantos salieron."""
-        if not self.codigo_actual or not self.conexion.conectado:
-            return 0
-        enviados = 0
-        for p in self.historial.obtener_pendientes():
-            if p["tipo"] == "MENSAJE_LEIDO":
-                req = {
-                    "id": p["id"], "tipo": "MENSAJE_LEIDO",
-                    "remitente": p["origen"], "destinatario": p["destino"],
-                    "contenido": p["contenido"],
-                    "fechaHora": p["fecha_creado"]
-                }
-                try:
-                    self.conexion.enviar_async(req)
-                    self.historial.eliminar_pendiente(p["id"])
-                    enviados += 1
-                except (ConnectionError, TimeoutError, OSError) as e:
-                    self.historial.incrementar_intento(p["id"], str(e))
-                    break
-                continue
-
-            if p["tipo"] == "MENSAJE_ARCHIVO":
-                datos = p["payload"] or b""
-                sha256 = hashlib.sha256(datos).hexdigest()
-                nombre = p["nombre_archivo"] or "archivo"
-                mime = mimetypes.guess_type(nombre)[0] or "application/octet-stream"
-                partes = [datos[i:i + _PARTE_MAX_BYTES] for i in range(0, len(datos), _PARTE_MAX_BYTES)]
-                total_partes = max(1, len(partes))
-                try:
-                    self.conexion.pedir({
-                        "id": p["id"],
-                        "tipo": "ARCHIVO_INICIO",
-                        "remitente": p["origen"],
-                        "destinatario": p["destino"],
-                        "nombreArchivo": nombre,
-                        "mime": mime,
-                        "tamanoArchivo": len(datos),
-                        "totalPartes": total_partes,
-                        "fechaHora": p["fecha_creado"],
-                    })
-                    for i, parte in enumerate(partes):
-                        self.conexion.pedir({
-                            "id": p["id"],
-                            "tipo": "ARCHIVO_PARTE",
-                            "remitente": p["origen"],
-                            "archivoId": p["id"],
-                            "indiceParte": i,
-                            "contenidoImagen": base64.b64encode(parte).decode("utf-8"),
-                            "fechaHora": p["fecha_creado"],
-                        })
-                    resp = self.conexion.pedir({
-                        "id": p["id"],
-                        "tipo": "ARCHIVO_FIN",
-                        "remitente": p["origen"],
-                        "archivoId": p["id"],
-                        "hashSha256": sha256,
-                        "fechaHora": p["fecha_creado"],
-                    })
-                    self._lanzar_si_error(resp, "reintento archivo rechazado")
-                    if resp.get("archivoId"):
-                        self.historial.actualizar_archivo_id(p["id"], resp["archivoId"])
-                    self.historial.marcar_estado(p["id"], "ENVIADO")
-                    self.historial.eliminar_pendiente(p["id"])
-                    enviados += 1
-                except (ConnectionError, TimeoutError) as e:
-                    self.historial.incrementar_intento(p["id"], str(e))
-                    break
-                except RuntimeError as e:
-                    self.historial.incrementar_intento(p["id"], str(e))
-                    break
-                continue
-
-            req = {
-                "id": p["id"],
-                "tipo": p["tipo"],
-                "remitente": p["origen"],
-                "destinatario": p["destino"],
-                "fechaHora": p["fecha_creado"]
-            }
-            if p["tipo"] == "MENSAJE_TEXTO":
-                req["contenido"] = p["contenido"]
-            elif p["tipo"] == "MENSAJE_IMAGEN":
-                payload = p["payload"] or b""
-                req["contenidoImagen"] = base64.b64encode(payload).decode('utf-8')
-                req["nombreArchivo"] = p["nombre_archivo"]
-            try:
-                resp = self.conexion.pedir(req)
-                self._lanzar_si_error(resp, "reintento rechazado")
-                if p["tipo"] == "MENSAJE_IMAGEN" and resp.get("archivoId"):
-                    self.historial.actualizar_archivo_id(p["id"], resp["archivoId"])
-                if p["tipo"] in ("MENSAJE_IMAGEN", "MENSAJE_TEXTO"):
-                    self.historial.marcar_estado(p["id"], "ENVIADO")
-                self.historial.eliminar_pendiente(p["id"])
-                enviados += 1
-            except (ConnectionError, TimeoutError) as e:
-                self.historial.incrementar_intento(p["id"], str(e))
-                break
-            except RuntimeError as e:
-                self.historial.incrementar_intento(p["id"], str(e))
-                break
-        return enviados
+        return self._reintentador_pendientes.reintentar_pendientes()
 
 
     def directorio_local(self):
-        return self.historial.listar_cache_usuarios()
+        return self._sincronizador_directorio.directorio_local()
+
+    def recientes(self):
+        return self._sincronizador_directorio.recientes()
 
     # ---------------------------------------------------------------- interno
     def _procesar_pendientes(self):
@@ -643,84 +226,15 @@ class FachadaCliente:
         if not self.codigo_actual:
             raise RuntimeError("inicia sesion primero")
 
-    @staticmethod
-    def _lanzar_si_error(resp, defecto, ok_tipos=("ACK",)):
-        if resp.get("tipo") in ok_tipos and resp.get("exito", True):
-            return
-        if resp.get("tipo") == "ERROR" or not resp.get("exito", True):
-            raise RuntimeError(resp.get("mensajeError") or defecto)
-        # Respuesta con tipo inesperado pero sin error: se acepta (tolerante).
-
     def _asegurar_en_cache(self, codigo):
-        ahora = datetime.datetime.now().isoformat()
-        existentes = {u["codigo"] for u in self.historial.listar_cache_usuarios()}
-        if codigo not in existentes:
-            self.historial.actualizar_cache_usuario(codigo, codigo, "", "", 0, ahora, ahora)
+        return self._sincronizador_directorio._asegurar_en_cache(codigo)
 
     def _handle_unsolicited_message(self, msg):
-        tipo = msg.get("tipo")
-        if tipo in ("MENSAJE_ENTREGADO", "MENSAJE_LEIDO"):
-            id_mensaje = msg.get("contenido")
-            if id_mensaje:
-                self.historial.marcar_estado(
-                    id_mensaje, "ENTREGADO" if tipo == "MENSAJE_ENTREGADO" else "LEIDO")
-            if self.on_mensaje_recibido_ui:
-                self.on_mensaje_recibido_ui(msg)
-            return
-        if tipo == "PRESENCIA":
-            conectados = msg.get("usuariosConectados") or []
-            self.historial.marcar_conectados(conectados)
-            for codigo in conectados:
-                self._asegurar_en_cache(codigo)
-            if self.on_presencia_ui:
-                self.on_presencia_ui(msg)
-            return
-        # SYNC_LOGIN trae el mismo cuerpo que un mensaje: se persiste igual.
-        if tipo in ("MENSAJE_TEXTO", "MENSAJE_IMAGEN", "MENSAJE_ARCHIVO",
-                    "BROADCAST", "SYNC_LOGIN"):
-            # Lo entrante siempre es (remitente → yo): asi el broadcast
-            # aparece en la conversacion con su remitente (leccion Fase 5).
-            # Las imágenes y archivos NO se guardan en base64 local (§4.2:
-            # sin bytes masivos); el preview usa el mensaje vivo y la descarga
-            # es bajo demanda con DESCARGAR_ARCHIVO.
-            es_imagen = (tipo == "MENSAJE_IMAGEN")
-            es_archivo = (tipo == "MENSAJE_ARCHIVO")
-            self.historial.guardar_mensaje(
-                id_mensaje=msg.get("id"),
-                origen=msg.get("remitente"),
-                destino=self.codigo_actual,
-                tipo=tipo,
-                contenido=("[Imagen]" if es_imagen
-                           else "[Archivo]" if es_archivo
-                           else msg.get("contenido")),
-                fecha_envio=msg.get("fechaHora"),
-                hash_sha256=msg.get("hashSha256") or "",
-                num_caracteres=msg.get("numCaracteres") or 0,
-                num_palabras=msg.get("numPalabras") or 0,
-                nombre_archivo=msg.get("nombreArchivo") or msg.get("nombre") or "",
-                tamano_archivo=msg.get("tamanoArchivo") or msg.get("tamano") or 0,
-                descargado=1 if tipo == "MENSAJE_TEXTO" else 0,
-                archivo_id=msg.get("archivoId"), estado="ENVIADO",
-            )
-            if msg.get("remitente"):
-                self._asegurar_en_cache(msg.get("remitente"))
-            if self.on_mensaje_recibido_ui:
-                self.on_mensaje_recibido_ui(msg)
+        return self._receptor_entrante.al_recibir(msg)
 
 
     def _handle_cierre(self, msg):
-        self.codigo_actual = None
-        # PAT-03: CLOSE_NOTICE es "el servidor cerró mi sesión", no una caída de
-        # red. Distinguirlo evita que la UI ofrezca reconectar donde lo que hace
-        # falta es volver a entrar.
-        self._cambiar_estado(SESION_CERRADA)
-        if self.on_cierre_ui:
-            self.on_cierre_ui(msg)
+        return self._receptor_entrante.al_cierre(msg)
 
     def _handle_desconexion(self):
-        # PAT-03: el hilo receptor murio. Solo degrada si no estamos ya en una
-        # sesion cerrada: un cierre voluntario tambien pasa por aqui.
-        if self.estado_conexion != SESION_CERRADA:
-            self._cambiar_estado(SIN_RED)
-        if self.on_desconexion_ui:
-            self.on_desconexion_ui()
+        return self._receptor_entrante.al_desconexion()

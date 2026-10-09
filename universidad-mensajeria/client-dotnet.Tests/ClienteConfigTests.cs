@@ -93,5 +93,59 @@ namespace Mensajeria.Tests
                 File.Delete(ruta);
             }
         }
+
+        [Fact]
+        public void UltimoChatSePersisteAisladoPorCuenta()
+        {
+            string ruta = Path.Combine(Path.GetTempPath(),
+                "preferencias-chat-" + System.Guid.NewGuid().ToString("N") + ".properties");
+            try
+            {
+                ClienteConfig.RutaForzadoParaTest = ruta;
+                PreferenciasChat.GuardarUltimoChat("A001", "B002");
+                PreferenciasChat.GuardarUltimoChat("C003", "D004");
+
+                Assert.Equal("B002", PreferenciasChat.UltimoChat("A001"));
+                Assert.Equal("D004", PreferenciasChat.UltimoChat("C003"));
+                Assert.Null(PreferenciasChat.UltimoChat("B002"));
+            }
+            finally
+            {
+                ClienteConfig.RutaForzadoParaTest = null;
+                if (File.Exists(ruta)) File.Delete(ruta);
+            }
+        }
+
+        [Fact]
+        public void SeleccionActualGanaYUltimoChatSoloSeRestauraSiEstaEnContactos()
+        {
+            string[] contactos = { "B002", "C003" };
+
+            Assert.Equal("C003", PreferenciasChat.ResolverSeleccion(
+                "B002", "C003", contactos));
+            Assert.Equal("B002", PreferenciasChat.ResolverSeleccion(
+                "b002", null, contactos));
+            Assert.Null(PreferenciasChat.ResolverSeleccion(
+                "D004", null, contactos));
+        }
+
+        [Fact]
+        public void NoPersisteLaPropiaCuentaComoConversacion()
+        {
+            string ruta = Path.Combine(Path.GetTempPath(),
+                "preferencias-chat-" + System.Guid.NewGuid().ToString("N") + ".properties");
+            try
+            {
+                ClienteConfig.RutaForzadoParaTest = ruta;
+                PreferenciasChat.GuardarUltimoChat("A001", "A001");
+
+                Assert.Null(PreferenciasChat.UltimoChat("A001"));
+            }
+            finally
+            {
+                ClienteConfig.RutaForzadoParaTest = null;
+                if (File.Exists(ruta)) File.Delete(ruta);
+            }
+        }
     }
 }

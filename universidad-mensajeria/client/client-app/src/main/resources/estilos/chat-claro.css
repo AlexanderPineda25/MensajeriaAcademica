@@ -1,11 +1,18 @@
+/* GENERADO por contrato/generar_tokens.py desde contrato/tokens-diseno.json.
+ * NO editar a mano: el cambio se hace en el JSON y se regenera.
+ * Plantilla comun a los dos temas: por eso `chat-claro.css` ya no puede quedarse
+ * sin un selector que `chat.css` si tenga (le faltaban .message-out .message-text,
+ * .message-out .image-caption y .message-out .message-time).
+ * Tema: claro */
+
 .root {
-    -fx-font-family: "Segoe UI", sans-serif;
+    -fx-font-family: Segoe UI, sans-serif;
     -fx-font-size: 13px;
-    -fx-background-color: #f5f7f8;
+    -fx-background-color: #EEF1F6;
 }
 
 .messenger-root, .split-pane {
-    -fx-background-color: #f5f7f8;
+    -fx-background-color: #EEF1F6;
     -fx-padding: 0;
 }
 
@@ -21,7 +28,7 @@
 }
 
 .conversation-pane {
-    -fx-background-color: #f5f7f8;
+    -fx-background-color: #EEF1F6;
     -fx-spacing: 0;
 }
 
@@ -38,7 +45,7 @@
 }
 
 .session-label, .conversation-presence, .status-label, .message-time {
-    -fx-text-fill: #75838a;
+    -fx-text-fill: #57676E;
     -fx-font-size: 11px;
 }
 
@@ -53,7 +60,6 @@
     -fx-background-radius: 5px;
     -fx-border-color: transparent;
     -fx-text-fill: #25343b;
-    /* UIX-17: #8b979c daba 2.71:1 sobre #f1f4f5; #5A686E da 5.22:1 (AA). */
     -fx-prompt-text-fill: #5A686E;
 }
 
@@ -67,6 +73,13 @@
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-padding: 0;
+}
+
+.message-list {
+    -fx-background-image: url("../fondos/fondo_chat_claro.jpg");
+    -fx-background-size: cover;
+    -fx-background-position: center center;
+    -fx-background-repeat: no-repeat;
 }
 
 .chat-list .list-cell {
@@ -95,7 +108,6 @@
 }
 
 .chat-list-preview {
-    /* UIX-17: #78858B daba 3.80:1 sobre #ffffff; #57676E da 5.88:1 (AA). */
     -fx-text-fill: #57676E;
     -fx-font-size: 11px;
 }
@@ -103,7 +115,7 @@
 .unread-badge {
     -fx-background-color: #48a982;
     -fx-background-radius: 12px;
-    -fx-text-fill: white;
+    -fx-text-fill: #FFFFFF;
     -fx-font-size: 10px;
     -fx-font-weight: 700;
     -fx-padding: 3px 6px;
@@ -134,23 +146,33 @@
 }
 
 .message-in {
-    -fx-background-color: #ffffff;
+    -fx-background-color: #c7e6ff;
+    -fx-border-color: #c7e6ff;
+    -fx-border-radius: 8px;
 }
 
 .message-out {
     -fx-background-color: #e4f3ec;
+    -fx-border-color: #cfe4da;
+    -fx-border-radius: 8px;
 }
 
 .message-sender {
     -fx-font-size: 11px;
     -fx-font-weight: 700;
-    -fx-text-fill: #267d75;
+    -fx-text-fill: #1F635C;
+}
+
+/* El lavanda del remitente no llega a 4.5:1 sobre la burbuja propia morada, asi que
+ * ahi se usa el token propio. En la burbuja ajena sigue siendo lavanda. */
+.message-out .message-sender {
+    -fx-text-fill: #1F635C;
 }
 
 /* UIX-13: estados vacíos en vez de rectángulos en blanco. */
 .empty-placeholder {
     -fx-font-size: 12px;
-    -fx-text-fill: #75838a;
+    -fx-text-fill: #57676E;
     -fx-alignment: center;
     -fx-text-alignment: center;
 }
@@ -159,7 +181,7 @@
 .day-separator {
     -fx-font-size: 11px;
     -fx-font-weight: 700;
-    -fx-text-fill: #75838a;
+    -fx-text-fill: #57676E;
     -fx-alignment: center;
     -fx-padding: 8px 0 4px 0;
 }
@@ -177,6 +199,11 @@
     -fx-underline: true;
 }
 
+.message-out .message-text {
+    -fx-text-fill: #24383D;
+    -fx-fill: #24383D;
+}
+
 .message-quote {
     -fx-text-fill: #267d75;
     -fx-font-size: 12px;
@@ -191,6 +218,10 @@
 .image-caption {
     -fx-text-fill: #52636a;
     -fx-font-size: 11px;
+}
+
+.message-out .image-caption {
+    -fx-text-fill: #43555c;
 }
 
 .image-placeholder {
@@ -217,7 +248,11 @@
 }
 
 .message-unread {
-    -fx-text-fill: #819096;
+    -fx-text-fill: #5B6B73;
+}
+
+.message-out .message-time {
+    -fx-text-fill: #2F6F68;
 }
 
 .reply-button, .icon-button {
@@ -253,7 +288,7 @@
 .send-button {
     -fx-background-color: #2189ad;
     -fx-background-radius: 5px;
-    -fx-text-fill: white;
+    -fx-text-fill: #FFFFFF;
     -fx-font-weight: 700;
     -fx-padding: 9px 15px;
     -fx-cursor: hand;

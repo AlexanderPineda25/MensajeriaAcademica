@@ -26,7 +26,9 @@ import universidad.mensajeria.server.fachadadeservicios.casosdeuso.Casos;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.CerrarAdminCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.CerrarCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.DescargaCaso;
+import universidad.mensajeria.server.fachadadeservicios.casosdeuso.DifusionCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.EncolarCaso;
+import universidad.mensajeria.server.fachadadeservicios.casosdeuso.EntregaCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.ExpulsarCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.FechasUsuariosCaso;
 import universidad.mensajeria.server.fachadadeservicios.casosdeuso.FragmentoArchivoCaso;
@@ -57,6 +59,7 @@ import java.util.List;
 import java.util.ServiceLoader;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -144,8 +147,21 @@ public final class Fabrica {
 
         ResponderCaso responder = new ResponderCaso(protocolo);
         EncolarCaso encolar = new EncolarCaso(colas);
+        EntregaCaso entrega = new EntregaCaso(protocolo, conexiones);
+        // Pool acotado SOLO para entrega TCP del abanico (broadcast/difusión).
+        // Lo crea la raiz de composicion y lo cierra al apagar; un cliente
+        // lento retiene como maximo un hilo de entrega.
+        ThreadPoolExecutor poolEntrega = new ThreadPoolExecutor(
+                4, 16, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(10_000),
+                r -> {
+                    Thread t = new Thread(r, "entrega-" + r.hashCode());
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
         Casos casos = new Casos(
-                new AutenticarCaso(protocolo, servicios, usuarios, conexiones, almacenar,
+                new AutenticarCaso(protocolo, servicios, usuarios, conexiones, mensajes,
                         eventos, p.verificador(), p.limites(), responder),
                 new CerrarCaso(protocolo, eventos),
                 new ExpulsarCaso(protocolo, conexiones, eventos, responder),
@@ -153,12 +169,15 @@ public final class Fabrica {
                 encolar,
                 new FragmentoArchivoCaso(servicios, p.limites(), p.trabajoBase(), encolar,
                         responder, eventos),
-                new HistorialCaso(almacenar, protocolo, responder),
-                new DescargaCaso(almacenar, protocolo, responder, p.uploadDir()),
+                new HistorialCaso(mensajes, protocolo, responder),
+                new DescargaCaso(mensajes, protocolo, responder, p.uploadDir()),
                 new ListarCaso(protocolo, conexiones, usuarios),
                 responder,
-                new ArchivoVistaCaso(almacenar),
-                new FechasUsuariosCaso(almacenar));
+                new ArchivoVistaCaso(mensajes),
+                new FechasUsuariosCaso(mensajes),
+                entrega,
+                new DifusionCaso(usuarios, mensajes, conexiones, eventos, protocolo,
+                        poolEntrega, entrega));
 
         // Rompe el ciclo Fachada<->Despachador: la Fachada recibe un Supplier
         // que Fabrica resuelve justo despues con el despachador real.
@@ -166,7 +185,7 @@ public final class Fabrica {
                 new java.util.concurrent.atomic.AtomicReference<>();
         FachadaDeServicios fachada = new FachadaDeServicios(protocolo, despachadorRef::get,
                 servicios, usuarios, colas, mensajes, eventos, conexiones,
-                p.limites(), casos);
+                p.limites(), casos, poolEntrega);
 
         // ...y el despachador real se cablea con la Fachada como salida (rompe
         // el ciclo Fachada<->Despachador via SPI, sin que servidor-app vea impl).

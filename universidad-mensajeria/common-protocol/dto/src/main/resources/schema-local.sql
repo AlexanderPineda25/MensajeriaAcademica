@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS historial_local (
     num_palabras   INTEGER,
     nombre_archivo TEXT,
     archivo_id     TEXT,                      -- id remoto para re-descargar imagen tras reiniciar
+    etapas_filtrado TEXT,                     -- etapas JSON del pipeline secuencial de imagen
     ruta_archivo   TEXT,                      -- copia local del archivo descargado
     tamano_archivo INTEGER,
     fecha_envio    TEXT NOT NULL,             -- ISO-8601 UTC

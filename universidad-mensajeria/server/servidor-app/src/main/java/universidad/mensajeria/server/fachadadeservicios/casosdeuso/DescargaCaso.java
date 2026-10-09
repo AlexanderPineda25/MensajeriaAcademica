@@ -7,7 +7,7 @@ import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 import universidad.mensajeria.protocolo.InterfazProtocoloComunicacion;
 import universidad.mensajeria.common.interno.ArchivoDTO;
-import universidad.mensajeria.server.almacenarinformacion.InterfazAlmacenarInformacion;
+import universidad.mensajeria.server.mensajes.InterfazMensajes;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,16 +24,16 @@ public final class DescargaCaso {
 
     private static final Logger LOG = LoggerFactory.getLogger(DescargaCaso.class);
 
-    private final InterfazAlmacenarInformacion almacenar;
+    private final InterfazMensajes mensajes;
     private final InterfazProtocoloComunicacion protocolo;
     private final ResponderCaso respuestas;
     private final Path uploadDir;
 
-    public DescargaCaso(InterfazAlmacenarInformacion almacenar,
+    public DescargaCaso(InterfazMensajes mensajes,
                         InterfazProtocoloComunicacion protocolo,
                         ResponderCaso respuestas,
                         Path uploadDir) {
-        this.almacenar = almacenar;
+        this.mensajes = mensajes;
         this.protocolo = protocolo;
         this.respuestas = respuestas;
         this.uploadDir = uploadDir.toAbsolutePath().normalize();
@@ -48,7 +48,7 @@ public final class DescargaCaso {
                     "archivoId invalido: " + archivoIdStr);
             return;
         }
-        Optional<ArchivoDTO> encontrado = almacenar.buscarArchivoPorId(archivoId);
+        Optional<ArchivoDTO> encontrado = mensajes.buscarArchivoPorId(archivoId);
         if (encontrado.isEmpty()) {
             respuestas.fallo(sesion, idSolicitud, TipoMensaje.ERROR,
                     "archivo no encontrado: " + archivoId);

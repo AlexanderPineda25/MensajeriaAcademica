@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import universidad.mensajeria.common.interno.ArchivoDTO;
 import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
 import universidad.mensajeria.common.interno.EventoEtapa;
+import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
 import universidad.mensajeria.common.interno.MensajeResumenDTO;
 import universidad.mensajeria.common.interno.PaginaDTO;
@@ -19,12 +20,14 @@ import universidad.mensajeria.utilerias.Tuberia;
 import universidad.mensajeria.utilerias.InterfazTuberiaFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
@@ -273,6 +276,32 @@ public class Mensajes implements InterfazMensajes {
     @Override
     public ActividadUsuarioDTO actividadUsuario(String codigo) {
         return almacenar.actividadUsuario(codigo);
+    }
+
+    @Override
+    public PaginaDTO<MensajeResumenDTO> paginaConversacion(String codigoA, String codigoB,
+                                                           int pagina, int tamano) {
+        return almacenar.paginaConversacion(codigoA, codigoB, pagina, tamano);
+    }
+
+    @Override
+    public List<MensajeResumenDTO> pendientesPara(String codigo, int limite) {
+        return almacenar.pendientesPara(codigo, limite);
+    }
+
+    @Override
+    public Optional<ArchivoDTO> buscarArchivoPorId(long id) {
+        return almacenar.buscarArchivoPorId(id);
+    }
+
+    @Override
+    public byte[] leerBytesArchivo(long archivoId) throws IOException {
+        return almacenar.leerBytesArchivo(archivoId);
+    }
+
+    @Override
+    public List<FechasUsuarioDTO> fechasUsuarios() {
+        return almacenar.fechasUsuarios();
     }
 
     private static List<Map<String, Object>> traza(Tuberia.ResultadoTuberia resultado) {

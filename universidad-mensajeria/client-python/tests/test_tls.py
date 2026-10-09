@@ -32,6 +32,18 @@ class TestValidarTls(unittest.TestCase):
     def test_apagado_no_valida_nada(self):
         validar_tls(False, 5000, 5000, "/no/existe.pem")
         validar_tls("false", 5000, 5000, "/no/existe.pem")
+        validar_tls(None, 5000, 5000, "/no/existe.pem")
+        validar_tls("", 5000, 5000, "/no/existe.pem")
+        validar_tls("   ", 5000, 5000, "/no/existe.pem")
+
+    def test_habilitado_tls_invalido_no_se_convierte_silenciosamente_a_false(self):
+        for valor in ("abc", "yes", "0", "1"):
+            with self.subTest(valor=valor):
+                with self.assertRaisesRegex(ValueError, "tls.habilitado"):
+                    validar_tls(valor, 5000, 5001, "")
+                with self.assertRaisesRegex(ValueError, "tls.habilitado"):
+                    ConexionRed("127.0.0.1", 5000, lambda msg: None,
+                                tls_habilitado=valor)
 
     def test_colision_puertos_fijos(self):
         with self.assertRaisesRegex(ValueError, "comparten el puerto 5000"):

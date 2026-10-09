@@ -7,10 +7,12 @@ se veía. Los textos son los mismos en los 3 clientes (contrato compartido,
 ver VIS-02).
 """
 
-CONECTANDO = "conectando"
-CONECTADO = "conectado"
-SIN_RED = "sin_red"
-SESION_CERRADA = "sesion_cerrada"
+from puertos.contratos import EstadoConexion
+
+CONECTANDO = EstadoConexion.CONECTANDO.value
+CONECTADO = EstadoConexion.CONECTADO.value
+SIN_RED = EstadoConexion.SIN_RED.value
+SESION_CERRADA = EstadoConexion.SESION_CERRADA.value
 
 TEXTOS = {
     CONECTANDO: "Conectando…",

@@ -2,7 +2,7 @@
 
 Sistema de escritorio cliente/servidor para mensajería académica. Un servidor Java recibe conexiones TCP y procesa mensajes JSON; tres clientes independientes usan JavaFX, PySide6 y WPF. Solo el servidor accede a MySQL; los clientes mantienen su historial local en H2 o SQLite.
 
-> Estado documental revisado el **2026-10-06**. Para el estado operativo y las verificaciones fechadas, consulta [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md). Este README es la entrada rápida, no reemplaza los registros históricos de auditoría ni los requerimientos.
+> Estado documental consolidado el **2026-10-07**. Para el estado operativo y las verificaciones fechadas, consulta [`ESTADO_ROADMAP.md`](ESTADO_ROADMAP.md). Este README es la entrada rápida, no reemplaza los registros históricos de auditoría ni los requerimientos.
 
 ## Componentes
 
@@ -31,9 +31,9 @@ El contrato de red es TCP con una cabecera big-endian de 4 bytes y un cuerpo JSO
 | [`PLAN.md`](PLAN.md) | Arquitectura y decisiones técnicas. |
 | [`ANALISIS_TECNICO.md`](ANALISIS_TECNICO.md) | Auditoría histórica con ubicación de hallazgos; consultar el roadmap para saber si siguen abiertos. |
 | [`PLAN_PATRONES_UI.md`](PLAN_PATRONES_UI.md) | Plan e historial de mejoras de las interfaces. |
-| [`PLAN_MEJORAS.md`](PLAN_MEJORAS.md) | Bitácora histórica de cambios y verificaciones. |
-| [`DIAGRAMAS/README.md`](DIAGRAMAS/README.md) | Índice de fuentes/renderes de diagramas y conservación de los archivos legados. |
-| [`REVISION_DOCUMENTAL.md`](REVISION_DOCUMENTAL.md) | Revisión de vigencia y propuestas de fusión o retiro (sin borrar archivos). |
+| [`docs/archivo/README.md`](docs/archivo/README.md) | Qué se archivó/fusionó el 2026-10-07 y dónde está lo único que tenía. |
+| [`DIAGRAMAS/README.md`](DIAGRAMAS/README.md) | Índice de fuentes/renderes de diagramas (incluye legados migrados). |
+
 
 ## Estado resumido
 
@@ -47,4 +47,4 @@ El contrato de red es TCP con una cabecera big-endian de 4 bytes y un cuerpo JSO
 
 La distribución actual del servidor usa JavaFX Graphics **21.0.6**. En JDK recientes el renderizador `com.sun.marlin.OffHeapArray` puede emitir una advertencia al llamar `Unsafe.allocateMemory`; el stack trace señala el JAR de JavaFX, no una llamada de la lógica de mensajería. La guía del servidor explica el alcance y las alternativas de runtime. El aviso no significa por sí solo que el servidor haya fallado.
 
-Consulta [`REVISION_DOCUMENTAL.md`](REVISION_DOCUMENTAL.md) para ver qué documentos conviene mantener separados y qué archivos se pueden fusionar o retirar después de revisar su contenido. No se eliminó documentación en esta actualización.
+Consulta [`docs/archivo/README.md`](docs/archivo/README.md) para ver qué se archivó o fusionó el 2026-10-07 y dónde está el material único preservado.

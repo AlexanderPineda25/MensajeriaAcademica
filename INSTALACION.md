@@ -1,7 +1,8 @@
 # Preparar cualquier computador para que el programa funcione
 
-Actualizado: **2026-10-06**. Guía de **preparación de entorno**, desde un Windows limpio hasta
-"compilo y los 4 procesos arrancan".
+Actualizado: **2026-10-07**. Guía de **preparación de entorno**, desde un Windows limpio hasta
+"compilo y los 4 procesos arrancan". Todos los scripts usan rutas relativas a su
+propia carpeta: sirven en cualquier PC sin editar rutas absolutas.
 
 > **Qué NO es esta guía.** No es cómo desplegar: eso es [`DESPLIEGUE.md`](DESPLIEGUE.md).
 > Esta es la respuesta a "¿qué instalo y cómo lo dejo actualizado?".
@@ -177,6 +178,70 @@ Si sale `...\Common Files\Oracle\Java\javapath\java.exe`, tienes dos salidas:
 En este repositorio ya se pasó: `java -version` reportaba **17.0.11** con `JAVA_HOME` vacío,
 mientras el proyecto exige 21. Si te pasa, no es que el build esté mal.
 
+#### 3.3.1 El síntoma cuando ejecutas el JAR compilado
+
+El shim no solo rompe el `mvn`. Si ya construiste y quieres arrancar el servidor con el JAR,
+falla así:
+
+```text
+PS C:\...\universidad-mensajeria> java -jar server\servidor-app\target\servidor-app-1.0.0-SNAPSHOT.jar
+Exception in thread "main" java.lang.UnsupportedClassVersionError:
+  universidad/mensajeria/server/ServerApplication has been compiled by a more recent version of
+  the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes
+  class file versions up to 61.0
+```
+
+Los números son el diagnóstico completo: **65.0 = Java 21**, **61.0 = Java 17**. El JAR está bien
+compilado; lo que se ejecutó fue el runtime equivocado. Con el JDK correcto, el mismo JAR arranca
+sin tocar una línea de código.
+
+Solución en la sesión actual, sin tocar nada del sistema:
+
+```powershell
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+java -version   # ahora debe decir 21
+java -jar server\servidor-app\target\servidor-app-1.0.0-SNAPSHOT.jar
+```
+
+Alternativa equivalente, sin reordenar nada:
+
+```powershell
+& "$env:JAVA_HOME\bin\java.exe" -jar server\servidor-app\target\servidor-app-1.0.0-SNAPSHOT.jar
+```
+
+> Los dos encabezados de la salida B de más arriba hacen falta, pero **el diálogo de Variables de
+> entorno abre el `PATH` de sistema**, y ahí solo tienes permisos si eres administrador. Si no los
+> tienes, la salida A es tu camino.
+
+#### 3.3.2 Por qué `preparar-entorno-servidor.ps1` no lo resuelve
+
+El script del repositorio (`universidad-mensajeria/herramientas/preparar-entorno-servidor.ps1`)
+escribe `JAVA_HOME` y añade el JDK al `PATH` **de usuario**. Eso no basta contra `javapath`, y no
+por un fallo del script sino por cómo compone Windows el `PATH`:
+
+```text
+PATH final = PATH de MAQUINA ; PATH de USUARIO
+             ^ C:\...\Oracle\Java\javapath   <-- gana siempre
+                                         ^ C:\...\tools\jdk\jdk-21...\bin  <-- llega tarde
+```
+
+El `PATH` de usuario se **añade al final**, así que nunca puede adelantar a una entrada de sistema.
+Consecuencia práctica: aun siguiendo el script y cerrando la terminal, `java -version` puede seguir
+diciendo 17. Las tres salidas, de menos a más invasivas:
+
+1. `& "$env:JAVA_HOME\bin\java.exe" ...` en cada invocación.
+2. `$env:Path = "$env:JAVA_HOME\bin;$env:Path"` al abrir la terminal (solo esa sesión).
+3. Con permisos de administrador, mover `%JAVA_HOME%\bin` por encima de `javapath` en el `PATH`
+   de **sistema**, o desinstalar el JDK 17 de Oracle (nota al final de §3.1).
+
+Para comprobar en cuál de los tres casos estás:
+
+```powershell
+(Get-Command java).Source          # si sale ...\Oracle\Java\javapath\ -> caso 3 pendiente
+java -version                      # 17 = el shim sigue ganando
+& "$env:JAVA_HOME\bin\java.exe" -version   # 21 = el JDK está bien, el PATH no
+```
+
 ### 3.4 Verificar (las tres líneas deben decir 21 o más)
 
 ```powershell
@@ -195,6 +260,8 @@ $env:JAVA_HOME
 | `JAVA_HOME is set to an invalid directory` | Tiene `\bin`, `\` final, o no existe | §3.2 |
 | `Could not find or load main class` al arrancar | Falta el *module path* de JavaFX | Usa `launch-client.cmd` de la distribución, no `java -jar` |
 | `mvn` corre con 17 aunque `java` dice 21 | Maven toma `JAVA_HOME`, no el `PATH` | `mvn -v` y fija `JAVA_HOME` |
+| `UnsupportedClassVersionError` al hacer `java -jar` (`class file version 65.0` vs `up to 61.0`) | El JAR es de Java 21 pero se ejecuta con el runtime 17 del shim `javapath` | §3.3.1 y §3.3.2. El build no está mal |
+| `Error: Unable to access jarfile ...` | Estás en la raíz del repo, no en `universidad-mensajeria\` | `Set-Location universidad-mensajeria` y repite la ruta relativa |
 
 ## 4. Paso 1 — Maven
 
@@ -343,6 +410,18 @@ dotnet build client-dotnet\Mensajeria.csproj -c Release
 El `-am` (**also-make**) es obligatorio: compila los módulos hermanos (`common-protocol`,
 `client-interfaces`) que el servidor y el cliente necesitan.
 
+Para **arrancar** el JAR recién construido desde el monorepo, la ruta es relativa a
+`universidad-mensajeria\`:
+
+```powershell
+java -jar server\servidor-app\target\servidor-app-1.0.0-SNAPSHOT.jar
+```
+
+Dos fallos frecuentes aquí, ambos resueltos en §3.3: `Unable to access jarfile` si se ejecuta desde
+la raíz del repositorio, y `UnsupportedClassVersionError` si el `java` activo es el 17 del shim
+`javapath`. Este arranque es solo de desarrollo; en el equipo destino se usa el lanzador de la
+distribución (§11).
+
 ## 10. Generar las 4 distribuciones
 
 Cada proceso recibe **una carpeta**, nunca el monorepo:
@@ -411,6 +490,8 @@ Los cuatro del punto 4 deben decir `True`. Si alguno dice `False`, vuelve a ejec
 |---|---|---|
 | `release version 21 not supported` | JDK activo < 21 | §3.2 y §3.3 |
 | `java -version` dice 17 con el 21 instalado | Shim `javapath` de Oracle gana el `PATH` | §3.3 |
+| `UnsupportedClassVersionError` al arrancar el servidor con `java -jar` | Se ejecuta el runtime 17 sobre un JAR de Java 21 | §3.3.1 y §3.3.2 |
+| `Error: Unable to access jarfile server/...` | Ruta relativa ejecutada desde la raíz del repo | `Set-Location universidad-mensajeria` |
 | El servidor imprime `sun.misc.Unsafe::allocateMemory` desde `com.sun.marlin.OffHeapArray` | JavaFX Graphics 21.0.6 del servidor usa ese método interno; es una advertencia de la dependencia de renderizado, no un error de compilación | El proceso puede seguir funcionando. Opciones y cambios de compatibilidad en [README del servidor](universidad-mensajeria/server/servidor-app/README.md#advertencia-de-javafx-y-sunmiscunsafe) |
 | `mvn` no se reconoce tras instalar | Terminal abierta antes de cambiar el `PATH` | Cierra y abre la terminal |
 | El `PATH` dejó de funcionar | Alguien usó `setx PATH` (trunca a 1024) | Restaura el `PATH` desde *Variables de entorno* |

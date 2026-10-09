@@ -19,11 +19,13 @@
             <StackPanel Margin="28,18,28,24">
                 <TextBlock Text="Código universitario" FontWeight="SemiBold" Margin="0,0,0,5"
                            Foreground="{DynamicResource LabelBrush}"/>
-                <ui:TextBox x:Name="txtCodigo" PlaceholderText="A001234567" ClearButtonEnabled="True" Margin="0,0,0,12"/>
+                <ui:TextBox x:Name="txtCodigo" PlaceholderText="A001234567" ClearButtonEnabled="True" Margin="0,0,0,12"
+                            AutomationProperties.Name="Código universitario"/>
 
                 <TextBlock Text="Contraseña" FontWeight="SemiBold" Margin="0,0,0,5"
                            Foreground="{DynamicResource LabelBrush}"/>
-                <ui:PasswordBox x:Name="txtContrasena" PlaceholderText="••••••••••" Margin="0,0,0,12"/>
+                <ui:PasswordBox x:Name="txtContrasena" PlaceholderText="••••••••••" Margin="0,0,0,12"
+                                AutomationProperties.Name="Contraseña"/>
 
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
@@ -32,21 +34,25 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                         <TextBlock Text="Servidor" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,5"/>
-                        <ui:TextBox x:Name="txtHost" PlaceholderText="localhost" IsEnabled="False"/>
+                        <ui:TextBox x:Name="txtHost" PlaceholderText="localhost" IsEnabled="False"
+                                    AutomationProperties.Name="Servidor configurado, solo informativo"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Puerto" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,5"/>
-                        <ui:TextBox x:Name="txtPuerto" PlaceholderText="5000" IsEnabled="False"/>
+                        <ui:TextBox x:Name="txtPuerto" PlaceholderText="5000" IsEnabled="False"
+                                    AutomationProperties.Name="Puerto configurado, solo informativo"/>
                     </StackPanel>
                 </Grid>
                 <TextBlock Text="Tema" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,5"/>
-                <ComboBox x:Name="cmbTema" Margin="0,0,0,8" SelectionChanged="CmbTema_SelectionChanged">
+                <ComboBox x:Name="cmbTema" Margin="0,0,0,8" SelectionChanged="CmbTema_SelectionChanged"
+                          AutomationProperties.Name="Tema de la interfaz">
                     <ComboBoxItem Content="Oscuro"/>
                     <ComboBoxItem Content="Claro"/>
                 </ComboBox>
                 <ui:Button x:Name="btnEntrar" Content="Iniciar sesión →" Appearance="Primary"
                            Click="BtnEntrar_Click" MinHeight="40" HorizontalAlignment="Stretch"
-                           HorizontalContentAlignment="Center" IsDefault="True"/>
+                           HorizontalContentAlignment="Center" IsDefault="True"
+                           AutomationProperties.Name="Iniciar sesión"/>
                 <!-- Fase 10.2 (P2): sin «Crear cuenta»: el alta es solo por archivo plano (CSV). -->
 
                 <!-- UIX-00f: "Conectando…" es un estado de carga, no un error. Antes
@@ -58,11 +64,15 @@
                            Visibility="Collapsed"/>
 
                 <Border x:Name="bordeError" Background="#FDECEA" BorderBrush="#F1A9A5" BorderThickness="1"
-                        CornerRadius="8" Padding="9" Margin="0,12,0,0" Visibility="Collapsed">
+                        CornerRadius="8" Padding="9" Margin="0,12,0,0" Visibility="Collapsed"
+                        AutomationProperties.Name="Error de inicio de sesión"
+                        AutomationProperties.LiveSetting="Polite">
                     <TextBlock x:Name="txtError" Foreground="#B91C1C" TextWrapping="Wrap"/>
                 </Border>
                 <Border x:Name="bordeAviso" Background="#FFFBEB" BorderBrush="#F2CE84" BorderThickness="1"
-                        CornerRadius="8" Padding="9" Margin="0,8,0,0" Visibility="Collapsed">
+                        CornerRadius="8" Padding="9" Margin="0,8,0,0" Visibility="Collapsed"
+                        AutomationProperties.Name="Aviso de inicio de sesión"
+                        AutomationProperties.LiveSetting="Polite">
                     <TextBlock x:Name="txtAviso" Foreground="#B45309" TextWrapping="Wrap"/>
                 </Border>
             </StackPanel>

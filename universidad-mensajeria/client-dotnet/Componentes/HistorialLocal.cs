@@ -23,7 +23,8 @@ namespace Mensajeria.Componentes
             string? contenido, string? hash, int? numCaracteres, int? numPalabras,
             string? nombreArchivo, string? rutaArchivo, long? tamanoArchivo,
             string fechaEnvio, int enviado, int descargado,
-            string estado = "ENVIADO", string? archivoId = null)
+            string estado = "ENVIADO", string? archivoId = null,
+            string? etapasFiltrado = null)
         {
             lock (_store.SyncRoot)
             {
@@ -32,8 +33,8 @@ namespace Mensajeria.Componentes
     INSERT INTO historial_local (
         id_mensaje, origen, destino, tipo, contenido, hash_sha256,
         num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-        tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id
-    ) VALUES (@id, @ori, @des, @tip, @con, @has, @nca, @npa, @nar, @rar, @tar, @fen, @env, @desca, @est, @aid)
+        tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id, etapas_filtrado
+    ) VALUES (@id, @ori, @des, @tip, @con, @has, @nca, @npa, @nar, @rar, @tar, @fen, @env, @desca, @est, @aid, @etapas)
     ON CONFLICT(id_mensaje) DO UPDATE SET
         contenido = excluded.contenido,
         hash_sha256 = COALESCE(excluded.hash_sha256, historial_local.hash_sha256),
@@ -43,6 +44,7 @@ namespace Mensajeria.Componentes
         ruta_archivo = COALESCE(excluded.ruta_archivo, historial_local.ruta_archivo),
         tamano_archivo = COALESCE(excluded.tamano_archivo, historial_local.tamano_archivo),
         archivo_id = COALESCE(excluded.archivo_id, historial_local.archivo_id),
+        etapas_filtrado = COALESCE(excluded.etapas_filtrado, historial_local.etapas_filtrado),
         descargado = MAX(excluded.descargado, historial_local.descargado),
         estado = CASE
             WHEN historial_local.estado = 'LEIDO' OR excluded.estado = 'LEIDO' THEN 'LEIDO'
@@ -65,6 +67,7 @@ namespace Mensajeria.Componentes
                 cmd.Parameters.AddWithValue("@desca", descargado);
                 cmd.Parameters.AddWithValue("@est", estado);
                 cmd.Parameters.AddWithValue("@aid", (object?)archivoId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@etapas", (object?)etapasFiltrado ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
         }
@@ -80,7 +83,8 @@ namespace Mensajeria.Componentes
            CASE WHEN tipo = 'MENSAJE_IMAGEN' THEN NULL ELSE contenido END AS contenido,
            hash_sha256,
            num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-           tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id
+           tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id,
+           etapas_filtrado
     FROM historial_local
     WHERE (origen = @o1 AND destino = @d1) OR (origen = @o2 AND destino = @d2)
     ORDER BY fecha_envio DESC
@@ -106,6 +110,7 @@ namespace Mensajeria.Componentes
                         { "descargado", reader.GetInt64(13) }
                     };
                     row["estado"] = reader.GetString(14);
+                    if (!reader.IsDBNull(16)) row["etapasFiltrado"] = reader.GetString(16);
                     if (!reader.IsDBNull(4)) row["contenido"] = reader.GetString(4);
                     if (!reader.IsDBNull(5)) row["hash"] = reader.GetString(5);
                     if (!reader.IsDBNull(6)) row["numCaracteres"] = reader.GetInt64(6);

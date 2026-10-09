@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Mensajeria.Componentes;
 using Mensajeria.Store;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace Mensajeria.Tests
@@ -85,6 +86,72 @@ namespace Mensajeria.Tests
             Assert.NotNull(fila);
             Assert.False(fila!.ContainsKey("contenido"));
             Assert.Equal("aGVsbG8=", _h.ContenidoPorId("imagen-base64"));
+        }
+
+        [Fact]
+        public void UpsertPersisteEtapasYUnUpsertSinEtapasNoLasBorra()
+        {
+            const string etapas = "[{\"etapa\":\"Sepia\",\"ms\":8,\"ruta\":\"privada/02.png\"}]";
+            _h.UpsertMensaje("imagen-etapas", "A", "B", "MENSAJE_IMAGEN", "[Imagen]",
+                "hash", null, null, "foto.png", null, 12, "2026-01-01T10:11:00", 1, 1,
+                "ENVIADO", "archivo-1", etapas);
+            _h.UpsertMensaje("imagen-etapas", "A", "B", "MENSAJE_IMAGEN", "[Imagen]",
+                "hash", null, null, "foto.png", null, 12, "2026-01-01T10:11:00", 1, 1,
+                "ENTREGADO", "archivo-1");
+
+            var fila = _h.PaginaConversacion("A", "B", 50, 0)
+                .Find(m => (string)m["id"] == "imagen-etapas");
+
+            Assert.NotNull(fila);
+            Assert.Equal(etapas, fila!["etapasFiltrado"]);
+            Assert.Equal("ENTREGADO", fila["estado"]);
+        }
+
+        [Fact]
+        public void MigracionAgregaEtapasFiltradoAUnaBaseAnteriorYEsIdempotente()
+        {
+            string antigua = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".db");
+            try
+            {
+                using (var conexion = new SqliteConnection($"Data Source={antigua}"))
+                {
+                    conexion.Open();
+                    using var cmd = conexion.CreateCommand();
+                    cmd.CommandText = @"
+CREATE TABLE historial_local (
+    id_mensaje TEXT PRIMARY KEY, origen TEXT NOT NULL, destino TEXT NOT NULL,
+    tipo TEXT NOT NULL, contenido TEXT, hash_sha256 TEXT, num_caracteres INTEGER,
+    num_palabras INTEGER, nombre_archivo TEXT, archivo_id TEXT, ruta_archivo TEXT,
+    tamano_archivo INTEGER, fecha_envio TEXT NOT NULL,
+    enviado INTEGER NOT NULL DEFAULT 0, descargado INTEGER NOT NULL DEFAULT 0,
+    estado TEXT NOT NULL DEFAULT 'ENVIADO'
+);
+INSERT INTO historial_local (id_mensaje, origen, destino, tipo, fecha_envio)
+VALUES ('viejo', 'A', 'B', 'MENSAJE_IMAGEN', '2026-01-01T10:00:00');";
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var migrado = new LocalStore(antigua))
+                {
+                    var historial = new HistorialLocal(migrado);
+                    var fila = Assert.Single(historial.PaginaConversacion("A", "B", 20, 0));
+                    Assert.False(fila.ContainsKey("etapasFiltrado"));
+                    historial.UpsertMensaje("viejo", "A", "B", "MENSAJE_IMAGEN", "[Imagen]",
+                        null, null, null, "foto.png", null, null, "2026-01-01T10:00:00", 1, 0,
+                        "ENVIADO", null, "[]");
+                }
+
+                using (var reabierta = new LocalStore(antigua))
+                {
+                    var fila = Assert.Single(new HistorialLocal(reabierta)
+                        .PaginaConversacion("A", "B", 20, 0));
+                    Assert.Equal("[]", fila["etapasFiltrado"]);
+                }
+            }
+            finally
+            {
+                try { File.Delete(antigua); } catch { }
+            }
         }
 
         [Fact]

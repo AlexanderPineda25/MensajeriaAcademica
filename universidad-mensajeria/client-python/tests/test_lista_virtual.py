@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from ui.lista_virtual import ROL_ITEM, MensajeDelegate, MensajeListModel
+from ui.miniaturas_chat import MiniaturasChat
 from ui.tema import MODO_CLARO, MODO_OSCURO, tokens
 
 
@@ -106,6 +107,38 @@ class PruebasListaVirtual(unittest.TestCase):
         # El tope (100) expulsa las más viejas.
         self.assertIsNone(self.delegado.pixmap_de("id-0"))
         self.assertIsNotNone(self.delegado.pixmap_de("id-104"))
+
+    def test_miniatura_escalada_conserva_proporcion(self):
+        from PySide6.QtGui import QImage, QPixmap
+        imagen = QImage(80, 40, QImage.Format.Format_ARGB32)
+        miniaturas = MiniaturasChat()
+        miniaturas.guardar("imagen", QPixmap.fromImage(imagen))
+
+        miniatura = miniaturas.escalar("imagen", 20, 20)
+
+        self.assertEqual((20, 10), (miniatura.width(), miniatura.height()))
+        self.assertIsNone(miniaturas.escalar("ausente"))
+
+    def test_leyenda_de_filtros_va_bajo_la_imagen_y_no_muestra_rutas(self):
+        from PySide6.QtGui import QImage, QPixmap
+        imagen = QImage(20, 20, QImage.Format.Format_ARGB32)
+        self.delegado.guardar_pixmap("imagen-filtros", QPixmap.fromImage(imagen))
+        item = _mensaje(
+            id="imagen-filtros", is_image=True,
+            etapas_filtrado='[{"etapa":"01_grises.png","ms":12,"ruta":"C:/srv/01_grises.png"},'
+                            '{"etapa":"02_sepia.png","ms":4,"ruta":"C:/srv/02_sepia.png"}]')
+
+        lay = self.delegado.distribuir(item, 600, tokens(MODO_OSCURO))
+
+        self.assertIn("imagen", lay)
+        self.assertIn("etapas_filtrado", lay)
+        x_img, y_img, _w_img, h_img = lay["imagen"]
+        x_txt, y_txt, _w_txt, _h_txt, resumen = lay["etapas_filtrado"]
+        self.assertEqual(x_img, x_txt)
+        self.assertGreaterEqual(y_txt, y_img + h_img)
+        self.assertEqual("Filtros: Grises (12 ms) → Sepia (4 ms)", resumen)
+        self.assertLess(resumen.index("Grises"), resumen.index("Sepia"))
+        self.assertNotIn("C:/srv", resumen)
 
 
 if __name__ == "__main__":

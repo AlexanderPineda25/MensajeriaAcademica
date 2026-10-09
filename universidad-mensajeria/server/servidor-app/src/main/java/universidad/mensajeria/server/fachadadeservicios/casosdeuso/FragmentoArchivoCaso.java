@@ -55,7 +55,7 @@ public final class FragmentoArchivoCaso {
 
     private long maximoEfectivo() {
         long maximo = limites.maxTamanoArchivo();
-        return maximo <= 0 ? 52_428_800L : maximo;
+        return maximo <= 0 ? LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO : maximo;
     }
 
     public void iniciar(IdSesion sesion, String destinatario, String nombreArchivo, String mime,

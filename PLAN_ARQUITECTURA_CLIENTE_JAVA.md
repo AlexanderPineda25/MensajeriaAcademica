@@ -1,10 +1,35 @@
 # Plan de arquitectura del cliente Java
 
-**Estado:** en curso; fase 3 parcialmente ejecutada  
+**Estado:** en curso; fases 3 y 4 con extracciones cohesivas verificadas (resta el smoke visual)  
 **Alcance:** cliente JavaFX; el servidor se compila como verificación, pero no se modifica.  
 **Objetivo:** mejorar límites arquitectónicos, SOLID y mantenibilidad sin alterar el comportamiento visible, la base local ni el contrato TCP/JSON.
 
-## Estado de ejecución — 2026-10-06
+## Estado de ejecución — 2026-10-07
+
+`ChatController` pasó de 1024 a 470 líneas y `FachadaCliente` de 868 a 572, sin cambiar
+comportamiento observable (suite 174/174 en verde, ArchUnit 6/6):
+
+- Presentación: `BusquedaHistorialChat` (búsqueda UIX-06 + salto diferido),
+  `PaginadorHistorialChat` (paginación + anclaje UIX-16 + aviso de nuevos),
+  `RefrescadorContactosChat` (filtro, selección, refresco estrangulado) con puerto
+  `FlujoConversacion` hacia el controlador, `GestorSalidaSesionChat` (kick/salir/cierre
+  remoto) y `CargadorAdjuntoEntradaChat` (elegir/previsualizar/quitar). El controlador
+  conserva solo cableado FXML, composición, envío vía `EnviarMensajeComando` y avisos
+  de conexión (PAT-03). Se eliminó la constante `TOPE_BUSQUEDA` sin uso y los imports
+  y métodos muertos resultantes (RNF-16).
+- Fachada: `ReintentadorPendientesCliente`, `SincronizadorDirectorioCliente`,
+  `LectorHistorialRemotoCliente`, `ConstructorRecientes` (puro), `PublicadorEventosCliente`
+  (Observer) y `ReceptorEntranteCliente` (antes clase interna); la fachada conserva guarda
+  de sesión, ciclo de vida y delegación, con inyección total desde `FabricaCliente`
+  (constructor de 11 parámetros con valores por defecto para compatibilidad).
+- Cada extracción tiene interfaz propia (DIP) y pruebas propias: 47 casos nuevos
+  (`HistorialChatTest`, `RefrescadorContactosTest`, `SalidaSesionChatTest`,
+  `AdjuntoEntradaChatTest`, `ReintentadorPendientesTest`, `ConstructorRecientesTest`,
+  `ReceptorEntranteTest`, `SincronizadorDirectorioTest`, `LectorHistorialRemotoTest`,
+  `PublicadorEventosTest`); `RedParaPruebas` es el doble de red compartido.
+  ArchUnit cubre nominalmente a los 5 colaboradores nuevos de presentación.
+
+## Estado de ejecución — 2026-10-06 (histórico)
 
 La fase 3 avanzó: `ChatController` ahora delega el acceso a la fachada al `ChatViewModel`, y el
 ViewModel es dueño del estado de conversación compartido (adjunto, respuesta, offset, directorio,
@@ -25,7 +50,9 @@ varios flujos de UI y queda la extracción cohesiva de casos de uso y la validac
 
 - `client-interfaces` define puertos y records neutrales y su `pom.xml` no depende de `dto`. El contrato `InterfazConexionRed`/`ReceptorMensajes` también vive allí; `FachadaCliente`, autenticación y coordinadores usan `RespuestaRed`, mientras que los DTO del protocolo quedan en los paquetes adaptadores `componentes.conexion` y `componentes.protocolo`.
 - La presentación usa puertos y no accede directamente al socket ni a la base local. `ChatController` ya delega al `ChatViewModel`, pero todavía coordina eventos, selección, flujo de UI, paginación y refresco.
-- Medición de esta continuación: `ChatController` tiene 968 líneas y `FachadaCliente` 806; ambos aún conservan coordinación además de los servicios extraídos.
+- Medición 2026-10-07: `ChatController` 470 líneas (era 1024) y `FachadaCliente` 572 (era 868).
+  El controlador es adaptador FXML + `FlujoConversacion`; la fachada es guarda de sesión,
+  ciclo de vida y delegación a 6 servicios con nombre.
 - Línea base histórica: 83 pruebas pasaban antes de esta continuación. La ejecución limpia más reciente pasa 127 pruebas del cliente (0 fallos/errores), incluida carga automatizada de ambos FXML; todavía no hay smoke visual conectado al servidor.
 
 ## Principios e invariantes
@@ -64,7 +91,8 @@ Estas pruebas fijan los resultados observables antes de mover responsabilidades.
 
 - [x] Introducir `ChatViewModel` para estado observable y delegación de operaciones; no contiene acceso a socket, protocolo ni persistencia concretos.
 - [x] El controlador usa el ViewModel como único acceso a los casos de uso/puerto de chat y no conserva una referencia directa a la fachada.
-- [ ] Completar la extracción cohesiva de coordinación de eventos, contactos/presencia, historial/búsqueda y acciones del chat; mantener el controlador como adaptador JavaFX.
+- [x] Completar la extracción cohesiva de coordinación de eventos, contactos/presencia, historial/búsqueda y acciones del chat; mantener el controlador como adaptador JavaFX.
+- [x] Extraer contactos/presencia (`RefrescadorContactosChat` + `FlujoConversacion`), historial/búsqueda (`PaginadorHistorialChat`, `BusquedaHistorialChat`, `SaltoBusquedaPendiente`), salida de sesión (`GestorSalidaSesionChat`) y adjunto de entrada (`CargadorAdjuntoEntradaChat`); el envío ya iba por comando (`EnviarMensajeComando`).
 - Mantener `ChatController` como adaptador JavaFX: conectar controles FXML con propiedades, comandos y navegación, sin ordenar directamente consultas, reintentos o reglas de conversación.
 - Separar de forma cohesiva los flujos de contactos/presencia, historial/búsqueda y envío/adjuntos. Reutilizar `GestorAdjuntosChat` donde ya cubre carga y descarga; no duplicar sus responsabilidades.
 - Inyectar ViewModel y casos de uso desde `FabricaControladores` y `ClienteApp`. Mantener nombres `fx:id`, vistas FXML, navegación, tema y textos actuales.
@@ -73,15 +101,16 @@ Estas pruebas fijan los resultados observables antes de mover responsabilidades.
 
 - [x] Extraer `CoordinadorMensajeriaCliente` y `CoordinadorHistorialCliente`.
 - [x] Extraer el ciclo de sesión/reconexión a `GestorReconexionSesion`, incluida la custodia temporal de credenciales, el backoff, la reautenticación y la restauración posterior a conexión.
-- [ ] Reducir la coordinación restante de `FachadaCliente` (806 líneas); el gestor extraído no elimina los demás flujos que aún orquesta la fachada.
+- [x] Extraer reintentos (`ReintentadorPendientesCliente`), directorio/presencia (`SincronizadorDirectorioCliente`), lectura remota y descargas (`LectorHistorialRemotoCliente`), construcción de recientes (`ConstructorRecientes`, puro), bus de eventos (`PublicadorEventosCliente`) y receptor entrante (`ReceptorEntranteCliente`). `FachadaCliente` queda en 572 líneas como fachada fina con inyección total desde `FabricaCliente`.
 - Conservar la fachada agregada y sus operaciones usadas hasta que las pruebas de referencias confirmen que ningún flujo interno necesita la forma antigua. El adaptador de compatibilidad será el único sitio permitido para traducir la API antigua a los contratos nuevos.
 - No dividir clases solo para reducir líneas: cada extracción debe tener una responsabilidad verificable y pruebas propias.
 
 ### 5. Hacer cumplir las capas y cerrar documentación — parcial
 
 - [x] Añadir pruebas ArchUnit para los contratos neutrales reconocidos, la presentación frente a
-  persistencia/transporte y los controladores/ViewModel frente a implementaciones concretas.
-- [x] Proteger con ArchUnit que fachada, autenticación, coordinadores y puertos neutrales no dependan de DTO/codec; los paquetes adaptadores conservan esas dependencias.
+  persistencia/transporte y los controladores/ViewModel frente a implementaciones concretas
+  (los 5 colaboradores nuevos de presentación están cubiertos nominalmente).
+- [x] Proteger con ArchUnit que fachada, autenticación, coordinadores y puertos neutrales no dependan de DTO/codec; los paquetes adaptadores conservan esas dependencias (los 6 servicios nuevos de fachada están cubiertos nominalmente).
 - [x] Sincronizar `PLAN_PATRONES_UI.md`, `ESTADO_ROADMAP.md`, `PLAN.md` y `AGENTS.md` con el estado parcial y las medidas observadas en esta continuación.
 - [ ] Actualizar esos documentos con medidas finales después de completar los criterios restantes.
 - [x] Añadir prueba automatizada de carga de login/chat FXML con la fábrica real y toolkit JavaFX.
@@ -89,12 +118,16 @@ Estas pruebas fijan los resultados observables antes de mover responsabilidades.
 
 ## Criterios de aceptación
 
-- La suite actual del cliente pasa: 127 pruebas, sin fallos/errores, incluida la regresión de caída y reconexión; faltan regresiones automatizadas para los demás recorridos de presentación que enumera la fase 1.
+- La suite actual del cliente pasa: 174 pruebas, sin fallos/errores (127 base + 47 de los
+  servicios y colaboradores extraídos), incluida la regresión de caída y reconexión; faltan
+  regresiones automatizadas para los demás recorridos de presentación que enumera la fase 1.
 - [ ] El FXML existente abre con la fábrica real; se pueden iniciar sesión, ver conversaciones recientes y enviar texto, imagen y archivo sin alterar resultados observables.
 - [ ] Buscar/paginar historial, recibir mensajes y acuses, reconectar sin duplicar mensajes y salir/cerrar sesiones conservan su comportamiento en el smoke automatizado/visual.
 - TCP/JSON y esquema local no cambian; el módulo `server/` y los clientes Python/.NET no reciben cambios de código.
 - Las reglas ArchUnit existentes pasan; los DTO de protocolo están confinados en los adaptadores de conexión/protocolo.
-- El estado conversacional básico está en `ChatViewModel`, pero `ChatController` aún conserva coordinación sustancial y no cumple todavía el criterio final de ser solo adaptador JavaFX.
+- El estado conversacional está en `ChatViewModel`, el `ChatController` (470 líneas) es adaptador
+  JavaFX + `FlujoConversacion` y la `FachadaCliente` (572 líneas) es guarda de sesión, ciclo de
+  vida y delegación; queda pendiente el smoke visual conectado a un servidor real.
 - [x] Pasan `mvn -q -pl client/client-app -am clean test` y `mvn -q -pl server/servidor-app,client/client-app -am -DskipTests compile` tras la extracción de reconexión.
 
 ## Riesgos y controles

@@ -1,14 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Mensajeria.Componentes;
 using Mensajeria.Store;
+using Mensajeria.Fachada.Servicios;
 using Mensajeria.Transversal;
+using Mensajeria.Transversal.Dtos;
 
 namespace Mensajeria.Fachada
 {
@@ -17,7 +19,7 @@ namespace Mensajeria.Fachada
     /// inyecta interfaces, nunca implementaciones. Enviado con red → pedir() +
     /// ACK con metadatos; sin red → historial + pendiente con reintento.
     /// </summary>
-    public class FachadaCliente : IFachadaCliente
+    public class FachadaCliente : IFachadaCliente, IReceptorMensajes
     {
         public const string DestinoBroadcast = "*";
 
@@ -25,11 +27,15 @@ namespace Mensajeria.Fachada
         private IAutenticacion? _autenticacion;
         private readonly IHistorialLocal? _historial;
         private readonly ICacheUsuarios? _cache;
+        private readonly IMapeadorDatos _mapeadorDatos;
+        private readonly CoordinadorMensajeriaCliente _coordinadorMensajeria;
+        private readonly ReintentadorPendientesCliente _reintentadorPendientes;
 
         private string _host = "localhost";
         private int _puerto = 5000;
         private bool _tlsHabilitado;
         private int _tlsPuerto = 5001;
+        private string _tlsConfianza = "";
         private string _dbUrl = "sqlite:///~/mensajeria_cliente.db";
         private LocalStore? _store;
         private readonly bool _dependenciasInyectadas;
@@ -44,18 +50,38 @@ namespace Mensajeria.Fachada
         public FachadaCliente()
         {
             _dependenciasInyectadas = false;
+            _mapeadorDatos = new MapeadorDatosServidor();
+            _coordinadorMensajeria = new CoordinadorMensajeriaCliente(() => Historial);
+            _reintentadorPendientes = new ReintentadorPendientesCliente(
+                () => Historial, _coordinadorMensajeria);
+            CargarPropiedades();
+        }
+
+        /// <summary>Producción: el composition root inyecta el mapeador del borde JSON.</summary>
+        public FachadaCliente(IMapeadorDatos mapeadorDatos)
+        {
+            _dependenciasInyectadas = false;
+            _mapeadorDatos = mapeadorDatos ?? throw new ArgumentNullException(nameof(mapeadorDatos));
+            _coordinadorMensajeria = new CoordinadorMensajeriaCliente(() => Historial);
+            _reintentadorPendientes = new ReintentadorPendientesCliente(
+                () => Historial, _coordinadorMensajeria);
             CargarPropiedades();
         }
 
         /// <summary>Tests / DI: componentes ya montados.</summary>
         public FachadaCliente(IConexionRed conexion, IAutenticacion autenticacion,
-            IHistorialLocal? historial, ICacheUsuarios? cache)
+            IHistorialLocal? historial, ICacheUsuarios? cache,
+            IMapeadorDatos? mapeadorDatos = null)
         {
             _dependenciasInyectadas = true;
             _conexion = conexion;
             _autenticacion = autenticacion;
             _historial = historial;
             _cache = cache;
+            _mapeadorDatos = mapeadorDatos ?? new MapeadorDatosServidor();
+            _coordinadorMensajeria = new CoordinadorMensajeriaCliente(() => Historial);
+            _reintentadorPendientes = new ReintentadorPendientesCliente(
+                () => Historial, _coordinadorMensajeria);
             SuscribirRed();
         }
 
@@ -64,9 +90,12 @@ namespace Mensajeria.Fachada
             _host = Transversal.ClienteConfig.Valor("host", Transversal.ClienteConfig.HostPorDefecto);
             _puerto = Transversal.ClienteConfig.Entero("puerto",
                     Transversal.ClienteConfig.PuertoPorDefecto, 1, 65535);
-            _tlsHabilitado = Transversal.ClienteConfig.Booleano("tls.habilitado", false);
+            _tlsHabilitado = ValidarTls.HabilitadoDesdeTexto(
+                Transversal.ClienteConfig.Valor("tls.habilitado", "false"));
             _tlsPuerto = Transversal.ClienteConfig.Entero("tls.puerto",
                     Transversal.ClienteConfig.TlsPuertoPorDefecto, 1, 65535);
+            // Vacío = validación de cadena del sistema (lo correcto por defecto).
+            _tlsConfianza = Transversal.ClienteConfig.Valor("tls.confianza", "");
             _dbUrl = Transversal.ClienteConfig.Valor("db.url", Transversal.ClienteConfig.DbUrlPorDefecto);
         }
 
@@ -97,7 +126,13 @@ namespace Mensajeria.Fachada
             var conexion = new ConexionRed
             {
                 TlsHabilitado = _tlsHabilitado,
-                TlsPuerto = _tlsPuerto
+                TlsPuerto = _tlsPuerto,
+                TlsConfianza = _tlsConfianza,
+                // SEG-01: si hay PEM propio se valida contra él (nombre + cadena);
+                // si no, CrearValidador devuelve null y manda la validación del sistema.
+                ValidarCertificado = _tlsHabilitado
+                    ? ValidarTls.CrearValidador(_tlsConfianza, host)
+                    : null
             };
             await conexion.ConectarAsync(host, puerto);
             _conexion = conexion;
@@ -119,25 +154,29 @@ namespace Mensajeria.Fachada
         private void SuscribirRed()
         {
             if (_conexion == null) return;
-            _conexion.OnMensajeRecibido += AlRecibir;
-            _conexion.OnCierre += msg =>
-            {
-                // PAT-03: CLOSE_NOTICE es "el servidor cerró mi sesión", no una
-                // caída de red. Distinguirlo evita que la UI ofrezca reconectar
-                // donde lo que hace falta es volver a entrar.
-                CambiarEstado(EstadoConexion.SesionCerrada);
-                OnCierre?.Invoke(msg);
-            };
-            _conexion.OnDesconectado += () =>
-            {
-                // Un cierre voluntario también pasa por aquí: no se degrada el
-                // estado si ya estamos en sesión cerrada.
-                if (_estado != EstadoConexion.SesionCerrada)
-                {
-                    CambiarEstado(EstadoConexion.SinRed);
-                }
-                OnDesconectado?.Invoke();
-            };
+            _conexion.Suscribir(this);
+        }
+
+        public void AlRecibir(RespuestaRed mensaje) =>
+            AlRecibir(MapeadorRespuestaRed.ACrudo(mensaje));
+
+        public void AlCierre(RespuestaRed aviso)
+        {
+            // PAT-03: CLOSE_NOTICE cierra la sesión, sin convertirlo en una
+            // caída recuperable de transporte.
+            CambiarEstado(EstadoConexion.SesionCerrada);
+            OnCierre?.Invoke(MapeadorRespuestaRed.ACrudo(aviso));
+        }
+
+        public void AlError(string motivo) =>
+            Trace.TraceError("Error al recibir mensaje de red: {0}", motivo);
+
+        public void AlDesconexion()
+        {
+            // Un cierre voluntario no degrada una sesión que ya fue cerrada.
+            if (_estado != EstadoConexion.SesionCerrada)
+                CambiarEstado(EstadoConexion.SinRed);
+            OnDesconectado?.Invoke();
         }
 
         // ------------------------------------------------------- PAT-03: estado
@@ -270,37 +309,28 @@ namespace Mensajeria.Fachada
             // El servidor envia el directorio en `contenido` (JSON) — ListarCaso.java,
             // igual que lee el cliente Java (FachadaCliente.sincronizarDirectorio).
             string contenido = GetString(resp, "contenido") ?? "[]";
-            JsonDocument documento;
-            try { documento = JsonDocument.Parse(contenido); }
+            List<UsuarioLocal> filas;
+            try { filas = _mapeadorDatos.MapearDirectorio(contenido); }
             catch { return DirectorioLocal(); }
-            using (documento)
+            if (filas.Count == 0) return DirectorioLocal();
+            var usuarios = new List<Dictionary<string, object>>();
+            foreach (var usuario in filas)
             {
-                if (documento.RootElement.ValueKind != JsonValueKind.Array)
-                    return DirectorioLocal();
-                var usuarios = new List<Dictionary<string, object>>();
-                foreach (var u in documento.RootElement.EnumerateArray())
+                string codigo = usuario.Codigo!;
+                string nombres = usuario.Nombres ?? "";
+                string apellidos = usuario.Apellidos ?? "";
+                Cache?.Guardar(codigo, nombres, apellidos, usuario.Programa,
+                    usuario.Conectado ? 1 : 0, usuario.FechaRegistro,
+                    usuario.Actualizado ?? DateTime.UtcNow.ToString("O"));
+                usuarios.Add(new Dictionary<string, object>
                 {
-                    if (u.ValueKind != JsonValueKind.Object) continue;
-                    string codigo = Texto(u, "codigo") ?? "";
-                    if (codigo.Length == 0) continue;
-                    string nombres = Texto(u, "nombres") ?? "";
-                    string apellidos = Texto(u, "apellidos") ?? "";
-                    string? programa = Texto(u, "programa");
-                    bool conectado = u.TryGetProperty("conectado", out var c)
-                        && c.ValueKind == JsonValueKind.True;
-                    Cache?.Guardar(codigo, nombres, apellidos, programa,
-                        conectado ? 1 : 0, Texto(u, "fechaRegistro"), DateTime.UtcNow.ToString("O"));
-                    usuarios.Add(new Dictionary<string, object>
-                    {
-                        ["codigo"] = codigo, ["nombres"] = nombres,
-                        ["apellidos"] = apellidos, ["conectado"] = conectado
-                    });
-                }
-                if (usuarios.Count == 0) return DirectorioLocal();
-                Cache?.MarcarConectados(usuarios.Where(u => (bool)u["conectado"])
-                    .Select(u => (string)u["codigo"]).ToList());
-                return usuarios;
+                    ["codigo"] = codigo, ["nombres"] = nombres,
+                    ["apellidos"] = apellidos, ["conectado"] = usuario.Conectado
+                });
             }
+            Cache?.MarcarConectados(usuarios.Where(u => (bool)u["conectado"])
+                .Select(u => (string)u["codigo"]).ToList());
+            return usuarios;
         }
 
 public async Task MarcarLeidosAsync(string otroUsuario)
@@ -356,37 +386,8 @@ public async Task MarcarLeidosAsync(string otroUsuario)
             ExigirSesion(destinatario, contenido);
             RechazarDestinoPropio(destinatario);
             var (conexion, yo) = SesionEnvio();
-            var id = Guid.NewGuid().ToString();
-            var fecha = DateTime.UtcNow.ToString("O");
-            // Fila local primero: cubre la carrera del acuse.
-            Historial?.UpsertMensaje(id, yo, destinatario,
-                TipoMensaje.MENSAJE_TEXTO, contenido, null, null, null,
-                null, null, null, fecha, 1, 1, "PENDIENTE");
-            var msg = new Dictionary<string, object?>
-            {
-                { "id", id },
-                { "tipo", TipoMensaje.MENSAJE_TEXTO },
-                { "remitente", yo },
-                { "destinatario", destinatario },
-                { "contenido", contenido },
-                { "fechaHora", fecha }
-            };
-            try
-            {
-            var resp = await conexion.Pedir(msg).ConfigureAwait(false);
-                LanzarSiError(resp, "envio rechazado", TipoMensaje.ACK);
-                Historial?.UpsertMensaje(id, yo, destinatario,
-                    TipoMensaje.MENSAJE_TEXTO, contenido,
-                    GetString(resp, "hashSha256"), GetInt(resp, "numCaracteres"),
-                    GetInt(resp, "numPalabras"), null, null, null, fecha, 1, 1, "ENVIADO");
-                return true;
-            }
-            catch (Exception e) when (e is TimeoutException || e is SocketException || e is IOException)
-            {
-                Historial?.RegistrarPendiente(id, TipoMensaje.MENSAJE_TEXTO, yo,
-                    destinatario, contenido, null, null, fecha);
-                return false;
-            }
+            return await _coordinadorMensajeria.EnviarTextoAsync(
+                conexion, yo, destinatario, contenido).ConfigureAwait(false);
         }
 
         public async Task<bool> EnviarImagenAsync(string destinatario, string imagePath)
@@ -394,45 +395,12 @@ public async Task MarcarLeidosAsync(string otroUsuario)
             if (string.IsNullOrEmpty(destinatario)) throw new ArgumentException("elige un destinatario");
             var (conexion, yo) = SesionEnvio();
             RechazarDestinoPropio(destinatario);
-            byte[] bytes = await File.ReadAllBytesAsync(imagePath).ConfigureAwait(false);
-            if (bytes.Length == 0) throw new ArgumentException("la imagen esta vacia");
-            var id = Guid.NewGuid().ToString();
-            var fecha = DateTime.UtcNow.ToString("O");
-            var nombre = Path.GetFileName(imagePath);
-            Historial?.UpsertMensaje(id, yo, destinatario,
-                TipoMensaje.MENSAJE_IMAGEN, "[Imagen]", null, null, null,
-                nombre, imagePath, bytes.Length, fecha, 1, 1, "PENDIENTE");
-            var msg = new Dictionary<string, object?>
-            {
-                { "id", id },
-                { "tipo", TipoMensaje.MENSAJE_IMAGEN },
-                { "remitente", yo },
-                { "destinatario", destinatario },
-                { "contenidoImagen", Convert.ToBase64String(bytes) },
-                { "nombreArchivo", nombre },
-                { "tamanoArchivo", bytes.Length },
-                { "fechaHora", fecha }
-            };
-            try
-            {
-                var resp = await conexion.Pedir(msg).ConfigureAwait(false);
-                LanzarSiError(resp, "envio rechazado", TipoMensaje.IMAGE_FILTERED_RESULT);
-                Historial?.UpsertMensaje(id, yo, destinatario,
-                    TipoMensaje.MENSAJE_IMAGEN, "[Imagen]", GetString(resp, "hashSha256"),
-                    null, null, nombre, imagePath, bytes.Length, fecha, 1, 1,
-                    "ENVIADO", GetString(resp, "archivoId"));
-                return true;
-            }
-            catch (Exception e) when (e is TimeoutException || e is SocketException || e is IOException)
-            {
-                Historial?.RegistrarPendiente(id, TipoMensaje.MENSAJE_IMAGEN, yo,
-                    destinatario, null, nombre, bytes, fecha);
-                return false;
-            }
+            return await _coordinadorMensajeria.EnviarImagenAsync(
+                conexion, yo, destinatario, imagePath).ConfigureAwait(false);
         }
 
-        public const long MaxBytesArchivo = 52_428_800L;
-        public const int ParteArchivoBytes = 1024 * 1024;
+        public const long MaxBytesArchivo = IFachadaCliente.MaxBytesArchivo;
+        public const int ParteArchivoBytes = CoordinadorMensajeriaCliente.ParteArchivoBytes;
 
         /// <summary>
         /// Envía un archivo genérico fragmentado (tope propio 50 MB, PROTOCOLO.md §3/§5):
@@ -446,99 +414,10 @@ public async Task MarcarLeidosAsync(string otroUsuario)
             if (string.IsNullOrEmpty(destinatario)) throw new ArgumentException("elige un destinatario");
             var (conexion, yo) = SesionEnvio();
             RechazarDestinoPropio(destinatario);
-            if (string.IsNullOrEmpty(rutaArchivo) || !File.Exists(rutaArchivo))
-                throw new ArgumentException("archivo no encontrado");
-            byte[] bytes = await File.ReadAllBytesAsync(rutaArchivo, cancelacion).ConfigureAwait(false);
-            if (bytes.Length == 0) throw new ArgumentException("el archivo esta vacio");
-            if (bytes.Length > MaxBytesArchivo) throw new ArgumentException(
-                $"el archivo supera el maximo de {MaxBytesArchivo} bytes");
-            var id = Guid.NewGuid().ToString();
-            var fecha = DateTime.UtcNow.ToString("O");
-            var nombre = Path.GetFileName(rutaArchivo);
-            Historial?.UpsertMensaje(id, yo, destinatario,
-                TipoMensaje.MENSAJE_ARCHIVO, $"[Archivo: {nombre}]", null, null, null,
-                nombre, rutaArchivo, bytes.Length, fecha, 1, 1, "PENDIENTE");
-            try
-            {
-                await EnviarFragmentosAsync(conexion, yo, destinatario, nombre, MimePorExtension(rutaArchivo),
-                    bytes, id, fecha, progreso, cancelacion).ConfigureAwait(false);
-                Historial?.UpsertMensaje(id, yo, destinatario,
-                    TipoMensaje.MENSAJE_ARCHIVO, $"[Archivo: {nombre}]", null, null, null,
-                    nombre, rutaArchivo, bytes.Length, fecha, 1, 1, "ENVIADO");
-                return true;
-            }
-            catch (Exception e) when (e is TimeoutException || e is SocketException || e is IOException)
-            {
-                Historial?.RegistrarPendiente(id, TipoMensaje.MENSAJE_ARCHIVO, yo,
-                    destinatario, null, nombre, bytes, fecha);
-                return false;
-            }
+            return await _coordinadorMensajeria.EnviarArchivoAsync(
+                conexion, yo, destinatario, rutaArchivo, progreso, cancelacion)
+                .ConfigureAwait(false);
         }
-
-        private async Task EnviarFragmentosAsync(IConexionRed conexion, string remitente,
-            string destinatario, string nombre, string mime,
-            byte[] bytes, string id, string fecha, IProgress<double>? progreso,
-            CancellationToken cancelacion)
-        {
-            int totalPartes = (bytes.Length + ParteArchivoBytes - 1) / ParteArchivoBytes;
-            var inicio = await conexion.Pedir(new Dictionary<string, object?>
-            {
-                { "id", id },
-                { "tipo", TipoMensaje.ARCHIVO_INICIO },
-                { "remitente", remitente },
-                { "destinatario", destinatario },
-                { "nombreArchivo", nombre },
-                { "mime", mime },
-                { "tamanoArchivo", (long)bytes.Length },
-                { "totalPartes", totalPartes },
-                { "fechaHora", fecha }
-            }).ConfigureAwait(false);
-            LanzarSiError(inicio, "envio rechazado", TipoMensaje.ACK);
-            for (int i = 0; i < totalPartes; i++)
-            {
-                cancelacion.ThrowIfCancellationRequested();
-                int desde = i * ParteArchivoBytes;
-                int hasta = Math.Min(desde + ParteArchivoBytes, bytes.Length);
-                string b64 = Convert.ToBase64String(bytes, desde, hasta - desde);
-                var parte = await conexion.Pedir(new Dictionary<string, object?>
-                {
-                    { "id", id },
-                    { "tipo", TipoMensaje.ARCHIVO_PARTE },
-                    { "remitente", remitente },
-                    { "archivoId", id },
-                    { "indiceParte", i },
-                    { "contenidoImagen", b64 },
-                    { "fechaHora", fecha }
-                }).ConfigureAwait(false);
-                LanzarSiError(parte, "envio rechazado", TipoMensaje.ACK);
-                progreso?.Report((double)(i + 1) / totalPartes);
-            }
-            string hash;
-            using (var sha = System.Security.Cryptography.SHA256.Create())
-                hash = Convert.ToHexString(sha.ComputeHash(bytes)).ToLowerInvariant();
-            var fin = await conexion.Pedir(new Dictionary<string, object?>
-            {
-                { "id", id },
-                { "tipo", TipoMensaje.ARCHIVO_FIN },
-                { "remitente", remitente },
-                { "archivoId", id },
-                { "hashSha256", hash },
-                { "fechaHora", fecha }
-            }).ConfigureAwait(false);
-            LanzarSiError(fin, "envio rechazado", TipoMensaje.ACK);
-        }
-
-        private static string MimePorExtension(string ruta) =>
-            Path.GetExtension(ruta).ToLowerInvariant() switch
-            {
-                ".pdf" => "application/pdf",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".gif" => "image/gif",
-                ".bmp" => "image/bmp",
-                ".txt" => "text/plain",
-                _ => "application/octet-stream"
-            };
 
         public async Task DifundirAsync(string contenido)
         {
@@ -745,26 +624,15 @@ public async Task MarcarLeidosAsync(string otroUsuario)
             }).ConfigureAwait(false);
             LanzarSiError(resp, "historial rechazado", TipoMensaje.HISTORIAL_PAGE);
             string json = GetString(resp, "contenido") ?? "[]";
-            using var document = JsonDocument.Parse(json);
-            foreach (var item in document.RootElement.EnumerateArray())
+            foreach (var mensaje in _mapeadorDatos.MapearPaginaHistorial(json, UsuarioActual!))
             {
-                string? id = Texto(item, "id");
-                string? origen = Texto(item, "remitente");
-                string? destino = Texto(item, "destinatario");
-                string? tipo = Texto(item, "tipo");
-                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(origen)
-                    || string.IsNullOrEmpty(destino) || string.IsNullOrEmpty(tipo)) continue;
-                bool propio = origen == UsuarioActual;
-                Historial?.UpsertMensaje(id, origen, destino, tipo,
-                    tipo == TipoMensaje.MENSAJE_IMAGEN ? "[Imagen]"
-                    : tipo == TipoMensaje.MENSAJE_ARCHIVO
-                        ? $"[Archivo: {Texto(item, "nombreArchivo") ?? "archivo"}]"
-                        : Texto(item, "contenido"),
-                    Texto(item, "hashSha256"), Numero(item, "numCaracteres"),
-                    Numero(item, "numPalabras"), Texto(item, "nombreArchivo"), null,
-                    NumeroLong(item, "tamanoArchivo"), Texto(item, "fechaEnvio")
-                        ?? DateTime.UtcNow.ToString("O"), propio ? 1 : 0, 0,
-                    propio ? "ENVIADO" : "ENTREGADO", Texto(item, "archivoId"));
+                Historial?.UpsertMensaje(mensaje.IdMensaje!, mensaje.Origen!,
+                    mensaje.Destino!, mensaje.Tipo!, mensaje.Contenido,
+                    mensaje.HashSha256, mensaje.NumCaracteres, mensaje.NumPalabras,
+                    mensaje.NombreArchivo, mensaje.RutaArchivo, mensaje.TamanoArchivo,
+                    mensaje.FechaEnvio!, mensaje.Enviado ? 1 : 0,
+                    mensaje.Descargado ? 1 : 0, mensaje.Estado!, mensaje.ArchivoId,
+                    mensaje.EtapasFiltrado);
             }
             return GetInt(resp, "totalPaginas") ?? 0;
         }
@@ -784,92 +652,8 @@ public async Task MarcarLeidosAsync(string otroUsuario)
         public List<Dictionary<string, object?>> Pendientes() =>
             Historial?.ListarPendientes() ?? new List<Dictionary<string, object?>>();
 
-        public async Task<int> ReintentarPendientesAsync()
-        {
-            var conexion = _conexion;
-            if (UsuarioActual == null || conexion == null) return 0;
-            int enviados = 0;
-            foreach (var p in Pendientes())
-            {
-                if ((string?)p["tipo"] == TipoMensaje.MENSAJE_LEIDO)
-                {
-                    try
-                    {
-                        conexion.Enviar(new Dictionary<string, object?>
-                        {
-                            { "id", p["id"] }, { "tipo", TipoMensaje.MENSAJE_LEIDO },
-                            { "remitente", p["origen"] }, { "destinatario", p["destino"] },
-                            { "contenido", p["contenido"] }, { "fechaHora", p["fechaCreado"] }
-                        });
-                        Historial?.EliminarPendiente((string)p["id"]!);
-                        enviados++;
-                    }
-                    catch (Exception e)
-                    {
-                        Historial?.IncrementarIntento((string)p["id"]!, e.Message);
-                        break;
-                    }
-                    continue;
-                }
-                var req = new Dictionary<string, object?>
-                {
-                    { "id", p["id"] },
-                    { "tipo", p["tipo"] },
-                    { "remitente", p["origen"] },
-                    { "destinatario", p["destino"] },
-                    { "fechaHora", p["fechaCreado"] }
-                };
-                if ((string?)p["tipo"] == TipoMensaje.MENSAJE_ARCHIVO)
-                {
-                    try
-                    {
-                        var payload = (byte[]?)p["payload"] ?? Array.Empty<byte>();
-                        string nombre = (string?)p["nombreArchivo"] ?? "archivo.bin";
-                        await EnviarFragmentosAsync(conexion, (string)p["origen"]!,
-                            (string)p["destino"]!,
-                            nombre, MimePorExtension(nombre), payload, (string)p["id"]!,
-                            (string?)p["fechaCreado"] ?? DateTime.UtcNow.ToString("O"),
-                            null, default).ConfigureAwait(false);
-                        Historial?.MarcarEstado((string)p["id"]!, "ENVIADO");
-                        Historial?.EliminarPendiente((string)p["id"]!);
-                        enviados++;
-                    }
-                    catch (Exception e)
-                    {
-                        Historial?.IncrementarIntento((string)p["id"]!, e.Message);
-                        break;
-                    }
-                    continue;
-                }
-                if ((string?)p["tipo"] == TipoMensaje.MENSAJE_IMAGEN)
-                {
-                    var payload = (byte[]?)p["payload"] ?? Array.Empty<byte>();
-                    req["contenidoImagen"] = Convert.ToBase64String(payload);
-                    req["nombreArchivo"] = p["nombreArchivo"];
-                }
-                else
-                {
-                    req["contenido"] = p["contenido"];
-                }
-                try
-                {
-                    var resp = await conexion.Pedir(req).ConfigureAwait(false);
-                    LanzarSiError(resp, "reintento rechazado");
-                    if ((string?)p["tipo"] == TipoMensaje.MENSAJE_IMAGEN
-                        && GetString(resp, "archivoId") is string archivoId)
-                        Historial?.ActualizarArchivoId((string)p["id"]!, archivoId);
-                    Historial?.MarcarEstado((string)p["id"]!, "ENVIADO");
-                    Historial?.EliminarPendiente((string)p["id"]!);
-                    enviados++;
-                }
-                catch (Exception e)
-                {
-                    Historial?.IncrementarIntento((string)p["id"]!, e.Message);
-                    break;
-                }
-            }
-            return enviados;
-        }
+        public Task<int> ReintentarPendientesAsync() =>
+            _reintentadorPendientes.ReintentarPendientesAsync(_conexion, UsuarioActual);
 
         private void AlRecibir(Dictionary<string, JsonElement> msg)
         {
@@ -929,7 +713,8 @@ public async Task MarcarLeidosAsync(string otroUsuario)
                     GetInt(msg, "numPalabras"), GetString(msg, "nombreArchivo"),
                     null, GetLong(msg, "tamanoArchivo"), fecha, 0,
                     tipo == TipoMensaje.MENSAJE_TEXTO ? 1 : 0,
-                    "ENTREGADO", GetString(msg, "archivoId"));
+                    "ENTREGADO", GetString(msg, "archivoId"),
+                    GetString(msg, "etapasFiltrado"));
                 AsegurarEnCache(remitente);
             }
             catch { }

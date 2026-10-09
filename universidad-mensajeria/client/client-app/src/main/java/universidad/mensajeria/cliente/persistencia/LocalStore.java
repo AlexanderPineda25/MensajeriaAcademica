@@ -1,6 +1,10 @@
 package universidad.mensajeria.cliente.persistencia;
 
 import universidad.mensajeria.cliente.transversal.config.ClienteConfig;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionPersistencia;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionSesion;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionValidacion;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,7 +23,7 @@ import org.h2.jdbcx.JdbcConnectionPool;
  * en cliente, §5.2). Accesible SOLO vía los DAOs de componentes (convención
  * de capas §11: la UI y la fachada nunca lo tocan directo).
  */
-public final class LocalStore {
+public final class LocalStore implements InterfazAlmacenLocal {
 
     private final ClienteConfig config;
     private String urlActual;
@@ -34,14 +38,19 @@ public final class LocalStore {
     }
 
     /** Crea las tablas del contrato multilenguaje si no existen. */
-    public int inicializar() throws Exception {
+    @Override
+    public int inicializar() throws ExcepcionCliente {
         String sql;
         try (InputStream in = LocalStore.class.getResourceAsStream("/schema-local.sql")) {
             if (in == null) {
-                throw new IllegalStateException(
+                throw new ExcepcionPersistencia(
                         "Falta schema-local.sql (common-protocol) en el classpath");
             }
             sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (ExcepcionCliente fallo) {
+            throw fallo;
+        } catch (java.io.IOException fallo) {
+            throw new ExcepcionPersistencia("no se pudo leer schema-local.sql", fallo);
         }
         int ejecutadas = 0;
         try (Connection conn = abrir(); Statement st = conn.createStatement()) {
@@ -58,27 +67,39 @@ public final class LocalStore {
                 st.execute("ALTER TABLE historial_local ADD COLUMN IF NOT EXISTS estado"
                         + " TEXT NOT NULL DEFAULT 'ENVIADO'");
                 ejecutadas++;
-            } catch (Exception ignorada) {
-                // H2 viejo sin IF NOT EXISTS: intentar sin cláusula
+            } catch (SQLException migracion) {
                 try {
                     st.execute("ALTER TABLE historial_local ADD COLUMN estado"
                             + " TEXT NOT NULL DEFAULT 'ENVIADO'");
                     ejecutadas++;
-                } catch (Exception duplicada) {
+                } catch (SQLException duplicada) {
                     // ya existe
                 }
             }
             try {
                 st.execute("ALTER TABLE historial_local ADD COLUMN IF NOT EXISTS archivo_id TEXT");
                 ejecutadas++;
-            } catch (Exception ignorada) {
+            } catch (SQLException migracion) {
                 try {
                     st.execute("ALTER TABLE historial_local ADD COLUMN archivo_id TEXT");
                     ejecutadas++;
-                } catch (Exception duplicada) {
+                } catch (SQLException duplicada) {
                     // ya existe
                 }
             }
+            try {
+                st.execute("ALTER TABLE historial_local ADD COLUMN IF NOT EXISTS etapas_filtrado TEXT");
+                ejecutadas++;
+            } catch (SQLException migracion) {
+                try {
+                    st.execute("ALTER TABLE historial_local ADD COLUMN etapas_filtrado TEXT");
+                    ejecutadas++;
+                } catch (SQLException duplicada) {
+                    // ya existe
+                }
+            }
+        } catch (SQLException fallo) {
+            throw new ExcepcionPersistencia("no se pudo inicializar la base local", fallo);
         }
         if (urlActual.equals(config.dbUrl())) {
             esquemaLegadoListo = true;
@@ -91,24 +112,40 @@ public final class LocalStore {
      * desde el H2 compartido anterior. El archivo legado nunca se modifica ni
      * se elimina durante la copia.
      */
-    public synchronized void prepararCuenta(String codigo) throws Exception {
+    @Override
+    public synchronized void prepararCuenta(String codigo) throws ExcepcionCliente {
         if (!esquemaLegadoListo) {
             seleccionarUrl(config.dbUrl());
             inicializar();
         }
-        seleccionarUrl(config.dbUrlParaCuenta(codigo));
+        String urlCuenta;
+        try {
+            urlCuenta = config.dbUrlParaCuenta(codigo);
+        } catch (IllegalArgumentException | IllegalStateException invalido) {
+            throw new ExcepcionValidacion("codigo de cuenta invalido para la base local");
+        }
+        seleccionarUrl(urlCuenta);
         inicializar();
-        importarHistorialLegado(codigo);
+        try {
+            importarHistorialLegado(codigo);
+        } catch (SQLException | ExcepcionCliente fallo) {
+            throw new ExcepcionPersistencia("no se pudo preparar la cuenta local", fallo);
+        }
     }
 
     /** Conexión del pool (thread-safe; close() la devuelve, no la destruye). */
-    public synchronized Connection abrir() throws Exception {
-        if (pool == null) {
-            pool = JdbcConnectionPool.create(
-                    urlActual, config.dbUser(), config.dbPass());
-            pool.setMaxConnections(4);
+    @Override
+    public synchronized Connection abrir() throws ExcepcionCliente {
+        try {
+            if (pool == null) {
+                pool = JdbcConnectionPool.create(
+                        urlActual, config.dbUser(), config.dbPass());
+                pool.setMaxConnections(4);
+            }
+            return pool.getConnection();
+        } catch (SQLException fallo) {
+            throw new ExcepcionPersistencia("no se pudo abrir la base local", fallo);
         }
-        return pool.getConnection();
     }
 
     private void seleccionarUrl(String url) {
@@ -119,7 +156,7 @@ public final class LocalStore {
         urlActual = url;
     }
 
-    private void importarHistorialLegado(String codigo) throws Exception {
+    private void importarHistorialLegado(String codigo) throws SQLException, ExcepcionCliente {
         try (Connection destino = abrir();
              Connection legado = DriverManager.getConnection(
                      config.dbUrl(), config.dbUser(), config.dbPass())) {
@@ -157,7 +194,7 @@ public final class LocalStore {
                     marcar.executeUpdate();
                 }
                 destino.commit();
-            } catch (Exception e) {
+            } catch (SQLException | RuntimeException e) {
                 destino.rollback();
                 throw e;
             } finally {
@@ -181,13 +218,15 @@ public final class LocalStore {
         String consulta = """
                 SELECT id_mensaje, origen, destino, tipo, contenido, hash_sha256,
                        num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-                       tamano_archivo, fecha_envio, descargado, estado, archivo_id
+                       tamano_archivo, fecha_envio, descargado, estado, archivo_id,
+                       etapas_filtrado
                 FROM historial_local WHERE origen = ? OR destino = ?""";
         String upsert = """
                 MERGE INTO historial_local (id_mensaje, origen, destino, tipo, contenido,
                     hash_sha256, num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-                    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id)
-                KEY (id_mensaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""";
+                    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id,
+                    etapas_filtrado)
+                KEY (id_mensaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""";
         try (PreparedStatement q = legado.prepareStatement(consulta);
              PreparedStatement guardar = destino.prepareStatement(upsert)) {
             q.setString(1, codigo);
@@ -211,6 +250,7 @@ public final class LocalStore {
                     guardar.setInt(14, filas.getInt("descargado"));
                     guardar.setString(15, filas.getString("estado"));
                     guardar.setString(16, filas.getString("archivo_id"));
+                    guardar.setString(17, filas.getString("etapas_filtrado"));
                     guardar.addBatch();
                 }
             }

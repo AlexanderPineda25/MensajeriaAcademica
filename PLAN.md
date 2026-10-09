@@ -1,6 +1,6 @@
 # PLAN DE ARQUITECTURA — Sistema de Mensajería Académica (Cliente/Servidor TCP)
 
-> Fuente funcional: `REQ.md` (brief original) y `REQUERIMIENTOS.md` (especificación vigente).
+> Fuente funcional: `docs/archivo/REQ-original.md` (brief original, archivado) y `REQUERIMIENTOS.md` (especificación vigente).
 > Este documento conserva arquitectura, componentes, decisiones de diseño y criterios de fases;
 > no es la guía de instalación. Topología, puertos y empaquetado: `DESPLIEGUE.md`.
 > Principios: SOLID, Patrones de Diseño, Clean Code e **Inversión de Dependencias**; el servidor
@@ -14,7 +14,7 @@
 Aplicación de escritorio **cliente-servidor** para enviar mensajes a la comunidad
 académica (texto, imágenes o archivos), sobre **TCP-IP**, con capas y componentes.
 
-| Incluido (según `REQ.md` raíz) | Excluido de este plan |
+| Incluido (según brief original archivado) | Excluido de este plan |
 |---|---|
 | Servidor escritorio/consola (Java) | Aplicación web MVC (Thymeleaf) |
 | Cliente escritorio **Java (principal, JavaFX)** | API REST (`ApiUsuarioController`) |
@@ -88,7 +88,7 @@ académica (texto, imágenes o archivos), sobre **TCP-IP**, con capas y componen
 
 ## 2. Arquitectura objetivo (100 % fiel al diagrama)
 
-> Fuente de verdad: `ClienteServidor-P2P-Otros-ComponentesServidor.png`.
+> Fuente de verdad: `DIAGRAMAS/clases/01-componentes-servidor.mmd` y su PNG (el PNG raíz histórico se retiró el 2026-10-07).
 > **Regla de lectura:** una flecha del diagrama significa «A usa a B en tiempo de ejecución».
 > En el código, cada uso se compila contra una **abstracción** (DIP, §2.5). En el plan no existe
 > ninguna relación de uso que el diagrama no dibuje, y no falta ninguna de las que dibuja.
@@ -642,7 +642,7 @@ Usuarios              : ConcurrentHashMap<Codigo, UsuarioDTO> directorio        
 
 > **Patrón Adapter** para cambiar de base de datos del servidor cuando se quiera,
 > SIN tocar código: mismo `.jar`, solo cambia configuración. MySQL es el motor
-> **principal** (exigido por `REQ.md`); PostgreSQL y Oracle quedan como
+> **principal** (exigido por el brief original); PostgreSQL y Oracle quedan como
 > **opcionales conmutables** (base MENSAJERIA ya los trae).
 
 **Puerto (`PersistenciaPort`, definido en el paquete de `AlmacenarInformacion`; los adaptadores de `persistencia` lo implementan → dependencia INVERTIDA, E15 en §2.5):**
@@ -687,7 +687,7 @@ public interface PersistenciaPort {           // AlmacenarInformacion depende SO
 
 ---
 
-## 6. Servidor — Funciones del `REQ.md`
+## 6. Servidor — Funciones del brief original
 
 | # | Requisito | Implementación |
 |---|---|---|

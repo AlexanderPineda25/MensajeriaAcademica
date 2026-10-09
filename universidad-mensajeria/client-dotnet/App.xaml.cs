@@ -1,23 +1,25 @@
 using System.Windows;
+using Mensajeria.Composicion;
 using Mensajeria.Fachada;
 
 namespace Mensajeria
 {
     public partial class App : Application
     {
-        public static IFachadaCliente Fachada { get; private set; } = null!;
+        private IFachadaCliente? _fachada;
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
             Temas.Tema.Aplicar(Temas.Tema.Leer());
-            Fachada = new FachadaCliente();
-            new Views.LoginWindow(Fachada).Show();
+            var fachada = FabricaCliente.CrearFachada();
+            _fachada = fachada;
+            new Views.LoginWindow(fachada).Show();
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
-            Fachada?.Desconectar();
+            _fachada?.Desconectar();
             base.OnExit(e);
         }
     }

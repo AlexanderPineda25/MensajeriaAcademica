@@ -20,7 +20,7 @@ import universidad.mensajeria.cliente.transversal.records.MensajeLocal;
 import universidad.mensajeria.cliente.transversal.records.PaginaHistorialRemota;
 
 /** Carga, reintenta, cancela y descarga adjuntos de la conversación visible. */
-final class GestorAdjuntosChat {
+public final class GestorAdjuntosChat implements InterfazGestorAdjuntos {
 
     private static final String METADATOS_PENDIENTES = "metadatos";
     private static final Logger LOG = Logger.getLogger(GestorAdjuntosChat.class.getName());
@@ -48,42 +48,51 @@ final class GestorAdjuntosChat {
         this.mostrarEstado = mostrarEstado;
     }
 
-    boolean imagenFallida(String idMensaje) {
+    @Override
+    public boolean imagenFallida(String idMensaje) {
         return imagenesFallidas.contains(idMensaje);
     }
 
-    int paginaRemota(String conversacion) {
+    @Override
+    public int paginaRemota(String conversacion) {
         return siguientePaginaRemota.getOrDefault(conversacion, 0);
     }
 
-    Integer totalPaginasRemotas(String conversacion) {
+    @Override
+    public Integer totalPaginasRemotas(String conversacion) {
         return totalPaginasRemotas.get(conversacion);
     }
 
-    void registrarPaginaRemota(String conversacion, int siguiente, int total) {
+    @Override
+    public void registrarPaginaRemota(String conversacion, int siguiente, int total) {
         siguientePaginaRemota.put(conversacion, siguiente);
         totalPaginasRemotas.put(conversacion, total);
     }
 
-    boolean hayMasHistorialRemoto(String conversacion) {
+    @Override
+    public boolean hayMasHistorialRemoto(String conversacion) {
         Integer total = totalPaginasRemotas(conversacion);
         return total != null && paginaRemota(conversacion) < total;
     }
 
-    void registrarPaginaDeMensaje(String idMensaje, int pagina) {
+    @Override
+    public void registrarPaginaDeMensaje(String idMensaje, int pagina) {
         paginaPorMensaje.put(idMensaje, pagina);
     }
 
-    void cambiarConversacion() {
+    @Override
+    public void cambiarConversacion() {
         cancelarCargas();
         paginaPorMensaje.clear();
     }
 
-    void detener() {
+    @Override
+    public void detener() {
         cancelarCargas();
     }
 
-    void cargarImagenVisible(MensajeLocal item) {
+    @Override
+    public void cargarImagenVisible(MensajeLocal item) {
         if (item == null || cargasImagen.containsKey(item.idMensaje())) {
             return;
         }
@@ -141,7 +150,8 @@ final class GestorAdjuntosChat {
         tareasFondo.execute(tarea);
     }
 
-    void reintentarImagen(MensajeLocal item) {
+    @Override
+    public void reintentarImagen(MensajeLocal item) {
         if (item == null) {
             return;
         }
@@ -149,7 +159,8 @@ final class GestorAdjuntosChat {
         cargarImagenVisible(item);
     }
 
-    void descargarArchivo(MensajeLocal item) {
+    @Override
+    public void descargarArchivo(MensajeLocal item) {
         if (item == null) {
             return;
         }
@@ -168,7 +179,8 @@ final class GestorAdjuntosChat {
                 byte[] bytes;
                 try {
                     bytes = archivos.descargarImagen(item.idMensaje());
-                } catch (Exception noDisponibleLocalmente) {
+                } catch (universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente
+                        | java.io.IOException noDisponibleLocalmente) {
                     bytes = archivos.descargarContenidoArchivo(item.archivoId());
                 }
                 Files.write(destino.toPath(), bytes);

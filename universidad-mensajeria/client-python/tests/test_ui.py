@@ -5,17 +5,21 @@ import time
 from pathlib import Path
 import threading
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QBuffer, QCoreApplication, QEvent, QEventLoop, QIODevice, QTimer, Qt
+from PySide6.QtCore import QBuffer, QCoreApplication, QEvent, QEventLoop, QIODevice, QSettings, QTimer, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
 from ui.chat_window import ChatWindow
 from ui.lista_virtual import ROL_ITEM
 from ui.login_window import LoginWindow
+from ui.preferencias_chat import PreferenciasChat
 from ui.tema import tokens
+
+from contrato_tokens import TOKEN_CANONICO
 
 
 class FachadaFalsa:
@@ -57,6 +61,17 @@ class PruebasUI(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        # Las preferencias son persistentes en producción; cada prueba las
+        # aísla para que un último chat guardado no afecte otra ejecución.
+        self._dir_ajustes = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir_ajustes.cleanup)
+        ajustes = QSettings(
+            str(Path(self._dir_ajustes.name) / "preferencias.ini"),
+            QSettings.Format.IniFormat)
+        parche = patch("ui.chat_window.PreferenciasChat",
+                       lambda: PreferenciasChat(ajustes))
+        parche.start()
+        self.addCleanup(parche.stop)
         self.fachada = FachadaFalsa()
         self.login = LoginWindow(self.fachada)
         self.chat = ChatWindow(self.fachada, "A001", lambda: None)
@@ -100,6 +115,108 @@ class PruebasUI(unittest.TestCase):
         self._wait()
         self.assertEqual([("texto", "B002", "Hola")], self.fachada.enviados)
 
+    def test_responder_enfoca_el_composer(self):
+        self.chat.show()
+        self.chat.activateWindow()
+        self.chat._responder({"id": "m1", "sender": "B002", "text": "Hola"})
+        self._wait(20)
+
+        self.assertTrue(self.chat.entry_msg.hasFocus())
+
+    def test_acciones_de_chat_y_login_tienen_nombre_accesible(self):
+        controles_chat = {
+            self.chat.btn_actualizar: "Actualizar usuarios",
+            self.chat.btn_anteriores: "Cargar mensajes anteriores",
+            self.chat.btn_nuevos: "Ir a mensajes nuevos",
+            self.chat.btn_quitar_respuesta: "Cancelar respuesta",
+            self.chat.btn_buscar_ant: "Anterior coincidencia",
+            self.chat.btn_buscar_sig: "Siguiente coincidencia",
+            self.chat.btn_buscar_cerrar: "Cerrar búsqueda",
+            self.chat.btn_quitar_adjunto: "Quitar imagen adjunta",
+            self.chat.btn_imagen: "Adjuntar imagen",
+        }
+        for control, nombre in controles_chat.items():
+            with self.subTest(nombre=nombre):
+                self.assertEqual(nombre, control.accessibleName())
+
+        self.assertEqual("Código universitario", self.login.entry_codigo.accessibleName())
+        self.assertEqual("Contraseña", self.login.entry_password.accessibleName())
+        self.assertEqual("Puerto configurado, solo informativo",
+                         self.login.entry_puerto.accessibleName())
+
+    def test_cargar_pagina_antigua_conserva_ancla_y_posicion(self):
+        self.chat.resize(900, 600)
+        self.chat.show()
+        self._wait(50)
+
+        def fila(numero):
+            return {
+                "id_mensaje": f"mensaje-{numero}", "origen": "B002",
+                "destino": "A001", "tipo": "MENSAJE_TEXTO",
+                "contenido": f"Mensaje de prueba {numero}", "estado": "ENVIADO",
+                "fecha_envio": "2026-10-01T10:00:00",
+            }
+
+        self.chat._pintar_historial([fila(i) for i in range(99, 49, -1)])
+        self._wait(50)
+        barra = self.chat.lista_mensajes.verticalScrollBar()
+        barra.setValue(barra.maximum() // 2)
+        self.app.processEvents()
+        ancla = self.chat._capturar_ancla_scroll()
+        self.assertIsNotNone(ancla)
+        id_ancla, y_original = ancla
+
+        self.chat._pintar_historial([fila(i) for i in range(49, -1, -1)], prepend=True)
+        self.app.processEvents()
+        indice = self.chat._modelo_mensajes.indice_por_id(id_ancla)
+        rect = self.chat.lista_mensajes.visualRect(indice)
+
+        self.assertTrue(rect.isValid())
+        self.assertLessEqual(abs(rect.top() - y_original), 2)
+
+    def test_divisor_lateral_se_restaurar_desde_preferencia_de_cuenta(self):
+        import tempfile
+        from PySide6.QtCore import QSettings
+        from ui.preferencias_chat import PreferenciasChat
+
+        with tempfile.TemporaryDirectory() as directorio:
+            ajustes = QSettings(
+                str(Path(directorio) / "preferencias.ini"),
+                QSettings.Format.IniFormat,
+            )
+            self.chat._preferencias_chat = PreferenciasChat(ajustes)
+            self.chat.show()
+            self._wait(30)
+            self.chat._divisor_lateral.setSizes([320, 800])
+            self.app.processEvents()
+            esperado = self.chat._divisor_lateral.sizes()
+            self.chat._guardar_divisor_lateral()
+            self.chat._divisor_lateral.setSizes([260, 860])
+            self.chat._restaurar_divisor_lateral()
+
+            self.assertEqual(esperado, self.chat._divisor_lateral.sizes())
+
+    def test_restaurar_ultimo_chat_de_la_cuenta(self):
+        import tempfile
+        from PySide6.QtCore import QSettings
+        from ui.preferencias_chat import PreferenciasChat
+
+        with tempfile.TemporaryDirectory() as directorio:
+            ajustes = QSettings(
+                str(Path(directorio) / "preferencias.ini"),
+                QSettings.Format.IniFormat,
+            )
+            self.chat._preferencias_chat = PreferenciasChat(ajustes)
+            self.chat._preferencias_chat.guardar_ultimo_chat("A001", "B002")
+            self.chat._restauracion_ultimo_chat_pendiente = True
+            self.chat._directorio = [{"codigo": "B002", "conectado": 1}]
+            self.chat._no_leidos = {}
+            self.chat._filtrar_usuarios()
+
+            self.chat._restaurar_ultima_conversacion()
+
+            self.assertEqual("B002", self.chat.usuario_seleccionado)
+
     def test_evento_del_hilo_de_red_se_aplica_en_la_vista(self):
         self.chat.lista_usuarios.setCurrentRow(0)
         mensaje = {
@@ -127,20 +244,25 @@ class PruebasUI(unittest.TestCase):
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
         imagen.save(buffer, "PNG")
         contenido = base64.b64encode(bytes(buffer.data())).decode("ascii")
+        etapas = '[{"etapa":"01_grises.png","ms":12,"ruta":"srv/privado/01_grises.png"}]'
 
         self.chat.lista_usuarios.setCurrentRow(0)
         self.chat.show()
         self.fachada.on_mensaje_recibido_ui({
             "tipo": "MENSAJE_IMAGEN", "id": "imagen-ui", "remitente": "B002",
             "fechaHora": "2026-10-01T10:00:00", "nombreArchivo": "preview.png",
-            "contenidoImagen": contenido,
+            "contenidoImagen": contenido, "etapasFiltrado": etapas,
         })
         self._wait(500)
         mensaje = self.chat._mensaje_por_id("imagen-ui")
         self.assertIsNotNone(mensaje)
         pixmap = self.chat._delegado_mensajes.pixmap_de("imagen-ui")
-        self.assertIsNotNone(pixmap)
+        self.assertIsNotNone(pixmap, msg=repr(mensaje))
         self.assertFalse(pixmap.isNull())
+        self.assertEqual(mensaje["etapas_filtrado"], etapas)
+        layout = self.chat._delegado_mensajes.distribuir(mensaje, 700, tokens("oscuro"))
+        self.assertIn("etapas_filtrado", layout)
+        self.assertNotIn("srv/privado", layout["etapas_filtrado"][-1])
 
     def test_historial_repetido_no_duplica_burbujas(self):
         self.chat.show()
@@ -330,10 +452,15 @@ class PruebasUI(unittest.TestCase):
         })
         # El modo vive en el delegado (pinta todas las filas a la vez).
         self.assertEqual(MODO_CLARO, self.chat._delegado_mensajes._modo)
-        self.assertEqual("#E1F5FE", tokens(MODO_CLARO)["burbuja_propia"])
+        # VIS-01: la paleta clara ya no es la del cliente Python (#E1F5FE) sino la
+        # canonica compartida con JavaFX y WPF. Se lee del JSON para que este test
+        # no vuelva a fijar un hex en el cliente.
+        self.assertEqual(TOKEN_CANONICO("claro", "bubble.out.bg"),
+                         tokens(MODO_CLARO)["burbuja_propia"])
         self.chat.aplicar_tema(MODO_OSCURO)
         self.assertEqual(MODO_OSCURO, self.chat._delegado_mensajes._modo)
-        self.assertEqual("#7B61B8", tokens(MODO_OSCURO)["burbuja_propia"])
+        self.assertEqual(TOKEN_CANONICO("oscuro", "bubble.out.bg"),
+                         tokens(MODO_OSCURO)["burbuja_propia"])
 
     def test_composer_con_mas_a_la_izquierda_y_salir_en_sidebar(self):
         fila = self.chat._fila_envio

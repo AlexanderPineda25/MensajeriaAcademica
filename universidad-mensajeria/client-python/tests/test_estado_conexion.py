@@ -6,6 +6,7 @@ y el orden de las transiciones son el mismo contrato en los 3 clientes.
 """
 import os
 import tempfile
+import time
 import unittest
 
 from fachada.fachada_cliente import FachadaCliente
@@ -58,6 +59,7 @@ class TestEstadoConexion(unittest.TestCase):
         db = Database("sqlite:///" + tmp.name, esquema_path=ESQUEMA)
         self.red = RedFalsaEstado()
         self.f = FachadaCliente(db=db, conexion=self.red)
+        self.addCleanup(self.f._gestor_reconexion.cerrar)
         # El cableado que hace la fachada cuando construye la ConexionRed; con una
         # inyectada hay que replicarlo, si no el doble no recibe nada.
         self.red.on_cierre = self.f._handle_cierre
@@ -99,6 +101,20 @@ class TestEstadoConexion(unittest.TestCase):
         self.red.cerrar_sesion()
 
         assert self.f.estado_conexion == ec.SESION_CERRADA
+
+    def test_reconecta_y_restaura_sesion_con_backoff(self):
+        self.f.login("A001", "clave")
+        estados = []
+        self.f.on_estado_ui = estados.append
+
+        self.red.caer()
+
+        limite = time.monotonic() + 3.0
+        while time.monotonic() < limite and self.f.estado_conexion != ec.CONECTADO:
+            time.sleep(0.02)
+        assert self.f.estado_conexion == ec.CONECTADO
+        assert ec.SIN_RED in estados
+        assert self.f.codigo_actual == "A001"
 
     def test_un_cierre_voluntario_no_se_reporta_como_caida(self):
         # El hilo receptor tambien muere al cerrar a proposito. Si eso degradara

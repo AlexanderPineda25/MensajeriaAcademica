@@ -14,6 +14,27 @@ import ssl
 TLS_PUERTO_DEFECTO = 5001
 
 
+def interpretar_habilitado_tls(habilitado):
+    """Convierte la propiedad TLS a bool sin ocultar valores mal escritos.
+
+    La clave ausente y una propiedad vacia significan TLS deshabilitado; si
+    contiene texto, solo se aceptan ``true`` y ``false``.
+    """
+    if isinstance(habilitado, bool):
+        return habilitado
+    if habilitado is None:
+        return False
+    if isinstance(habilitado, str):
+        valor = habilitado.strip().lower()
+        if not valor:
+            return False
+        if valor == "true":
+            return True
+        if valor == "false":
+            return False
+    raise ValueError("valor invalido en tls.habilitado: use true o false")
+
+
 def validar_tls(habilitado, puerto_plano, puerto_tls, confianza):
     """Falla rapido ANTES de abrir ningun socket.
 
@@ -21,9 +42,7 @@ def validar_tls(habilitado, puerto_plano, puerto_tls, confianza):
     ``puerto_tls == 0`` significa efimero/igual que el plano (.NET hace lo
     mismo): solo colisionan dos fijos iguales.
     """
-    if isinstance(habilitado, str):
-        habilitado = habilitado.strip().lower() == "true"
-    if not habilitado:
+    if not interpretar_habilitado_tls(habilitado):
         return
     try:
         plano = int(puerto_plano)

@@ -9,6 +9,8 @@ import os
 import sqlite3
 from contextlib import contextmanager
 
+from transversal.tipo_mensaje import TipoMensaje
+
 # common-protocol/dto/src/main/resources/schema-local.sql, relativo a este archivo.
 _ESQUEMA_REPOSITORIO = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -102,12 +104,14 @@ def migrar_legado_a_cuenta(ruta_legada, ruta_cuenta, cuenta, esquema_path=None):
         if os.path.exists(esquema_file):
             with open(esquema_file, 'r', encoding='utf-8') as f:
                 conn_cta.executescript(f.read())
-        # Asegurar columnas estado y archivo_id
+        # Asegurar columnas aditivas para bases antiguas.
         columnas = {row[1] for row in conn_cta.execute("PRAGMA table_info(historial_local)")}
         if "estado" not in columnas:
             conn_cta.execute("ALTER TABLE historial_local ADD COLUMN estado TEXT NOT NULL DEFAULT 'ENVIADO'")
         if "archivo_id" not in columnas:
             conn_cta.execute("ALTER TABLE historial_local ADD COLUMN archivo_id TEXT")
+        if "etapas_filtrado" not in columnas:
+            conn_cta.execute("ALTER TABLE historial_local ADD COLUMN etapas_filtrado TEXT")
 
         # Migrar historial de forma idempotente recalculando enviado para esta cuenta
         for f in filas_historial:
@@ -118,11 +122,13 @@ def migrar_legado_a_cuenta(ruta_legada, ruta_cuenta, cuenta, esquema_path=None):
                 INSERT INTO historial_local (
                     id_mensaje, origen, destino, tipo, contenido, hash_sha256,
                     num_caracteres, num_palabras, nombre_archivo, ruta_archivo,
-                    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tamano_archivo, fecha_envio, enviado, descargado, estado, archivo_id,
+                    etapas_filtrado
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id_mensaje) DO UPDATE SET
                     descargado = MAX(excluded.descargado, historial_local.descargado),
                     archivo_id = COALESCE(excluded.archivo_id, historial_local.archivo_id),
+                    etapas_filtrado = COALESCE(excluded.etapas_filtrado, historial_local.etapas_filtrado),
                     ruta_archivo = COALESCE(excluded.ruta_archivo, historial_local.ruta_archivo),
                     estado = CASE
                         WHEN historial_local.estado = 'LEIDO' OR excluded.estado = 'LEIDO' THEN 'LEIDO'
@@ -130,12 +136,13 @@ def migrar_legado_a_cuenta(ruta_legada, ruta_cuenta, cuenta, esquema_path=None):
                         WHEN historial_local.estado = 'ENVIADO' AND excluded.estado = 'PENDIENTE' THEN 'ENVIADO'
                         ELSE excluded.estado END
             """, (
-                id_m, origen, f["destino"] or "", f["tipo"] or "MENSAJE_TEXTO",
+                id_m, origen, f["destino"] or "", f["tipo"] or TipoMensaje.MENSAJE_TEXTO,
                 f["contenido"], f["hash_sha256"], f["num_caracteres"], f["num_palabras"],
                 f["nombre_archivo"], f["ruta_archivo"], f["tamano_archivo"],
                 f["fecha_envio"], enviado, f["descargado"] or 0,
                 f["estado"] if "estado" in f.keys() and f["estado"] else "ENVIADO",
-                f["archivo_id"] if "archivo_id" in f.keys() else None
+                f["archivo_id"] if "archivo_id" in f.keys() else None,
+                f["etapas_filtrado"] if "etapas_filtrado" in f.keys() else None
             ))
 
         # Migrar pendientes_envio solo originados por esta cuenta
@@ -247,3 +254,5 @@ class Database:
                              "TEXT NOT NULL DEFAULT 'ENVIADO'")
             if "archivo_id" not in columnas:
                 conn.execute("ALTER TABLE historial_local ADD COLUMN archivo_id TEXT")
+            if "etapas_filtrado" not in columnas:
+                conn.execute("ALTER TABLE historial_local ADD COLUMN etapas_filtrado TEXT")

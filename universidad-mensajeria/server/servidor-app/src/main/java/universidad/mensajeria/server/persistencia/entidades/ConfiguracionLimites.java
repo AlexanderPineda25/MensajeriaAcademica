@@ -29,7 +29,8 @@ public class ConfiguracionLimites {
     private int maxArchivosUsuario = 100;
 
     @Column(name = "max_tamano_archivo", nullable = false)
-    private long maxTamanoArchivo = 52_428_800;
+    private long maxTamanoArchivo =
+            universidad.mensajeria.common.interno.LimitesDTO.TAMANO_MAXIMO_POR_DEFECTO;
 
     @Column(name = "max_archivos_dia", nullable = false)
     private int maxArchivosDia = 20;

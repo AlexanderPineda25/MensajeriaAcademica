@@ -1,8 +1,12 @@
 package universidad.mensajeria.cliente.componentes.autenticacion;
 
 import universidad.mensajeria.cliente.componentes.conexion.InterfazConexionRed;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionValidacion;
 import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
 import universidad.mensajeria.cliente.transversal.utilerias.ValidacionCliente;
+
+import java.io.IOException;
 
 /** Autenticación contra el servidor vía la conexión (sin sockets aquí). */
 public final class Autenticacion implements InterfazAutenticacion {
@@ -15,26 +19,30 @@ public final class Autenticacion implements InterfazAutenticacion {
     }
 
     @Override
-    public boolean login(String codigo, String contrasena) throws Exception {
+    public boolean login(String codigo, String contrasena) throws ExcepcionCliente {
         ValidacionCliente.codigo(codigo);
         if (contrasena == null || contrasena.isBlank()) {
-            throw new IllegalArgumentException("la contrasena es obligatoria");
+            throw new ExcepcionValidacion("la contrasena es obligatoria");
         }
-        RespuestaRed respuesta = red.login(codigo, contrasena);
-        if (Boolean.TRUE.equals(respuesta.exito())) {
-            codigoActual = codigo;
-            return true;
+        try {
+            RespuestaRed respuesta = red.login(codigo, contrasena);
+            if (Boolean.TRUE.equals(respuesta.exito())) {
+                codigoActual = codigo;
+                return true;
+            }
+            codigoActual = null;
+            return false;
+        } catch (IOException falloRed) {
+            throw new ExcepcionCliente("no se pudo autenticar con el servidor", falloRed);
         }
-        // El protocolo responde con un rechazo genérico. La vista también
-        // muestra un mensaje genérico y no revela si el código existe.
-        codigoActual = null;
-        return false;
     }
 
     @Override
-    public void logout() throws Exception {
+    public void logout() throws ExcepcionCliente {
         try {
             red.logout();
+        } catch (IOException falloRed) {
+            throw new ExcepcionCliente("no se pudo cerrar la sesión remota", falloRed);
         } finally {
             codigoActual = null;
         }

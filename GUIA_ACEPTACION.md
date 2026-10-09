@@ -226,18 +226,28 @@ verifica el recorrido de usuario y la paridad con datos comunes.
    `universidad-mensajeria/client-dotnet.Tests/EstadoAvisoInlineTests.cs`; el último resultado
    registrado fue 71/71, pero esta guía no afirma una ejecución nueva en esta revisión.
 
-## Consola administrativa del servidor
+## Consola administrativa del servidor (Sesión B 2026-10-07; cierre 2026-10-08)
 
 1. En JavaFX, confirma que Estado presenta cada indicador verticalmente y que el texto no se
    solapa al redimensionar la ventana.
-2. En Conectados, revisa el estado vacío «No hay usuarios activos» y, con sesiones abiertas, la
-   lista de códigos disponibles para «Desconectar usuario».
-3. En Usuarios, abre un usuario con doble clic; la ficha debe mostrar resumen, conexiones,
-   mensajes y archivos, con paginación de 50 registros y contacto principal.
-4. En Mensajes, escribe un código y selecciónalo del desplegable; confirma caracteres, palabras,
-   IP histórica del remitente y las IP disponibles (o «No disponible») para el destinatario.
-5. En Informes, verifica que el detalle de mensaje/imagen solo está visible para el informe de
-   mensajes; revisa la expansión de Logs, la presentación de Pool y el botón «Enviar difusión».
-6. Cierra la ventana administrativa con X: debe preguntar si se cierra esa vista; confirmar no
+2. En Conectados, revisa el estado vacío «No hay usuarios activos» y, con sesiones abiertas, que
+   lista y desplegable muestran `Nombre Apellidos [código]`; clic en la lista cambia el
+   desplegable y viceversa. «Desconectar usuario» pide confirmación Sí/No con el nombre
+   visible; con `No` no se cierra nada.
+3. En Usuarios, confirma la tabla centrada con márgenes al redimensionar; abre un usuario con
+   doble clic; la ficha debe mostrar resumen, conexiones, mensajes y archivos, con paginación
+   de 50 registros y contacto principal. «Desconectar usuario» también confirma.
+4. En la ficha, pestaña Mensajes: filtro por tipo (Todos/TEXTO/IMAGEN/ARCHIVO/BROADCAST),
+   tabla + detalle con preview/descarga igual que en Mensajes, divisor movible; al cambiar de
+   página conserva la selección por id.
+5. En Mensajes, escribe un código y selecciónalo del desplegable; confirma caracteres, palabras,
+   IP histórica del remitente y las IP vivas del destinatario (o «No disponible» si está
+   offline). Envía una imagen y confirma en la consola JLine el bloque multilínea con hash y
+   las 5 rutas derivadas; en texto confirma hash y conteos.
+6. En Informes, verifica que el detalle de mensaje/imagen solo está visible para el informe de
+   mensajes; pulsa `Actualizar` y confirma que no hay auto-refresh que mueva scroll, selección
+   o detalle (el texto de ayuda lo indica); revisa la expansión de Logs, la presentación de
+   Pool y el botón «Enviar difusión».
+7. Cierra la ventana administrativa con X: debe preguntar si se cierra esa vista; confirmar no
    debe detener el servicio TCP ni JLine.
-7. En JLine, recorre títulos, comandos, tablas y eventos; confirma que se conservaron los comandos.
+8. En JLine, recorre títulos, comandos, tablas y eventos; confirma que se conservaron los comandos.

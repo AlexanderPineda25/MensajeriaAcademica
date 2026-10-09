@@ -9,7 +9,8 @@ namespace Mensajeria.Componentes
             string? contenido, string? hash, int? numCaracteres, int? numPalabras,
             string? nombreArchivo, string? rutaArchivo, long? tamanoArchivo,
             string fechaEnvio, int enviado, int descargado,
-            string estado = "ENVIADO", string? archivoId = null);
+            string estado = "ENVIADO", string? archivoId = null,
+            string? etapasFiltrado = null);
         List<Dictionary<string, object>> PaginaConversacion(string origen, string destino,
             int limit, int offset);
         /// <summary>Última fecha local por interlocutor, para ordenar conversaciones recientes.</summary>

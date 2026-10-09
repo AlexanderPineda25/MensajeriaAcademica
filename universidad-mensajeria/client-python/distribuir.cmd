@@ -13,7 +13,7 @@ if not exist "main.py" (
 set DIST=dist\MensajeriaPython
 if exist "dist" rmdir /s /q "dist"
 
-echo [1/3] Copiando fuentes (sin .venv, caches, tests ni bases)...
+echo [1/3] Copiando fuentes y recursos visuales (sin .venv, caches, tests ni bases)...
 mkdir "%DIST%" 2>nul
 robocopy . "%DIST%" /E /NFL /NDL /NJH /NJS ^
     /XD .venv __pycache__ tests .pytest_cache imagenes dist ^
@@ -24,7 +24,7 @@ if %ERRORLEVEL% GEQ 8 (
 )
 
 echo [2/3] Verificando contenido minimo...
-for %%F in (main.py requirements.txt client.properties store\schema-local.sql fachada\fachada_cliente.py ui\chat_window.py) do (
+for %%F in (main.py requirements.txt client.properties store\schema-local.sql fachada\fachada_cliente.py ui\chat_window.py ui\fondos\fondo_chat_claro.jpg ui\fondos\fondo_chat_oscuro.jpg) do (
     if not exist "%DIST%\%%F" (
         echo [ERROR] Falta %DIST%\%%F.
         exit /b 1

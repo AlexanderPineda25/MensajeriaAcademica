@@ -10,9 +10,9 @@ import universidad.mensajeria.common.interno.UsuarioDTO;
 import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 
-import universidad.mensajeria.server.almacenarinformacion.InterfazAlmacenarInformacion;
 import universidad.mensajeria.server.conexionesclientes.InterfazConexionesClientes;
 import universidad.mensajeria.server.logdeeventos.InterfazLogDeEventos;
+import universidad.mensajeria.server.mensajes.InterfazMensajes;
 
 import universidad.mensajeria.servicios.InterfazServiciosDisponibles;
 
@@ -34,7 +34,7 @@ public final class AutenticarCaso {
     private final InterfazServiciosDisponibles servicios;
     private final InterfazUsuariosDisponibles usuarios;
     private final InterfazConexionesClientes conexiones;
-    private final InterfazAlmacenarInformacion almacenar;
+    private final InterfazMensajes mensajes;
     private final InterfazLogDeEventos eventos;
     private final InterfazUsuariosDisponibles.VerificadorCredenciales verificador;
     private final LimitesDTO limites;
@@ -44,7 +44,7 @@ public final class AutenticarCaso {
                           InterfazServiciosDisponibles servicios,
                           InterfazUsuariosDisponibles usuarios,
                           InterfazConexionesClientes conexiones,
-                          InterfazAlmacenarInformacion almacenar,
+                          InterfazMensajes mensajes,
                           InterfazLogDeEventos eventos,
                           InterfazUsuariosDisponibles.VerificadorCredenciales verificador,
                           LimitesDTO limites,
@@ -53,7 +53,7 @@ public final class AutenticarCaso {
         this.servicios = servicios;
         this.usuarios = usuarios;
         this.conexiones = conexiones;
-        this.almacenar = almacenar;
+        this.mensajes = mensajes;
         this.eventos = eventos;
         this.verificador = verificador;
         this.limites = limites;
@@ -141,7 +141,7 @@ public final class AutenticarCaso {
 
     private void enviarSync(String codigo, IdSesion sesion) {
         try {
-            var pendientes = almacenar.pendientesPara(codigo, SYNC_MAX);
+            var pendientes = mensajes.pendientesPara(codigo, SYNC_MAX);
             for (var m : pendientes) {
                 Mensaje.Builder sync = Mensaje.builder()
                         .tipo(TipoMensaje.SYNC_LOGIN)

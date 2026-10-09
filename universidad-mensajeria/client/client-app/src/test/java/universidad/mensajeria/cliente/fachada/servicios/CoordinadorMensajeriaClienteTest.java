@@ -81,6 +81,7 @@ class CoordinadorMensajeriaClienteTest {
         final List<String> estadosMarcados = new ArrayList<>();
         final List<PendienteEnvio> pendientesRegistrados = new ArrayList<>();
         final List<String> archivoIdsActualizados = new ArrayList<>();
+        String etapasFiltrado;
 
         @Override public void guardar(MensajeLocal m) { guardados.add(m); }
         @Override public void marcarEstado(String id, String estado) {
@@ -89,6 +90,9 @@ class CoordinadorMensajeriaClienteTest {
         @Override public void registrarPendiente(PendienteEnvio p) { pendientesRegistrados.add(p); }
         @Override public void actualizarArchivoId(String id, String archivoId) {
             archivoIdsActualizados.add(id + "=" + archivoId);
+        }
+        @Override public void actualizarEtapasFiltrado(String id, String etapas) {
+            etapasFiltrado = etapas;
         }
 
         // Métodos del contrato no usados en estas pruebas
@@ -170,11 +174,12 @@ class CoordinadorMensajeriaClienteTest {
     // -------------------------------------------------------------------------
 
     @Test
-    @DisplayName("enviarImagen — red ok con archivoId → marca ENVIADO y persiste archivoId")
+    @DisplayName("enviarImagen — red ok persiste archivoId y etapas del filtro")
     void enviarImagenConArchivoId() throws Exception {
         red.respuesta = RespuestaRedPrueba.desde(Mensaje.builder()
                 .tipo(TipoMensaje.MENSAJE_IMAGEN)
-                .exito(true).archivoId("img-123").build());
+                .exito(true).archivoId("img-123")
+                .etapasFiltrado("[{\"etapa\":\"grises\",\"ms\":12}]").build());
         byte[] bytes = {1, 2, 3};
 
         boolean resultado = coordinador.enviarImagen("YO", "DEST", bytes, "foto.jpg", "image/jpeg");
@@ -182,6 +187,7 @@ class CoordinadorMensajeriaClienteTest {
         assertTrue(resultado);
         assertEquals(1, historial.archivoIdsActualizados.size());
         assertTrue(historial.archivoIdsActualizados.get(0).endsWith("=img-123"));
+        assertEquals("[{\"etapa\":\"grises\",\"ms\":12}]", historial.etapasFiltrado);
     }
 
     @Test

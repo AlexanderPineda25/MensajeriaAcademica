@@ -1,11 +1,13 @@
 import threading
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
-from qfluentwidgets import LineEdit, PasswordLineEdit, PrimaryPushButton
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from qfluentwidgets import ComboBox, LineEdit, PasswordLineEdit, PrimaryPushButton
 
 from ui.tema import (
     MODO_OSCURO,
+    TOKENS_CANONICOS,
+    aplicar_tema_fluent,
     estilo_cabecera,
     estilo_tarjeta,
     guardar_modo,
@@ -49,6 +51,7 @@ class LoginWindow(QWidget):
         self.lbl_codigo = QLabel("Código universitario")
         layout.addWidget(self.lbl_codigo)
         self.entry_codigo = LineEdit()
+        self.entry_codigo.setAccessibleName("Código universitario")
         self.entry_codigo.setPlaceholderText("A001234567")
         self.entry_codigo.setClearButtonEnabled(True)
         layout.addWidget(self.entry_codigo)
@@ -56,6 +59,7 @@ class LoginWindow(QWidget):
         self.lbl_password = QLabel("Contraseña")
         layout.addWidget(self.lbl_password)
         self.entry_password = PasswordLineEdit()
+        self.entry_password.setAccessibleName("Contraseña")
         self.entry_password.setPlaceholderText("••••••••••")
         self.entry_password.returnPressed.connect(self.login)
         layout.addWidget(self.entry_password)
@@ -66,6 +70,7 @@ class LoginWindow(QWidget):
         self.lbl_host = QLabel("Servidor")
         host_box.addWidget(self.lbl_host)
         self.entry_host = LineEdit()
+        self.entry_host.setAccessibleName("Servidor configurado, solo informativo")
         config = getattr(fachada, "config", None)
         host_inicial = "localhost"
         puerto_inicial = 5000
@@ -84,6 +89,7 @@ class LoginWindow(QWidget):
         puerto_box.addWidget(self.lbl_puerto)
         # Puerto solo lectura sin botones (igual que Java/.NET).
         self.entry_puerto = LineEdit()
+        self.entry_puerto.setAccessibleName("Puerto configurado, solo informativo")
         self.entry_puerto.setText(str(puerto_inicial))
         self.entry_puerto.setClearButtonEnabled(False)
         self.entry_puerto.setEnabled(False)
@@ -95,7 +101,10 @@ class LoginWindow(QWidget):
         fila_tema = QHBoxLayout()
         fila_tema.setSpacing(10)
         self.lbl_tema = QLabel("Tema")
-        self.combo_tema = QComboBox()
+        # ComboBox Fluent (como el del chat): un QComboBox de serie conserva la
+        # paleta del arranque y su texto quedaba blanco sobre blanco en claro.
+        self.combo_tema = ComboBox()
+        self.combo_tema.setAccessibleName("Tema de la interfaz")
         self.combo_tema.addItems(["Oscuro", "Claro"])
         self.combo_tema.setCurrentIndex(0 if self.modo == MODO_OSCURO else 1)
         self.combo_tema.currentIndexChanged.connect(self._cambiar_tema)
@@ -104,6 +113,7 @@ class LoginWindow(QWidget):
         layout.addLayout(fila_tema)
 
         self.btn_login = PrimaryPushButton("Iniciar sesión →")
+        self.btn_login.setAccessibleName("Iniciar sesión")
         self.btn_login.setMinimumHeight(40)
         self.btn_login.setMinimumWidth(220)
         self.btn_login.clicked.connect(self.login)
@@ -149,7 +159,11 @@ class LoginWindow(QWidget):
 
     def aplicar_tema(self, modo):
         self.modo = normalizar(modo)
+        # Sin esto los controles Fluent (campos, combo, botón) se quedaban en
+        # el tema global del arranque: modo claro con campos oscuros.
+        aplicar_tema_fluent(self.modo)
         t = tokens(self.modo)
+        canon = TOKENS_CANONICOS[self.modo]
         self.setStyleSheet(f"background: {t['ventana']};")
         self.card.setStyleSheet(estilo_tarjeta(t))
         self._header.setStyleSheet(estilo_cabecera(t))
@@ -157,13 +171,13 @@ class LoginWindow(QWidget):
             "background: transparent; border: none;"
         )
         self.eyebrow.setStyleSheet(
-            f"color: #9FB6D8; font-size: 11px; font-weight: 700; {header_txt}")
+            f"color: {canon['login.eyebrow.fg']}; font-size: 11px; font-weight: 700; {header_txt}")
         self.title.setStyleSheet(
-            f"font-size: 20px; font-weight: 700; color: white; {header_txt}")
+            f"font-size: 20px; font-weight: 700; color: {canon['login.title.fg']}; {header_txt}")
         self.subtitle.setStyleSheet(
-            f"color: #C9D6E8; font-size: 12px; {header_txt}")
+            f"color: {canon['login.subtitle.fg']}; font-size: 12px; {header_txt}")
         etiqueta = (
-            f"color: {t['texto']}; background: transparent; border: none;"
+            f"color: {canon['login.label.fg']}; background: transparent; border: none;"
         )
         for lbl in (self.lbl_codigo, self.lbl_password, self.lbl_host,
                     self.lbl_puerto, self.lbl_tema):

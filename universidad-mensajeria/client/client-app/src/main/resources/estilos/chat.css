@@ -1,5 +1,12 @@
+/* GENERADO por contrato/generar_tokens.py desde contrato/tokens-diseno.json.
+ * NO editar a mano: el cambio se hace en el JSON y se regenera.
+ * Plantilla comun a los dos temas: por eso `chat-claro.css` ya no puede quedarse
+ * sin un selector que `chat.css` si tenga (le faltaban .message-out .message-text,
+ * .message-out .image-caption y .message-out .message-time).
+ * Tema: oscuro */
+
 .root {
-    -fx-font-family: "Segoe UI", sans-serif;
+    -fx-font-family: Segoe UI, sans-serif;
     -fx-font-size: 13px;
     -fx-background-color: #0E1621;
 }
@@ -53,7 +60,7 @@
     -fx-background-radius: 5px;
     -fx-border-color: transparent;
     -fx-text-fill: #E8EEF2;
-    -fx-prompt-text-fill: #7A8A99;
+    -fx-prompt-text-fill: #9AAAB8;
 }
 
 .search-field:focused, .message-input:focused {
@@ -66,6 +73,13 @@
     -fx-background-color: transparent;
     -fx-border-color: transparent;
     -fx-padding: 0;
+}
+
+.message-list {
+    -fx-background-image: url("../fondos/fondo_chat_oscuro.jpg");
+    -fx-background-size: cover;
+    -fx-background-position: center center;
+    -fx-background-repeat: no-repeat;
 }
 
 .chat-list .list-cell {
@@ -101,7 +115,7 @@
 .unread-badge {
     -fx-background-color: #48a982;
     -fx-background-radius: 12px;
-    -fx-text-fill: white;
+    -fx-text-fill: #FFFFFF;
     -fx-font-size: 10px;
     -fx-font-weight: 700;
     -fx-padding: 3px 6px;
@@ -149,6 +163,12 @@
     -fx-text-fill: #C4B5FD;
 }
 
+/* El lavanda del remitente no llega a 4.5:1 sobre la burbuja propia morada, asi que
+ * ahi se usa el token propio. En la burbuja ajena sigue siendo lavanda. */
+.message-out .message-sender {
+    -fx-text-fill: #F7F5FF;
+}
+
 /* UIX-13: estados vacíos en vez de rectángulos en blanco. */
 .empty-placeholder {
     -fx-font-size: 12px;
@@ -181,6 +201,7 @@
 
 .message-out .message-text {
     -fx-text-fill: #FFFFFF;
+    -fx-fill: #FFFFFF;
 }
 
 .message-quote {
@@ -231,7 +252,7 @@
 }
 
 .message-out .message-time {
-    -fx-text-fill: #C4B5FD;
+    -fx-text-fill: #F7F5FF;
 }
 
 .reply-button, .icon-button {
@@ -267,7 +288,7 @@
 .send-button {
     -fx-background-color: #7B61B8;
     -fx-background-radius: 5px;
-    -fx-text-fill: white;
+    -fx-text-fill: #FFFFFF;
     -fx-font-weight: 700;
     -fx-padding: 9px 15px;
     -fx-cursor: hand;

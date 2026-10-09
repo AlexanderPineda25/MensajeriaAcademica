@@ -2,6 +2,7 @@ package universidad.mensajeria.cliente.fachada.servicios;
 
 import universidad.mensajeria.cliente.componentes.autenticacion.InterfazAutenticacion;
 import universidad.mensajeria.cliente.componentes.conexion.InterfazConexionRed;
+import universidad.mensajeria.cliente.fachada.InterfazGestorReconexion;
 import universidad.mensajeria.cliente.transversal.EstadoConexion;
 
 import java.util.concurrent.ScheduledExecutorService;
@@ -16,7 +17,7 @@ import java.util.logging.Logger;
 /**
  * Administra credenciales temporales y la restauración automática de sesión.
  */
-public final class GestorReconexionSesion {
+public final class GestorReconexionSesion implements InterfazGestorReconexion {
 
     private static final Logger LOG = Logger.getLogger(GestorReconexionSesion.class.getName());
     private static final int[] ESPERA_RECONEXION_SEGUNDOS = {1, 2, 4, 8, 16, 30};
@@ -46,6 +47,7 @@ public final class GestorReconexionSesion {
         this.reconector = reconector;
     }
 
+    @Override
     public synchronized void guardarSesion(String codigo, String contrasena) {
         generacionSesion.incrementAndGet();
         codigoSesion = codigo;
@@ -55,6 +57,7 @@ public final class GestorReconexionSesion {
         cancelarReintentoProgramado();
     }
 
+    @Override
     public synchronized void olvidarSesion() {
         cierreIntencional = true;
         generacionSesion.incrementAndGet();
@@ -64,6 +67,7 @@ public final class GestorReconexionSesion {
         cancelarReintentoProgramado();
     }
 
+    @Override
     public synchronized void programarReconexion() {
         if (cierreIntencional || codigoSesion == null || contrasenaSesion == null
                 || reconector.isShutdown()) {
@@ -79,6 +83,7 @@ public final class GestorReconexionSesion {
                 demora, TimeUnit.SECONDS);
     }
 
+    @Override
     public void cerrar() {
         olvidarSesion();
         reconector.shutdownNow();
@@ -118,7 +123,7 @@ public final class GestorReconexionSesion {
             publicarEstado.accept(EstadoConexion.CONECTADO);
             alRestaurarSesion.accept(codigo);
             LOG.info("Conexión y sesión restauradas automáticamente.");
-        } catch (Exception e) {
+        } catch (java.io.IOException | universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente | RuntimeException e) {
             LOG.log(Level.INFO, "Falló el intento de reconexión automática", e);
             red.desconectar();
             publicarEstado.accept(EstadoConexion.SIN_RED);

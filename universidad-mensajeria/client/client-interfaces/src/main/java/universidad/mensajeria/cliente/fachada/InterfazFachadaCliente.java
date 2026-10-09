@@ -2,6 +2,8 @@ package universidad.mensajeria.cliente.fachada;
 
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.io.IOException;
+import universidad.mensajeria.cliente.transversal.excepciones.ExcepcionCliente;
 
 /**
  * Fachada agregada que conserva el contrato interno de la aplicación.
@@ -14,5 +16,5 @@ public interface InterfazFachadaCliente extends InterfazInicioSesion, InterfazCh
 
     void cerrar();
 
-    List<String> listarConectados() throws Exception;
+    List<String> listarConectados() throws ExcepcionCliente, IOException;
 }

@@ -2,11 +2,15 @@ package universidad.mensajeria.server.mensajes;
 
 import universidad.mensajeria.common.interno.InformeFiltroDTO;
 import universidad.mensajeria.common.interno.ActividadUsuarioDTO;
+import universidad.mensajeria.common.interno.ArchivoDTO;
+import universidad.mensajeria.common.interno.FechasUsuarioDTO;
 import universidad.mensajeria.common.interno.MensajeResumenDTO;
 import universidad.mensajeria.common.interno.PaginaDTO;
 import universidad.mensajeria.common.interno.ResultadoMensajeDTO;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -83,4 +87,20 @@ public interface InterfazMensajes {
                                                       int pagina, int tamano);
 
     ActividadUsuarioDTO actividadUsuario(String codigo);
+
+    /**
+     * Consultas de vista servidas por la Fachada a traves de E10 (sin flechas
+     * nuevas): los casos de uso leen por aqui, nunca por AlmacenarInformacion.
+     * Son pass-through de una linea; la persistencia sigue detras de E15.
+     */
+    PaginaDTO<MensajeResumenDTO> paginaConversacion(String codigoA, String codigoB,
+                                                    int pagina, int tamano);
+
+    List<MensajeResumenDTO> pendientesPara(String codigo, int limite);
+
+    Optional<ArchivoDTO> buscarArchivoPorId(long id);
+
+    byte[] leerBytesArchivo(long archivoId) throws IOException;
+
+    List<FechasUsuarioDTO> fechasUsuarios();
 }

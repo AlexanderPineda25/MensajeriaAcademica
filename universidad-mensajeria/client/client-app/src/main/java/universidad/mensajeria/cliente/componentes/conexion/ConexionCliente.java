@@ -5,11 +5,17 @@ import universidad.mensajeria.common.tipos.Mensaje;
 import universidad.mensajeria.common.tipos.TipoMensaje;
 import universidad.mensajeria.cliente.transversal.records.RespuestaRed;
 import universidad.mensajeria.cliente.transversal.records.TipoMensajeCliente;
+import universidad.mensajeria.cliente.transversal.utilerias.ValidarTls;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.net.Socket;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,6 +33,12 @@ import java.util.concurrent.TimeoutException;
 public final class ConexionCliente implements InterfazConexionRed {
 
     private static final int TIMEOUT_RESPUESTA_SEG = 15;
+
+    /**
+     * Bytes crudos por {@code ARCHIVO_PARTE}. 1 MiB es el mismo corte que usan Python y .NET:
+     * en Base64 ocupa ~1,33 MiB, muy por debajo del tope de 16 MiB de {@link TramaCodec}.
+     */
+    private static final int PARTE_MAX_BYTES = 1024 * 1024;
 
     private final String host;
     private final int puerto;
@@ -78,7 +90,15 @@ public final class ConexionCliente implements InterfazConexionRed {
         lector.start();
     }
 
+    /**
+     * Abre el socket TLS. Antes valida la configuración (SEG-01): si el almacén de confianza
+     * no existe o los puertos colisionan, el mensaje dice qué propiedad tocar en vez de salir
+     * como un IOException de handshake que no orienta a nadie.
+     *
+     * <p>El framing es idéntico sobre el socket claro y el cifrado: no cambia nada más aquí.
+     */
     private Socket socketTls() throws IOException {
+        ValidarTls.validar(tlsHabilitado, puerto, tlsPuerto, tlsConfianza);
         try {
             javax.net.ssl.SSLSocketFactory fabrica;
             if (tlsConfianza.isBlank()) {
@@ -101,12 +121,24 @@ public final class ConexionCliente implements InterfazConexionRed {
                 contexto.init(null, confianza.getTrustManagers(), null);
                 fabrica = contexto.getSocketFactory();
             }
-            return fabrica.createSocket(host, tlsPuerto);
+            Socket abierto = fabrica.createSocket(host, tlsPuerto);
+            if (!(abierto instanceof javax.net.ssl.SSLSocket seguro)) {
+                // No degradar nunca a conexión sin cifrar si el TLS estaba pedido.
+                throw new IOException("la fabrica TLS no produjo un SSLSocket hacia " + host
+                        + ":" + tlsPuerto + "; se aborta antes de enviar nada en claro");
+            }
+            // Paridad con el cliente Python (`check_hostname = True`): el hostname se
+            // verifica siempre y nunca hay un downgrade silencioso a socket plano.
+            javax.net.ssl.SSLParameters parametros = seguro.getSSLParameters();
+            parametros.setEndpointIdentificationAlgorithm("HTTPS");
+            parametros.setProtocols(new String[]{"TLSv1.3", "TLSv1.2"});
+            seguro.setSSLParameters(parametros);
+            return seguro;
         } catch (IOException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (java.security.GeneralSecurityException e) {
             throw new IOException("no se pudo abrir TLS hacia " + host + ":" + tlsPuerto
-                    + ": " + e.getMessage(), e);
+                    + " (revise tls.puerto y tls.confianza): " + e.getMessage(), e);
         }
     }
 
@@ -190,6 +222,73 @@ public final class ConexionCliente implements InterfazConexionRed {
         return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.MENSAJE_ARCHIVO).id(id)
                 .remitente(remitente).destinatario(destinatario).nombreArchivo(nombreArchivo)
                 .mime(mime).contenidoImagen(contenidoBase64).build()));
+    }
+
+    /**
+     * Envío fragmentado de archivo genérico (PROTOCOLO.md §3, invariante 2).
+     *
+     * <p>Por qué existe: {@link TramaCodec} rechaza toda trama de más de 16 MiB y el Base64
+     * infiere ×4/3, así que un archivo de 50 MiB necesita ~67 MiB y nunca cabría en una sola
+     * trama. Se anuncia el total, se envían trozos de {@link #PARTE_MAX_BYTES} y se cierra con
+     * el SHA-256 del archivo completo, que es lo que el servidor verifica.
+     *
+     * <p>Si el servidor rechaza cualquiera de las tres fases se devuelve esa respuesta tal cual
+     * y se abandona: el llamante la trata como un rechazo más y marca ERROR, igual que hace con
+     * las imágenes. Solo una caída real de red lanza {@link IOException}, que es lo que dispara
+     * el registro de pendiente y el reintento posterior.
+     */
+    @Override
+    public RespuestaRed enviarArchivoFragmentado(String id, String remitente, String destinatario,
+                                             String nombreArchivo, String mime, byte[] contenido)
+            throws IOException {
+        byte[] datos = contenido == null ? new byte[0] : contenido;
+        if (datos.length == 0) {
+            throw new IOException("el archivo esta vacio");
+        }
+        String archivoId = id != null ? id : UUID.randomUUID().toString();
+        String fecha = LocalDateTime.now().toString();
+        int totalPartes = (datos.length + PARTE_MAX_BYTES - 1) / PARTE_MAX_BYTES;
+        Base64.Encoder encoder = Base64.getEncoder();
+
+        RespuestaRed inicio = adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.ARCHIVO_INICIO)
+                .id(archivoId).remitente(remitente).destinatario(destinatario)
+                .nombreArchivo(nombreArchivo).mime(mime).tamanoArchivo((long) datos.length)
+                .totalPartes(totalPartes).fechaHora(fecha).build()));
+        if (!aceptado(inicio)) {
+            return inicio;
+        }
+
+        for (int indice = 0; indice < totalPartes; indice++) {
+            int desde = indice * PARTE_MAX_BYTES;
+            int hasta = Math.min(desde + PARTE_MAX_BYTES, datos.length);
+            RespuestaRed parte = adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.ARCHIVO_PARTE)
+                    .id(archivoId + "#p" + indice).remitente(remitente).archivoId(archivoId)
+                    .indiceParte(indice)
+                    .contenidoImagen(encoder.encodeToString(
+                            Arrays.copyOfRange(datos, desde, hasta)))
+                    .fechaHora(fecha).build()));
+            if (!aceptado(parte)) {
+                return parte;
+            }
+        }
+
+        return adaptar(pedir(Mensaje.builder().tipo(TipoMensaje.ARCHIVO_FIN)
+                .id(archivoId + "#fin").remitente(remitente).archivoId(archivoId)
+                .hashSha256(sha256Hex(datos)).fechaHora(fecha).build()));
+    }
+
+    private static boolean aceptado(RespuestaRed respuesta) {
+        return Boolean.TRUE.equals(respuesta.exito());
+    }
+
+    /** SHA-256 en minúsculas, el mismo formato que el servidor compara en `finalizarArchivo`. */
+    private static String sha256Hex(byte[] datos) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(datos));
+        } catch (NoSuchAlgorithmException imposible) {
+            // SHA-256 es obligatorio en toda JVM (JEP 247).
+            throw new IllegalStateException("SHA-256 no disponible en esta JVM", imposible);
+        }
     }
 
     @Override
@@ -361,6 +460,9 @@ public final class ConexionCliente implements InterfazConexionRed {
     }
 
     private static Mensaje clonarConId(Mensaje base, String id) {
+        // Copia los 29 componentes del record. Omitir uno lo pierde en el socket: `totalPartes`
+        // e `indiceParte` son los que hacen válida una transferencia fragmentada, y el servidor
+        // rechaza ARCHIVO_INICIO / ARCHIVO_PARTE si no llegan.
         return Mensaje.builder().tipo(base.tipo()).id(id)
                 .fechaHora(LocalDateTime.now().toString())
                 .codigo(base.codigo()).contrasena(base.contrasena())
@@ -374,6 +476,8 @@ public final class ConexionCliente implements InterfazConexionRed {
                 .totalPaginas(base.totalPaginas()).exito(base.exito())
                 .mensajeError(base.mensajeError()).ipRemitente(base.ipRemitente())
                 .ipDestinatario(base.ipDestinatario())
-                .usuariosConectados(base.usuariosConectados()).build();
+                .usuariosConectados(base.usuariosConectados())
+                .totalPartes(base.totalPartes()).indiceParte(base.indiceParte())
+                .tipoOriginal(base.tipoOriginal()).build();
     }
 }

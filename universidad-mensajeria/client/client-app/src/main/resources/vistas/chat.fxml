@@ -15,6 +15,7 @@
 <?import javafx.scene.layout.VBox?>
 
 <SplitPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+           fx:id="divisorPrincipal"
            fx:controller="universidad.mensajeria.cliente.presentacion.ChatController"
            dividerPositions="0.30" styleClass="messenger-root">
     <VBox styleClass="sidebar">
@@ -43,10 +44,12 @@
                 <Label fx:id="etiquetaPresencia" text="" styleClass="conversation-presence"/>
             </VBox>
             <Button fx:id="botonMas" text="↑ Cargar mensajes anteriores" onAction="#alCargarMas"
-                    visible="false" managed="false" styleClass="quiet-button"/>
+                    visible="false" managed="false" styleClass="quiet-button"
+                    accessibleText="Cargar mensajes anteriores"/>
             <!-- UIX-16: baja a lo nuevo sin perder el punto de lectura. -->
             <Button fx:id="botonNuevos" onAction="#alIrANuevos"
-                    visible="false" managed="false" styleClass="quiet-button"/>
+                    visible="false" managed="false" styleClass="quiet-button"
+                    accessibleText="Ir a mensajes nuevos"/>
             <!-- UIX-14: indicador de carga del historial. -->
             <ProgressIndicator fx:id="ruedaHistorial" prefWidth="18" prefHeight="18"
                     visible="false" managed="false"/>

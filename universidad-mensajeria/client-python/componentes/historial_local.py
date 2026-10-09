@@ -1,3 +1,18 @@
+"""Historial local por cuenta: CRUD, no leidos, blobs y la cola offline (capa 2).
+
+Los tipos de trama NO se escriben a mano ni aqui ni en el SQL: salen de
+`transversal.tipo_mensaje`, que a su vez se compara con `contrato/puertos.json`.
+"""
+from transversal.tipo_mensaje import CONVERSACION, TipoMensaje
+from transversal.etapas_filtrado import mapear_etapas_filtrado
+from puertos.datos import RecienteChat
+
+#: Marcadores `?` en el mismo orden que `CONVERSACION` (el SQL los lleva
+#: parametrizados para que anadir un tipo no obligue a editar tres consultas).
+_CONVERSACION_SQL = ",".join("?" * len(CONVERSACION))
+_TIPOS_CONVERSACION = tuple(sorted(CONVERSACION))
+
+
 class HistorialLocal:
     def __init__(self, db):
         self.db = db
@@ -6,14 +21,16 @@ class HistorialLocal:
                         fecha_envio, hash_sha256="", num_caracteres=0,
                         num_palabras=0, nombre_archivo="", ruta_archivo="",
                         tamano_archivo=0, enviado=1, descargado=0,
-                        archivo_id=None, estado="ENVIADO"):
+                        archivo_id=None, estado="ENVIADO", etapas_filtrado=None):
+        etapas_filtrado = mapear_etapas_filtrado(etapas_filtrado)
         with self.db.conexion() as conn:
             conn.execute("""
                 INSERT INTO historial_local 
                 (id_mensaje, origen, destino, tipo, contenido, hash_sha256,
                  num_caracteres, num_palabras, nombre_archivo, archivo_id,
-                 ruta_archivo, tamano_archivo, fecha_envio, enviado, descargado, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ruta_archivo, tamano_archivo, fecha_envio, enviado, descargado, estado,
+                 etapas_filtrado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id_mensaje) DO UPDATE SET
                     contenido = excluded.contenido,
                     hash_sha256 = COALESCE(excluded.hash_sha256, historial_local.hash_sha256),
@@ -23,6 +40,7 @@ class HistorialLocal:
                     archivo_id = COALESCE(excluded.archivo_id, historial_local.archivo_id),
                     ruta_archivo = COALESCE(excluded.ruta_archivo, historial_local.ruta_archivo),
                     tamano_archivo = COALESCE(excluded.tamano_archivo, historial_local.tamano_archivo),
+                    etapas_filtrado = COALESCE(excluded.etapas_filtrado, historial_local.etapas_filtrado),
                     descargado = MAX(excluded.descargado, historial_local.descargado),
                     estado = CASE
                         WHEN historial_local.estado = 'LEIDO' OR excluded.estado = 'LEIDO' THEN 'LEIDO'
@@ -31,21 +49,23 @@ class HistorialLocal:
                         ELSE excluded.estado END
             """, (id_mensaje, origen, destino, tipo, contenido, hash_sha256,
                   num_caracteres, num_palabras, nombre_archivo, archivo_id,
-                  ruta_archivo, tamano_archivo, fecha_envio, enviado, descargado, estado))
+                  ruta_archivo, tamano_archivo, fecha_envio, enviado, descargado, estado,
+                  etapas_filtrado))
             
     def obtener_conversacion(self, user1, user2, limit=50, offset=0):
         with self.db.conexion() as conn:
             cursor = conn.execute("""
                 SELECT id_mensaje, origen, destino, tipo,
-                       CASE WHEN tipo = 'MENSAJE_IMAGEN' THEN NULL ELSE contenido END AS contenido,
+                       CASE WHEN tipo = ? THEN NULL ELSE contenido END AS contenido,
                        hash_sha256, num_caracteres, num_palabras, nombre_archivo,
                        archivo_id, ruta_archivo, tamano_archivo, fecha_envio,
-                       enviado, descargado, estado
+                       enviado, descargado, estado, etapas_filtrado
                 FROM historial_local
                 WHERE (origen = ? AND destino = ?) OR (origen = ? AND destino = ?)
                 ORDER BY fecha_envio DESC
                 LIMIT ? OFFSET ?
-            """, (user1, user2, user2, user1, limit, offset))
+            """, (TipoMensaje.MENSAJE_IMAGEN, user1, user2, user2, user1,
+                  limit, offset))
             return [dict(row) for row in cursor.fetchall()]
 
     def obtener_por_id(self, id_mensaje):
@@ -57,36 +77,32 @@ class HistorialLocal:
 
     def ids_no_leidos(self, yo, otro):
         with self.db.conexion() as conn:
-            filas = conn.execute("""
+            filas = conn.execute(f"""
                 SELECT id_mensaje FROM historial_local
                 WHERE origen = ? AND destino = ? AND estado <> 'LEIDO'
-                  AND tipo IN ('MENSAJE_TEXTO', 'MENSAJE_IMAGEN', 'MENSAJE_ARCHIVO',
-                               'BROADCAST', 'SYNC_LOGIN')
+                  AND tipo IN ({_CONVERSACION_SQL})
                 ORDER BY fecha_envio ASC
-            """, (otro, yo)).fetchall()
+            """, (otro, yo, *_TIPOS_CONVERSACION)).fetchall()
             return [fila[0] for fila in filas]
 
     def contar_no_leidos_por_contacto(self, yo):
         """Badge mockup §3: no leídos agrupados por remitente en una sola query."""
         with self.db.conexion() as conn:
-            filas = conn.execute("""
+            filas = conn.execute(f"""
                 SELECT origen AS codigo, COUNT(*) AS n
                 FROM historial_local
                 WHERE destino = ? AND estado <> 'LEIDO'
-                  AND tipo IN ('MENSAJE_TEXTO', 'MENSAJE_IMAGEN', 'MENSAJE_ARCHIVO',
-                               'BROADCAST', 'SYNC_LOGIN')
+                  AND tipo IN ({_CONVERSACION_SQL})
                 GROUP BY origen
-            """, (yo,)).fetchall()
+            """, (yo, *_TIPOS_CONVERSACION)).fetchall()
             return {fila[0]: fila[1] for fila in filas}
 
     def marcar_estado_de_conversacion(self, yo, otro, estado):
         with self.db.conexion() as conn:
-            conn.execute("""
+            conn.execute(f"""
                 UPDATE historial_local SET estado = ?
-                WHERE origen = ? AND destino = ? AND tipo IN
-                  ('MENSAJE_TEXTO', 'MENSAJE_IMAGEN', 'MENSAJE_ARCHIVO',
-                   'BROADCAST', 'SYNC_LOGIN')
-            """, (estado, otro, yo))
+                WHERE origen = ? AND destino = ? AND tipo IN ({_CONVERSACION_SQL})
+            """, (estado, otro, yo, *_TIPOS_CONVERSACION))
 
     def buscar_en_conversacion(self, user1, user2, patron, limite=200):
         """UIX-06: mensajes con el patrón en texto o nombre de archivo.
@@ -122,7 +138,7 @@ class HistorialLocal:
         placeholders "[Imagen]"/"[Archivo]" no identifican nada).
         Retorna id_mensaje o None.
         """
-        if tipo in ("MENSAJE_IMAGEN", "MENSAJE_ARCHIVO"):
+        if tipo in (TipoMensaje.MENSAJE_IMAGEN, TipoMensaje.MENSAJE_ARCHIVO):
             if not hash_sha256:
                 return None
             criterio = "hash_sha256 = ?"
@@ -149,8 +165,10 @@ class HistorialLocal:
     def actualizar_metadatos_remotos(self, id_mensaje, hash_sha256=None,
                                      num_caracteres=None, num_palabras=None,
                                      nombre_archivo=None, tamano_archivo=None,
-                                     archivo_id=None, estado=None):
+                                     archivo_id=None, estado=None,
+                                     etapas_filtrado=None):
         """Completa la fila viva con metadatos del historial remoto (sin duplicar)."""
+        etapas_filtrado = mapear_etapas_filtrado(etapas_filtrado)
         with self.db.conexion() as conn:
             conn.execute("""
                 UPDATE historial_local SET
@@ -160,6 +178,7 @@ class HistorialLocal:
                     nombre_archivo = COALESCE(?, nombre_archivo),
                     tamano_archivo = COALESCE(?, tamano_archivo),
                     archivo_id = COALESCE(?, archivo_id),
+                    etapas_filtrado = COALESCE(?, etapas_filtrado),
                     estado = CASE
                         WHEN historial_local.estado = 'LEIDO' OR ? = 'LEIDO' THEN 'LEIDO'
                         WHEN historial_local.estado = 'ENTREGADO'
@@ -169,7 +188,8 @@ class HistorialLocal:
                 WHERE id_mensaje = ?
             """, (hash_sha256 or None, num_caracteres, num_palabras,
                   nombre_archivo or None, tamano_archivo,
-                  archivo_id or None, estado, estado, estado, estado, id_mensaje))
+                  archivo_id or None, etapas_filtrado, estado, estado, estado, estado,
+                  id_mensaje))
 
     def contar_conversacion(self, user1, user2):
         """HISTORIAL_LOCAL.md §2: conteo para totalPaginas."""
@@ -182,6 +202,38 @@ class HistorialLocal:
                    OR (origen = ? AND destino = ?)
             """, (user1, user2, user2, user1))
             return cursor.fetchone()[0]
+
+    def recientes(self, yo):
+        """Último mensaje y no leídos por contacto; excluye broadcasts propios."""
+        with self.db.conexion() as conn:
+            filas = conn.execute(f"""
+                WITH ordenados AS (
+                    SELECT CASE WHEN origen = ? THEN destino ELSE origen END AS otro,
+                           contenido, tipo, fecha_envio,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY CASE WHEN origen = ? THEN destino ELSE origen END
+                               ORDER BY fecha_envio DESC, id_mensaje DESC
+                           ) AS numero
+                    FROM historial_local
+                    WHERE ((origen = ? AND destino <> ? AND destino <> '*')
+                        OR (destino = ? AND origen <> ? AND origen <> '*'))
+                      AND tipo IN ({_CONVERSACION_SQL})
+                )
+                SELECT actual.otro, actual.contenido, actual.tipo, actual.fecha_envio,
+                       (SELECT COUNT(*) FROM historial_local AS no_leidos
+                        WHERE no_leidos.origen = actual.otro
+                          AND no_leidos.destino = ?
+                          AND no_leidos.estado <> 'LEIDO'
+                          AND no_leidos.tipo IN ({_CONVERSACION_SQL})) AS no_leidos
+                FROM ordenados AS actual
+                WHERE actual.numero = 1
+                ORDER BY actual.fecha_envio DESC
+            """, (yo, yo, yo, yo, yo, yo,
+                  *_TIPOS_CONVERSACION, yo, *_TIPOS_CONVERSACION)).fetchall()
+        return [RecienteChat(
+            fila["otro"], fila["contenido"], fila["tipo"], fila["fecha_envio"],
+            int(fila["no_leidos"]), False)
+            for fila in filas]
 
     def marcar_descargado(self, id_mensaje, ruta_archivo):
         """HISTORIAL_LOCAL.md §3: marca archivo descargado y guarda su ruta."""
@@ -209,6 +261,13 @@ class HistorialLocal:
         with self.db.conexion() as conn:
             conn.execute("UPDATE historial_local SET archivo_id = ? WHERE id_mensaje = ?",
                          (archivo_id, id_mensaje))
+
+    def actualizar_etapas_filtrado(self, id_mensaje, etapas_filtrado):
+        etapas_filtrado = mapear_etapas_filtrado(etapas_filtrado)
+        with self.db.conexion() as conn:
+            conn.execute(
+                "UPDATE historial_local SET etapas_filtrado = ? WHERE id_mensaje = ?",
+                (etapas_filtrado, id_mensaje))
 
     def actualizar_hash(self, id_mensaje, hash_sha256):
         with self.db.conexion() as conn:
@@ -250,13 +309,28 @@ class HistorialLocal:
             conn.commit()
             
     def actualizar_cache_usuario(self, codigo, nombres, apellidos, programa, conectado, fecha_registro, actualizado):
+        self.actualizar_cache_usuarios(
+            [(codigo, nombres, apellidos, programa, conectado, fecha_registro, actualizado)])
+
+    def actualizar_cache_usuarios(self, usuarios):
+        """Lote en UNA conexión y UN commit.
+
+        Antes `listar_usuarios` hacía DELETE+INSERT por usuario abriendo cada
+        vez la base (N conexiones = N fsyncs en WAL): con cientos de contactos
+        el directorio tardaba segundos en cargar. Mismo upsert portable
+        DELETE+INSERT, una sola transacción.
+        """
+        filas = list(usuarios)
+        if not filas:
+            return
         with self.db.conexion() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM cache_usuarios WHERE codigo = ?", (codigo,))
-            cursor.execute("""
+            cursor.executemany("DELETE FROM cache_usuarios WHERE codigo = ?",
+                               ((fila[0],) for fila in filas))
+            cursor.executemany("""
                 INSERT INTO cache_usuarios (codigo, nombres, apellidos, programa, conectado, fecha_registro, actualizado)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (codigo, nombres, apellidos, programa, conectado, fecha_registro, actualizado))
+            """, filas)
             conn.commit()
 
     def listar_cache_usuarios(self):

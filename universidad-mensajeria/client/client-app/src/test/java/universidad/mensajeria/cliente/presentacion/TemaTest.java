@@ -29,5 +29,7 @@ final class TemaTest {
         assertNotNull(Tema.class.getResource("/estilos/login-claro.css"));
         assertNotNull(Tema.class.getResource("/estilos/chat.css"));
         assertNotNull(Tema.class.getResource("/estilos/chat-claro.css"));
+        assertNotNull(Tema.class.getResource("/fondos/fondo_chat_oscuro.jpg"));
+        assertNotNull(Tema.class.getResource("/fondos/fondo_chat_claro.jpg"));
     }
 }

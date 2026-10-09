@@ -16,6 +16,8 @@ public record Casos(
         ListarCaso listar,
         ResponderCaso responder,
         ArchivoVistaCaso archivoVista,
-        FechasUsuariosCaso fechasUsuarios
+        FechasUsuariosCaso fechasUsuarios,
+        EntregaCaso entrega,
+        DifusionCaso difusion
 ) {
 }

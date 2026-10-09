@@ -3,6 +3,10 @@ package universidad.mensajeria.server.vistaescritorio;
 import org.junit.jupiter.api.Test;
 
 import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.Map;
+
+import universidad.mensajeria.common.interno.MensajeResumenDTO;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -65,5 +69,78 @@ class VistaEscritorioFiltrosTest {
                 () -> VistaEscritorio.aplicarFiltroVista(null, "Grises"));
         assertTrue(VistaEscritorio.aplicarFiltroVista(imagenPrueba(), null).getWidth() > 0,
                 "opcion nula equivale a Original");
+    }
+
+    // Sesión B: Conectados muestra "Nombre Apellidos [código]" y el mapa
+    // inverso usa el visible completo (incluye código → único).
+
+    @Test
+    void conectadosResuelveNombreVisible() {
+        Map<String, String> directorio = Map.of("A001", "Ana Pérez [A001]");
+        assertEquals("Ana Pérez [A001]",
+                VistaEscritorio.resolverVisible("A001", directorio));
+        assertEquals("X999", VistaEscritorio.resolverVisible("X999", directorio));
+        assertEquals("SERVIDOR (sistema)", VistaEscritorio.resolverVisible("SERVIDOR", directorio));
+        assertEquals("-", VistaEscritorio.resolverVisible("  ", directorio));
+    }
+
+    @Test
+    void conectadosMapeaVisiblesYCodigoPorVisible() {
+        Map<String, String> directorio = Map.of(
+                "A001", "Ana Pérez [A001]", "B002", "Luis Díaz [B002]");
+        List<String> visibles = VistaEscritorio.visiblesDe(List.of("A001", "B002"), directorio);
+        assertEquals(List.of("Ana Pérez [A001]", "Luis Díaz [B002]"), visibles);
+        Map<String, String> inverso =
+                VistaEscritorio.indiceCodigoPorVisible(List.of("A001", "B002"), directorio);
+        assertEquals("A001", inverso.get("Ana Pérez [A001]"));
+        assertEquals("B002", inverso.get("Luis Díaz [B002]"));
+    }
+
+    @Test
+    void confirmacionMencionaElVisible() {
+        assertEquals("¿Desconectar a Ana Pérez [A001]? Se cerrarán sus sesiones activas.",
+                VistaEscritorio.mensajeConfirmacionDesconexion("Ana Pérez [A001]"));
+    }
+
+    // Sesión B: filtro local por tipo + conservar selección por id.
+
+    private static MensajeResumenDTO mensaje(long id, String tipo) {
+        return new MensajeResumenDTO(id, "A001", "B002", tipo, "hola", "hash",
+                4, 1, null, null, null, null, null, "2026-10-07T10:00:00");
+    }
+
+    @Test
+    void fichaFiltraPorTipoLocalSinPedirAlServidor() {
+        List<MensajeResumenDTO> pagina = List.of(
+                mensaje(1, "TEXTO"), mensaje(2, "IMAGEN"), mensaje(3, "texto"));
+        assertEquals(3, VistaEscritorio.filtrarPorTipo(pagina, "Todos").size());
+        assertEquals(List.of(1L, 3L), VistaEscritorio.filtrarPorTipo(pagina, "TEXTO")
+                .stream().map(MensajeResumenDTO::id).toList());
+        assertEquals(1, VistaEscritorio.filtrarPorTipo(pagina, "IMAGEN").size());
+    }
+
+    @Test
+    void seleccionSeRestauraPorId() {
+        List<MensajeResumenDTO> lista = List.of(mensaje(10, "TEXTO"), mensaje(20, "IMAGEN"));
+        assertEquals(1, VistaEscritorio.indicePorId(lista, 20));
+        assertEquals(-1, VistaEscritorio.indicePorId(lista, 999));
+    }
+
+    // RF-S53: IP viva del destinatario o "No disponible".
+
+    @Test
+    void ipVivaMuestraSesionesActivas() {
+        Map<String, String> ips = Map.of("B002", "192.168.1.20");
+        assertEquals("192.168.1.20", VistaEscritorio.ipVivaDe(ips, "B002"));
+        assertEquals("192.168.1.20", VistaEscritorio.ipVivaDe(ips, "b002"));
+    }
+
+    @Test
+    void ipVivaSinSesionEsNoDisponible() {
+        Map<String, String> ips = Map.of("B002", "192.168.1.20");
+        assertEquals("No disponible", VistaEscritorio.ipVivaDe(ips, "C003"));
+        assertEquals("No disponible", VistaEscritorio.ipVivaDe(ips, null));
+        assertEquals("No disponible", VistaEscritorio.ipVivaDe(ips, "  "));
+        assertEquals("No disponible", VistaEscritorio.ipVivaDe(null, "B002"));
     }
 }

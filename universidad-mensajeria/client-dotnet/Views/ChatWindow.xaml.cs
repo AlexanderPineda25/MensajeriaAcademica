@@ -5,7 +5,6 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,123 +15,10 @@ using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using Mensajeria.Fachada;
 using Mensajeria.Transversal;
+using Mensajeria.ViewModels;
 
 namespace Mensajeria.Views
 {
-    public class UsuarioVM : INotifyPropertyChanged
-    {
-        public string Codigo { get; init; } = "";
-        public string Nombres { get; init; } = "";
-        public string Apellidos { get; init; } = "";
-        public bool Conectado { get; init; }
-        public string Etiqueta => string.IsNullOrWhiteSpace((Nombres + " " + Apellidos).Trim())
-            ? Codigo : $"{Nombres} {Apellidos} [{Codigo}]";
-        public string Presencia => Conectado ? "en línea" : "desconectado";
-        public Brush ColorPresencia => Conectado ? Brushes.SeaGreen : Brushes.LightGray;
-
-        private int _noLeidos;
-        /// <summary>UIX-02: distintivo de no leídos (lo único que notifica).</summary>
-        public int NoLeidos
-        {
-            get => _noLeidos;
-            set { _noLeidos = value; OnPropertyChanged(); OnPropertyChanged(nameof(TextoInsignia)); OnPropertyChanged(nameof(MostrarInsignia)); }
-        }
-        public string TextoInsignia => NoLeidos > 0 ? $"({NoLeidos})" : "";
-        public Visibility MostrarInsignia => NoLeidos > 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-        private void OnPropertyChanged([CallerMemberName] string? name = null) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    }
-
-    public class MensajeVM : INotifyPropertyChanged
-    {
-        private BitmapImage? _imagen;
-        private string _estadoImagen = "";
-        private bool _cargando;
-        private bool _solicitada;
-
-        public string Id { get; init; } = "";
-        private string _encabezado = "";
-        /// <summary>UIX-05: vacío en rachas del mismo autor (se recalcula).</summary>
-        public string Encabezado
-        {
-            get => _encabezado;
-            set { _encabezado = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarEncabezado)); }
-        }
-        public bool MostrarEncabezado => !EsCabeceraDia && !string.IsNullOrEmpty(Encabezado);
-        public string Autor { get; init; } = "";
-        /// <summary>UIX-05: código del remitente (agrupar por código, no por
-        /// nombre visible, que puede cambiar entre páginas).</summary>
-        public string AutorCrudo { get; init; } = "";
-        public string Fecha { get; init; } = "";
-        /// <summary>UIX-04/UIX-05: fecha cruda para agrupar (la visible ya va formateada).</summary>
-        public string FechaCruda { get; init; } = "";
-        /// <summary>UIX-04: true en filas de cabecera de día (sin burbuja).</summary>
-        public bool EsCabeceraDia { get; init; }
-        public string TextoCabecera { get; init; } = "";
-        public Visibility MostrarCabecera => EsCabeceraDia ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility MostrarBurbuja => BurbujaChat.DebeMostrar(EsCabeceraDia)
-            ? Visibility.Visible : Visibility.Collapsed;
-        public string Contenido { get; init; } = "";
-        public string Estado { get; init; } = "";
-        public string ArchivoId { get; init; } = "";
-        public string RutaArchivo { get; set; } = "";
-        public string NombreArchivo { get; init; } = "";
-        public bool EsImagen { get; init; }
-        public bool EsArchivo { get; init; }
-        private string _patronResaltado = "";
-        /// <summary>UIX-06: consulta activa para resaltar (vacía = sin marcas).</summary>
-        public string PatronResaltado
-        {
-            get => _patronResaltado;
-            set { _patronResaltado = value; OnPropertyChanged(); }
-        }
-        public Visibility MostrarDescarga => EsArchivo ? Visibility.Visible : Visibility.Collapsed;
-        /// <summary>True si el remitente es la sesión activa: burbuja a la derecha.</summary>
-        public bool EsPropio { get; init; }
-        public bool EsLeido { get; init; }
-        public HorizontalAlignment Alineacion => BurbujaChat.Alineacion(EsPropio)
-            == LadoBurbuja.Derecha ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-        public Brush Fondo => Pincel(EsPropio ? "BubbleOwnBrush" : "BubbleInBrush");
-        public Brush ColorEstado => Pincel(EsLeido ? "VistoLeidoBrush" : "VistoOtroBrush");
-        public Brush ColorContenido => Pincel(EsPropio ? "BubbleOwnFgBrush" : "BubbleInFgBrush");
-
-        private static Brush Pincel(string clave)
-        {
-            try
-            {
-                if (Application.Current?.TryFindResource(clave) is Brush b) return b;
-            }
-            catch { }
-            return EsPropioFallback(clave);
-        }
-
-        private static Brush EsPropioFallback(string clave) => clave switch
-        {
-            "BubbleOwnBrush" => new SolidColorBrush(Color.FromRgb(0x7B, 0x61, 0xB8)),
-            "BubbleInBrush" => new SolidColorBrush(Color.FromRgb(0x18, 0x25, 0x33)),
-            "VistoLeidoBrush" => new SolidColorBrush(Color.FromRgb(0x5E, 0xB1, 0xFF)),
-            "VistoOtroBrush" => new SolidColorBrush(Color.FromRgb(0xE8, 0xEE, 0xF2)),
-            "BubbleOwnFgBrush" => Brushes.White,
-            _ => new SolidColorBrush(Color.FromRgb(0xE8, 0xEE, 0xF2)),
-        };
-        public BitmapImage? Imagen { get => _imagen; set { _imagen = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); } }
-        public string EstadoImagen { get => _estadoImagen; set { _estadoImagen = value; OnPropertyChanged(); } }
-        public bool Cargando { get => _cargando; set { _cargando = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); OnPropertyChanged(nameof(MostrarCancelar)); } }
-        public bool Solicitada { get => _solicitada; set { _solicitada = value; OnPropertyChanged(); OnPropertyChanged(nameof(MostrarReintento)); } }
-        public Visibility MostrarTexto => string.IsNullOrEmpty(Contenido) ? Visibility.Collapsed : Visibility.Visible;
-        public Visibility MostrarImagen => EsImagen ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility MostrarReintento => EsImagen && !Cargando && Imagen == null && Solicitada
-            ? Visibility.Visible : Visibility.Collapsed;
-        /// <summary>UIX-09: cancelar la carga en vuelo de esta imagen.</summary>
-        public Visibility MostrarCancelar => EsImagen && Cargando && !EsCabeceraDia
-            ? Visibility.Visible : Visibility.Collapsed;
-        public event PropertyChangedEventHandler? PropertyChanged;
-        private void OnPropertyChanged([CallerMemberName] string? name = null) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-    }
-
     public partial class ChatWindow : Window
     {
         private readonly IFachadaCliente _fachada;
@@ -164,8 +50,10 @@ namespace Mensajeria.Views
         private readonly Dictionary<string, int> _paginaRemota = new();
         private readonly Dictionary<string, int> _totalPaginasRemotas = new();
         private readonly SemaphoreSlim _limiteImagenes = new(3, 3);
+        private bool _restauracionUltimoChatPendiente = true;
         /// <summary>UIX-09: cargas de imagen en vuelo por id, cancelables.</summary>
         private readonly Dictionary<string, CancellationTokenSource> _cargasImagen = new();
+        private sealed record AnclajeMensajeVisible(MensajeVM Mensaje, double CoordenadaVertical);
 
         public ChatWindow(IFachadaCliente fachada)
         {
@@ -206,6 +94,7 @@ namespace Mensajeria.Views
                 }
             };
             cmbTema.SelectedIndex = Temas.Tema.Leer() == Temas.Tema.Claro ? 1 : 0;
+            AplicarFondoChat(Temas.Tema.Leer());
             // UIX-11: restaura el ancho del sidebar (250–360).
             int anchoSide = Transversal.ClienteConfig.Entero("sidebar.ancho", 300, 250, 360);
             colSidebar.Width = new GridLength(anchoSide);
@@ -323,7 +212,7 @@ namespace Mensajeria.Views
             try { lista = await _fachada.ListarUsuariosAsync(); }
             catch { lista = await Task.Run(() => _fachada.DirectorioLocal()); }
             await ActualizarFechasRecientesAsync();
-            string? seleccionado = (lstUsuarios.SelectedItem as UsuarioVM)?.Codigo;
+            string? seleccionado = (lstUsuarios.SelectedItem as UsuarioVM)?.Codigo ?? _usuarioDestino;
             // Encabezado de sesión con nombre completo + código cuando está disponible.
             var propia = lista.FirstOrDefault(u => u.TryGetValue("codigo", out var c) && c is string s && s == _fachada.UsuarioActual);
             if (propia != null)
@@ -344,6 +233,21 @@ namespace Mensajeria.Views
             var noLeidos = _fachada.ContarNoLeidos();
             foreach (var u in _directorio) u.NoLeidos = noLeidos.GetValueOrDefault(u.Codigo);
             AplicarFiltro(seleccionado);
+            RestaurarUltimoChatSiPendiente(seleccionado);
+        }
+
+        private void RestaurarUltimoChatSiPendiente(string? seleccionado)
+        {
+            if (!_restauracionUltimoChatPendiente) return;
+            _restauracionUltimoChatPendiente = false;
+            string? seleccionadoInicial = Transversal.PreferenciasChat.ResolverSeleccion(
+                Transversal.PreferenciasChat.UltimoChat(_fachada.UsuarioActual),
+                seleccionado, _usuarios.Select(u => u.Codigo));
+            if (seleccionadoInicial == null
+                || string.Equals(seleccionadoInicial, seleccionado, StringComparison.OrdinalIgnoreCase))
+                return;
+            lstUsuarios.SelectedItem = _usuarios.FirstOrDefault(u =>
+                string.Equals(u.Codigo, seleccionadoInicial, StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task ActualizarFechasRecientesAsync()
@@ -464,8 +368,39 @@ namespace Mensajeria.Views
             string modo = cmbTema.SelectedIndex == 1 ? Temas.Tema.Claro : Temas.Tema.Oscuro;
             Temas.Tema.Guardar(modo);
             Temas.Tema.Aplicar(modo);
+            AplicarFondoChat(modo);
             // Las burbujas guardan su pincel: se reconstruyen con el modo nuevo.
             if (_usuarioDestino != null) CargarHistorial(_usuarioDestino);
+        }
+
+        private void AplicarFondoChat(string modo)
+        {
+            string archivo = modo == Temas.Tema.Claro
+                ? "fondo_chat_claro.jpg" : "fondo_chat_oscuro.jpg";
+            string ruta = Path.Combine(AppContext.BaseDirectory, "Temas", "fondos", archivo);
+            if (!File.Exists(ruta))
+            {
+                panelMensajes.Background = TryFindResource("ChatBgBrush") as Brush;
+                lstMensajes.Background = Brushes.Transparent;
+                return;
+            }
+
+            var imagen = new BitmapImage();
+            imagen.BeginInit();
+            imagen.CacheOption = BitmapCacheOption.OnLoad;
+            imagen.UriSource = new Uri(ruta, UriKind.Absolute);
+            imagen.EndInit();
+            imagen.Freeze();
+            // El fondo vive detrás del ListBox: el template de ListBox/ScrollViewer
+            // puede dibujar su propia superficie y tapar un brush aplicado solo a él.
+            // UniformToFill recorta como background: cover; las burbujas opacas
+            // conservan contraste por encima del patrón.
+            panelMensajes.Background = new ImageBrush(imagen)
+            {
+                Stretch = Stretch.UniformToFill,
+                Opacity = 0.62
+            };
+            lstMensajes.Background = Brushes.Transparent;
         }
 
         private void LstUsuarios_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -473,6 +408,8 @@ namespace Mensajeria.Views
             if (lstUsuarios.SelectedItem is not UsuarioVM usuario
                 || string.Equals(_usuarioDestino, usuario.Codigo, StringComparison.OrdinalIgnoreCase)) return;
             _usuarioDestino = usuario.Codigo;
+            Transversal.PreferenciasChat.GuardarUltimoChat(
+                _fachada.UsuarioActual, usuario.Codigo);
             // UIX-02: la insignia se apaga al abrir (el marcado real viaja por
             // MarcarLeidosAsync en segundo plano).
             usuario.NoLeidos = 0;
@@ -507,6 +444,7 @@ namespace Mensajeria.Views
             barraProgreso.Visibility = Visibility.Visible;
             // UIX-16: se captura ANTES de la carga, porque al terminar la lista cambió.
             if (!prepend) _seguirAbajoAntesDeCargar = EstaAbajo();
+            var anclaje = prepend ? CapturarAnclajeScroll() : null;
             try
             {
                 (historial, totalLocal) = await Task.Run(() =>
@@ -580,6 +518,7 @@ namespace Mensajeria.Views
                     Estado = propio ? EstadoVisible(estadoBruto) : "",
                     EsImagen = esImagen,
                     EsArchivo = esArchivo,
+                    EtapasFiltrado = Valor(row, "etapasFiltrado"),
                     EsPropio = propio,
                     EsLeido = estadoBruto == "LEIDO",
                     ArchivoId = Valor(row, "archivoId"),
@@ -618,7 +557,15 @@ namespace Mensajeria.Views
             {
                 foreach (var vm in lote) _mensajes.Add(vm);
             }
-            if (prepend) lstMensajes.ScrollIntoView(_mensajes.FirstOrDefault());
+            if (prepend)
+            {
+                // Si la carga se inició para completar una búsqueda, el salto al
+                // resultado tiene prioridad sobre conservar el viewport anterior.
+                if (_saltoPendiente == null)
+                    RestaurarAnclajeScroll(anclaje, codigo, version);
+                else
+                    lstMensajes.ScrollIntoView(_mensajes.FirstOrDefault());
+            }
             else if (_seguirAbajoAntesDeCargar)
             {
                 lstMensajes.ScrollIntoView(_mensajes.LastOrDefault());
@@ -694,6 +641,74 @@ namespace Mensajeria.Views
             var scroll = EncontrarScroll(lstMensajes);
             if (scroll == null) return true;
             return scroll.VerticalOffset >= scroll.ScrollableHeight - 60;
+        }
+
+        private AnclajeMensajeVisible? CapturarAnclajeScroll()
+        {
+            var scroll = EncontrarScroll(lstMensajes);
+            if (scroll == null) return null;
+            lstMensajes.UpdateLayout();
+            scroll.UpdateLayout();
+            for (int indice = 0; indice < _mensajes.Count; indice++)
+            {
+                var mensaje = _mensajes[indice];
+                if (mensaje.EsCabeceraDia
+                    || lstMensajes.ItemContainerGenerator.ContainerFromIndex(indice)
+                        is not FrameworkElement contenedor)
+                    continue;
+                try
+                {
+                    double arriba = contenedor.TransformToAncestor(scroll)
+                        .Transform(new Point(0, 0)).Y;
+                    if (arriba < scroll.ViewportHeight
+                        && arriba + contenedor.ActualHeight > 0)
+                        return new AnclajeMensajeVisible(mensaje, arriba);
+                }
+                catch (InvalidOperationException)
+                {
+                    // El contenedor puede salir del árbol visual durante virtualización.
+                }
+            }
+            return null;
+        }
+
+        private void RestaurarAnclajeScroll(AnclajeMensajeVisible? anclaje,
+            string codigo, int version)
+        {
+            if (anclaje == null || !_mensajes.Contains(anclaje.Mensaje))
+            {
+                lstMensajes.ScrollIntoView(_mensajes.FirstOrDefault());
+                return;
+            }
+
+            // ScrollIntoView fuerza la realización del contenedor aun con
+            // virtualización; el ajuste se aplica después del layout.
+            lstMensajes.ScrollIntoView(anclaje.Mensaje);
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                new Action(() =>
+                {
+                    if (_usuarioDestino != codigo || version != _versionCargaHistorial
+                        || !_mensajes.Contains(anclaje.Mensaje)) return;
+                    lstMensajes.UpdateLayout();
+                    var scroll = EncontrarScroll(lstMensajes);
+                    if (scroll == null) return;
+                    scroll.UpdateLayout();
+                    int indice = lstMensajes.Items.IndexOf(anclaje.Mensaje);
+                    if (indice < 0 || lstMensajes.ItemContainerGenerator.ContainerFromIndex(indice)
+                        is not FrameworkElement contenedor) return;
+                    try
+                    {
+                        double arriba = contenedor.TransformToAncestor(scroll)
+                            .Transform(new Point(0, 0)).Y;
+                        double desplazamiento = Transversal.AnclajeScroll.AjustarDesplazamiento(
+                            scroll.VerticalOffset, arriba, anclaje.CoordenadaVertical);
+                        scroll.ScrollToVerticalOffset(desplazamiento);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // El siguiente layout/precarga podrá volver a anclar el mismo mensaje.
+                    }
+                }));
         }
 
         private static System.Windows.Controls.ScrollViewer? EncontrarScroll(DependencyObject raiz)
@@ -1190,7 +1205,7 @@ namespace Mensajeria.Views
             try
             {
                 long tamano = new FileInfo(ruta).Length;
-                if (tamano > FachadaCliente.MaxBytesArchivo)
+                if (tamano > IFachadaCliente.MaxBytesArchivo)
                 {
                     MostrarAvisoInline($"El archivo supera el máximo de 50 MB ({tamano} bytes).",
                         TipoAvisoInline.Advertencia);
@@ -1262,6 +1277,20 @@ namespace Mensajeria.Views
             }
         }
 
+        private async void BtnKickOtras_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await _fachada.ExpulsarOtrasSesionesAsync();
+                MostrarAvisoInline("Se solicitó cerrar tus otras sesiones", TipoAvisoInline.Informacion);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("No se pudieron cerrar las otras sesiones: {0}", ex);
+                MostrarAvisoInline(MensajesUsuario.Accion(ex, "cerrar las otras sesiones"), TipoAvisoInline.Error);
+            }
+        }
+
         private void BtnSalir_Click(object sender, RoutedEventArgs e)
         {
             if (MessageBox.Show("¿Deseas salir y cerrar esta sesión?", "Confirmar salida",
@@ -1293,10 +1322,25 @@ namespace Mensajeria.Views
             return usuario == null ? codigo : usuario.Etiqueta;
         }
 
+        /// <summary>
+        /// Texto del tick de la burbuja. Los 5 estados y sus glifos son los de
+        /// <c>contrato/estado-mensaje.json</c> (cierra VIS-02).
+        /// </summary>
+        /// <remarks>
+        /// <c>ERROR</c> estaba en el <c>_ =&gt; ""</c>: el servidor rechaza el envio, el
+        /// mensaje queda en estado ERROR y la burbuja se quedaba sin indicador,
+        /// mientras Java si lo mostraba. Un rechazo no es un estado de la maquina
+        /// (ver ERROR terminal en el contrato) pero si necesita quedar a la vista.
+        /// </remarks>
         private static string EstadoVisible(string estado) => estado switch
         {
             // Visto literal con palabra, igual que el cliente Python (UI-06).
-            "PENDIENTE" => "⏳ Pendiente", "ENVIADO" => "✓ Enviado", "ENTREGADO" => "✓✓ Entregado", "LEIDO" => "✓✓ Leído", _ => ""
+            "PENDIENTE" => "⏳ Pendiente",
+            "ENVIADO" => "✓ Enviado",
+            "ENTREGADO" => "✓✓ Entregado",
+            "LEIDO" => "✓✓ Leído",
+            "ERROR" => "! No enviado",
+            _ => ""
         };
 
         private static bool EsConectado(Dictionary<string, object> usuario)

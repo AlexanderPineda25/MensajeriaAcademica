@@ -2,7 +2,7 @@
 import datetime
 import unittest
 
-from transversal.fechas import clave_dia, etiqueta_dia, hora_corta
+from transversal.fechas import agrupar, clave_dia, etiqueta_dia, hora_corta
 
 
 class TestFechas(unittest.TestCase):
@@ -48,6 +48,38 @@ class TestFechas(unittest.TestCase):
         self.assertEqual(
             (datetime.date.today() - datetime.timedelta(days=1)).isoformat(),
             clave_dia(ayer))
+
+    def test_fecha_con_zona_se_convierte_a_hora_local(self):
+        # La SQLite la comparten los clientes por cuenta y .NET escribe UTC
+        # con sufijo Z (DateTime.ToString("O") aka round-trip).
+        local = datetime.datetime.now().replace(microsecond=0)
+        en_utc = local.astimezone(datetime.timezone.utc)
+        zoned = en_utc.strftime("%Y-%m-%dT%H:%M:%S") + ".1234567Z"
+
+        self.assertEqual(local.strftime("%H:%M"), hora_corta(zoned))
+        self.assertEqual(local.date().isoformat(), clave_dia(zoned))
+
+    def test_fecha_con_desplazamiento_se_convierte_a_hora_local(self):
+        local = datetime.datetime.now().replace(microsecond=0)
+        zona = datetime.timezone(datetime.timedelta(hours=-5))
+        zoned = local.astimezone(zona).isoformat()
+
+        self.assertEqual(local.strftime("%H:%M"), hora_corta(zoned))
+        self.assertEqual(local.date().isoformat(), clave_dia(zoned))
+
+    def test_agrupar_mezcla_naive_y_con_zona_sin_romper(self):
+        # Regresión: mezclar una fila de .NET (aware) con una local (naive)
+        # lanzaba "can't subtract offset-naive and offset-aware datetimes".
+        base = datetime.datetime.now().replace(microsecond=0)
+        cercano = base + datetime.timedelta(minutes=2)
+        naive = base.strftime("%Y-%m-%d %H:%M:%S")
+        zoned = cercano.astimezone(datetime.timezone.utc
+                                   ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        anterior = {"origen": "A001", "fecha_envio": naive}
+        actual = {"origen": "A001", "fecha_envio": zoned}
+        self.assertTrue(agrupar(anterior, actual))
+        self.assertTrue(agrupar(actual, anterior))
 
 
 if __name__ == "__main__":

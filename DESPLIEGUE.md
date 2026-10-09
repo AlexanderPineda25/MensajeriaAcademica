@@ -282,7 +282,7 @@ recrean su carpeta de salida. Ninguno copia el monorepo.
 |---|---|---|---|
 | Servidor | `dist\distribuir-servidor.cmd` | `dist\MensajeriaServidor\` | `servidor.jar`, `start-server.cmd`, `config\`, `uploads\`, `logs\` vacías, `README.md`, `version.txt` |
 | JavaFX | `client\dist-client.cmd` | `dist\MensajeriaClienteJava\` | `client-app.jar`, `lib\`, `javafx\`, `client.properties`, `launch-client.cmd` |
-| Python | `client-python\distribuir.cmd` | `client-python\dist\MensajeriaPython\` | fuentes sin `.venv`/tests, `requirements.txt`, `store\schema-local.sql` |
+| Python | `client-python\distribuir.cmd` | `client-python\dist\MensajeriaPython\` (y copia centralizada en `dist\MensajeriaPython\` vía `empaquetar-todo.cmd`) | fuentes sin `.venv`/tests, `requirements.txt`, `store\schema-local.sql` |
 | WPF | `dotnet publish` (abajo) | `dist\MensajeriaWPF\` | salida self-contained, `client.properties`, `schema-local.sql` |
 
 ```powershell
@@ -293,7 +293,21 @@ cmd client-python\distribuir.cmd
 dotnet publish client-dotnet\Mensajeria.csproj -c Release -r win-x64 --self-contained true -o dist\MensajeriaWPF
 ```
 
-Notas quesave tiempo en destino:
+Atajo maestro (ejecuta los 4 pasos anteriores y centraliza la salida Python en
+`dist\`):
+
+```powershell
+Set-Location universidad-mensajeria
+cmd /c empaquetar-todo.cmd
+```
+
+Esto deja las 4 carpetas listas en `universidad-mensajeria\dist\`:
+`MensajeriaServidor\`, `MensajeriaClienteJava\`, `MensajeriaPython\` y
+`MensajeriaWPF\`. Todos los scripts usan rutas relativas a su propia
+ubicación (`%~dp0` / `$PSScriptRoot`): funcionan en cualquier PC sin editar
+rutas absolutas.
+
+Notas que ahorran tiempo en destino:
 
 - Los dos scripts de Java usan `mvn install`, no `package`: `dependency:copy-dependencies`
   resuelve los módulos hermanos (`dto`, `codec`, `client-interfaces`) desde el repo local
@@ -318,23 +332,101 @@ Cliente WPF: ejecutar `Mensajeria.exe`; no hay nada que instalar.
 
 ## Reparto en 4 PCs (LAN, un proceso por máquina)
 
-Cada máquina recibe **solo su carpeta**, nada del monorepo:
+Cada máquina recibe **solo su carpeta**, nada del monorepo. `common-protocol`
+no se copia: es código fuente que ya va empaquetado en los binarios Java, y
+Python/C# llevan su propia implementación nativa del mismo contrato TCP/JSON.
+Los clientes nunca se conectan a MySQL; solo el servidor la usa.
 
-| # | Carpeta | Contenido exacto |
-|---|---|---|
-| PC1 | `MensajeriaServidor/` | `servidor.jar` + `config/` + `uploads/` + `logs/` (vacías al inicio) y `docker-compose.yml` solo para MySQL… o MySQL 8.4 directo |
-| PC2 | `MensajeriaClienteJava/` | `client-app.jar` + `lib/` + `javafx/` (nativos win) + `client.properties` + `launch-client.cmd` |
-| PC3 | `MensajeriaPython/` | `client-python/` sin `.venv`, `__pycache__`, `tests`, `*.db*` |
-| PC4 | `MensajeriaWPF/` | contenido de `publish-win-x64` (self-contained) |
+| # | Rol fijo | Carpeta que recibe | Requisitos en ese PC |
+|---|---|---|---|
+| PC1 | Servidor central | `dist\MensajeriaServidor\` | JRE 21+ y MySQL 8 accesible (o Docker) |
+| PC2 | Cliente JavaFX | `dist\MensajeriaClienteJava\` | JRE 21+ |
+| PC3 | Cliente Python | `dist\MensajeriaPython\` | Python 3.13 (el `.venv` se crea en destino) |
+| PC4 | Cliente WPF | `dist\MensajeriaWPF\` | Ninguno (self-contained) |
 
-1. PC1: `docker compose up -d mysql`, arranca el JAR apuntando a MySQL
-   (`3307`), Flyway migra solo. Firewall (solo LAN privada): entrada
-   `TCP 5000`, `RemoteAddress LocalSubnet`. **No abras MySQL a la LAN.**
-2. PC2/PC3/PC4: `Test-NetConnection IP_SERVIDOR -Port 5000`, edita
-   `host`/`puerto` en `client.properties` y entra con las cuentas del
-   CSV de semilla vigente (ver `usuarios_iniciales.csv`; reserva una
-   cuenta para la prueba de 2 sesiones).
-3. Smoke por máquina en `GUIA_ACEPTACION.md` (matriz de 6 direcciones +
+Copiar cada carpeta por USB o red local. En destino no se edita ninguna ruta
+absoluta: solo `host`/`puerto` con la IP LAN del servidor.
+
+### PC1 — Servidor
+
+1. Averigua su IP LAN:
+
+   ```powershell
+   ipconfig
+   ```
+
+   Anota la **Dirección IPv4** (por ejemplo `192.168.1.50`).
+2. Permite la entrada solo desde la LAN privada (requiere PowerShell como
+   administrador):
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Mensajeria Servidor" -Direction Inbound `
+     -LocalPort 5000 -Protocol TCP -Action Allow -RemoteAddress LocalSubnet
+   ```
+
+3. Inicia MySQL. En desarrollo, desde `universidad-mensajeria/`:
+
+   ```powershell
+   Set-Location universidad-mensajeria
+   docker compose up -d mysql
+   ```
+
+   En destino, MySQL 8 puede ser Docker o instalado directo. El host expone
+   `3307` en desarrollo (`3306` dentro del contenedor).
+4. Dentro de `MensajeriaServidor\`, arranca:
+
+   ```powershell
+   .\start-server.cmd
+   ```
+
+   Flyway migra solo. **No abras MySQL a la LAN.**
+
+### PC2 — Cliente JavaFX
+
+1. Edita `client.properties` (Bloc de notas):
+
+   ```properties
+   host=192.168.1.50
+   puerto=5000
+   ```
+
+   Usa la IP real del PC1, nunca `localhost`.
+2. Arranca con `launch-client.cmd` (lleva la carpeta completa, nunca solo el JAR).
+3. Entra con una cuenta del CSV de semilla vigente
+   (`server/servidor-app/src/main/resources/usuarios_iniciales.csv`).
+   Reserva una cuenta para la prueba de 2 sesiones.
+
+### PC3 — Cliente Python
+
+1. Edita `client.properties` igual que en PC2.
+2. Solo la primera vez, crea el entorno en esa carpeta (no se copia `.venv`
+   entre PCs porque guarda rutas absolutas):
+
+   ```powershell
+   py -3.13 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+   Sin launcher `py`, usa `python -m venv .venv`.
+3. Arranca:
+
+   ```powershell
+   .\.venv\Scripts\python.exe main.py
+   ```
+
+### PC4 — Cliente WPF
+
+1. Edita `client.properties` igual que en PC2.
+2. Doble clic en `Mensajeria.exe`. No requiere instalación.
+
+### Prueba cruzada mínima
+
+1. Desde PC2, envía un texto a PC3. Debe llegar una sola vez y pasar a
+   `ENTREGADO`.
+2. Desde PC3, envía una imagen a PC4. Debe verse en PC4.
+3. En PC1, comprueba `uploads\<Nombre Apellido [CODIGO]>\<hash>\`: original +
+   5 derivadas.
+4. Smoke completo por máquina en `GUIA_ACEPTACION.md` (matriz de 6 direcciones +
    sección 2026-10-04).
 
 ## Datos y mantenimiento
